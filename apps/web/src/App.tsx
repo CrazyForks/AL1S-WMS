@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bell, Check, ClipboardList, Home, Plus, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bell, Check, ClipboardList, Home, Plus, Search, SlidersHorizontal, X } from "lucide-react";
 
 type Item = {
   id: string;
@@ -12,6 +12,8 @@ type Item = {
   active: boolean;
   locationName?: string | null;
   locationId?: string | null;
+  manufacturedDate?: string | null;
+  expiryDate?: string | null;
 };
 type Stock = { itemId: string; locationId: string; quantity: number };
 type Location = { id: string; homeId: string; name: string; active: boolean };
@@ -48,6 +50,7 @@ function Setup({ onComplete }: { onComplete: (home: { id: string; name: string; 
   const [locations, setLocations] = useState(["储物间", "厨房"]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
   const canNext = step === 1 ? username.trim().length >= 2 && password.length >= 8 : step === 2 ? homeName.trim().length > 0 : locations.some((name) => name.trim());
   const submit = async () => {
     if (!canNext) return;
@@ -78,13 +81,18 @@ export function App() {
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [stockAction, setStockAction] = useState<{ type: "receipt" | "issue"; item: Item } | null>(null);
+  const [page, setPage] = useState(1);
 
   const load = () => Promise.all([getItems(), getStock(), getLocations()]).then(([nextItems, nextStock, nextLocations]) => { setItems(nextItems); setStock(nextStock); setLocations(nextLocations); }).catch((error) => setNotice(error.message));
   useEffect(() => { fetch("/api/v1/setup/status").then((response) => response.json()).then((data) => { setSetup(data); if (data.home?.id) localStorage.setItem("family-erp-home-id", data.home.id); if (data.complete) fetch("/api/v1/auth/me").then((response) => setAuthenticated(response.ok)); }).catch(() => setSetup({ complete: false })); }, []);
   useEffect(() => { if (setup?.complete) load(); }, [setup?.complete]);
   const filtered = useMemo(() => items.filter((item) => `${item.name} ${item.sku}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / 10));
+  const pagedItems = filtered.slice((page - 1) * 10, page * 10);
+  useEffect(() => { setPage(1); }, [query]);
+  useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
   const balanceFor = (itemId: string) => stock.filter((row) => row.itemId === itemId).reduce((total, row) => total + row.quantity, 0);
-  const lowStock = items.filter((item) => item.reorderPoint > 0 && balanceFor(item.id) <= item.reorderPoint).length;
+  const lowStock = items.filter((item) => replenishmentFor(item) > 0).length;
   if (!setup) return <div className="loading-screen">正在检查家庭设置…</div>;
   if (!setup.complete) return <Setup onComplete={(home) => { setAuthenticated(true); setSetup({ complete: true, home }); }} />;
   if (!authenticated) return <Login onLogin={() => setAuthenticated(true)} />;
@@ -99,7 +107,7 @@ export function App() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: data.get("name"), baseUnit: data.get("baseUnit"), locationId: data.get("locationId") || undefined,
-        reorderPoint: Number(data.get("reorderPoint") || 0), reorderQuantity: 0, initialStock: Number(data.get("initialStock") || 0)
+        reorderPoint: Number(data.get("reorderPoint") || 0), reorderQuantity: 0, initialStock: Number(data.get("initialStock") || 0), manufacturedDate: data.get("manufacturedDate") || undefined, expiryDate: data.get("expiryDate") || undefined
       })
     });
     setBusy(false);
@@ -138,12 +146,13 @@ export function App() {
       <section className="content-grid">
         <div className="panel inventory-panel">
           <div className="panel-head"><div><h2>物资清单</h2><p className="muted">按名称或编码快速查找</p></div><div className="panel-tools"><label className="search"><Search size={16} strokeWidth={1.8} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物资" /></label><button className="filter"><SlidersHorizontal size={15} strokeWidth={1.8} /> 筛选</button></div></div>
-          <div className="table-wrap"><table><thead><tr><th>物资</th><th>库存</th><th>位置</th><th>操作</th></tr></thead><tbody>{filtered.length === 0 ? <tr><td colSpan={4} className="empty">还没有物资，先添加一项常用物品。</td></tr> : filtered.map((item) => <tr key={item.id}><td><div className="item-name"><span className="item-icon">{item.name.slice(0, 1)}</span><div><strong>{item.name}</strong><span>{item.baseUnit}</span></div></div></td><td>{balanceFor(item.id)} {item.baseUnit}{replenishmentFor(item) > 0 ? ` · 建议补充 ${replenishmentFor(item)} ${item.baseUnit}` : ""}</td><td>{item.locationName || "未指定"}</td><td><div className="row-actions"><button onClick={() => setStockAction({ type: "receipt", item })}>入库</button><button onClick={() => setStockAction({ type: "issue", item })}>领用</button></div></td></tr>)}</tbody></table></div>
+          <div className="table-wrap"><table><thead><tr><th>物资</th><th>库存</th><th>位置</th><th>操作</th></tr></thead><tbody>{filtered.length === 0 ? <tr><td colSpan={4} className="empty">还没有物资，先添加一项常用物品。</td></tr> : pagedItems.map((item) => <tr key={item.id}><td><div className="item-name"><span className="item-icon">{item.name.slice(0, 1)}</span><div><strong>{item.name}</strong><span>{item.baseUnit}</span></div></div></td><td>{balanceFor(item.id)} {item.baseUnit}{replenishmentFor(item) > 0 ? ` · 建议补充 ${replenishmentFor(item)} ${item.baseUnit}` : ""}</td><td>{item.locationName || "未指定"}</td><td><div className="row-actions"><button onClick={() => setStockAction({ type: "receipt", item })}>入库</button><button onClick={() => setStockAction({ type: "issue", item })}>领用</button></div></td></tr>)}</tbody></table></div>
+          {filtered.length > 10 && <div className="pagination"><button type="button" aria-label="上一页" title="上一页" disabled={page === 1} onClick={() => setPage(page - 1)}><ArrowLeft size={15} /></button><span>{page} / {pageCount}</span><button type="button" aria-label="下一页" title="下一页" disabled={page === pageCount} onClick={() => setPage(page + 1)}><ArrowRight size={15} /></button></div>}
         </div>
         <aside className="side-column"><div className="panel quick-panel"><div className="panel-head"><div><h2>快捷操作</h2><p className="muted">常用的家庭整理动作</p></div></div><button className="quick-action" onClick={() => setShowForm(true)}><span className="quick-icon blue"><Plus size={16} strokeWidth={2} /></span><span><strong>添加新物资</strong><small>登记家里新增的物品</small></span><ArrowRight size={15} strokeWidth={1.8} /></button><button className="quick-action"><span className="quick-icon green"><Check size={16} strokeWidth={2} /></span><span><strong>开始盘点</strong><small>核对一个地点的实际库存</small></span><ArrowRight size={15} strokeWidth={1.8} /></button><button className="quick-action"><span className="quick-icon amber"><ClipboardList size={16} strokeWidth={1.8} /></span><span><strong>查看采购清单</strong><small>整理需要购买的物品</small></span><ArrowRight size={15} strokeWidth={1.8} /></button></div><div className="panel locations"><div className="panel-head"><div><h2>存放地点</h2><p className="muted">按空间整理物资</p></div><button className="text-button">管理</button></div>{locations.map((location) => <div className="location-row" key={location.id}><Home size={15} strokeWidth={1.8} className="location-icon" /><span>{location.name}</span><strong>{stock.filter((row) => row.locationId === location.id).reduce((sum, row) => sum + row.quantity, 0)}</strong></div>)}</div></aside>
       </section>
     </main>
     {stockAction && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setStockAction(null)}><form className="modal" onSubmit={recordStock}><div className="modal-head"><div><h2>{stockAction.type === "receipt" ? "入库物资" : "领用物资"}</h2><p className="muted">{stockAction.item.name}</p></div><button type="button" className="close" onClick={() => setStockAction(null)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>存放地点<select name="locationId" defaultValue={stockAction.item.locationId || locations[0]?.id || ""}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>数量<input name="quantity" type="number" min="0.1" step="0.1" defaultValue="1" autoFocus required /></label><label>备注（可选）<input name="reason" placeholder="例如：本周采购" /></label><button className="primary full">确认{stockAction.type === "receipt" ? "入库" : "领用"}</button></form></div>}
-    {showForm && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowForm(false)}><form className="modal" onSubmit={addItem}><div className="modal-head"><div><h2>添加物资</h2><p className="muted">登记名称、当前库存和补充规则</p></div><button type="button" className="close" onClick={() => setShowForm(false)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>物资名称<input name="name" required placeholder="例如：洗衣液" /></label><div className="form-row"><label>单位<select name="baseUnit" defaultValue="个"><option>个</option><option>瓶</option><option>盒</option><option>包</option><option>箱</option><option>袋</option><option>千克</option><option>升</option><option>米</option><option>其他</option></select></label><label>库存<input name="initialStock" type="number" min="0" step="0.1" defaultValue="0" /></label></div><label>最低库存<input name="reorderPoint" type="number" min="0" step="0.1" defaultValue="0" /></label><label>存放地点<select name="locationId" defaultValue={locations[0]?.id || ""}><option value="">暂不指定</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><button className="primary full" disabled={busy}>{busy ? "保存中…" : "保存物资"}</button></form></div>}
+    {showForm && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowForm(false)}><form className="modal" onSubmit={addItem}><div className="modal-head"><div><h2>添加物资</h2><p className="muted">登记名称、当前库存和补充规则</p></div><button type="button" className="close" onClick={() => setShowForm(false)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>物资名称<input name="name" required placeholder="例如：洗衣液" /></label><div className="form-row"><label>单位<select name="baseUnit" defaultValue="个"><option>个</option><option>瓶</option><option>盒</option><option>包</option><option>箱</option><option>袋</option><option>千克</option><option>升</option><option>米</option><option>其他</option></select></label><label>库存<input name="initialStock" type="number" min="0" step="0.1" defaultValue="0" /></label></div><label>最低库存<input name="reorderPoint" type="number" min="0" step="0.1" defaultValue="0" /></label><label>生产日期<input name="manufacturedDate" type="date" /></label><label>保质期至<input name="expiryDate" type="date" /></label><label>存放地点<select name="locationId" defaultValue={locations[0]?.id || ""}><option value="">暂不指定</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><button className="primary full" disabled={busy}>{busy ? "保存中…" : "保存物资"}</button></form></div>}
   </div>;
 }

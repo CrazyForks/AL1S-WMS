@@ -10,6 +10,8 @@ export const itemSchema = z.object({
   baseUnit: z.string().min(1),
   reorderPoint: z.number().nonnegative(),
   reorderQuantity: z.number().nonnegative(),
+  manufacturedDate: z.string().date().nullable().optional(),
+  expiryDate: z.string().date().nullable().optional(),
   active: z.boolean()
 });
 

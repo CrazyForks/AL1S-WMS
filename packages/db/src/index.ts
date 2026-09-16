@@ -24,6 +24,8 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
       reorder_point REAL NOT NULL DEFAULT 0,
       reorder_quantity REAL NOT NULL DEFAULT 1,
       default_location_id TEXT,
+      manufactured_date TEXT,
+      expiry_date TEXT,
       active INTEGER NOT NULL DEFAULT 1,
       UNIQUE(home_id, sku)
     );
@@ -65,5 +67,7 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
   `);
   try { db.exec("ALTER TABLE items ADD COLUMN default_location_id TEXT"); } catch { /* existing column */ }
   try { db.exec("ALTER TABLE homes ADD COLUMN icon TEXT NOT NULL DEFAULT '🏠'"); } catch { /* existing column */ }
+  try { db.exec("ALTER TABLE items ADD COLUMN manufactured_date TEXT"); } catch { /* existing column */ }
+  try { db.exec("ALTER TABLE items ADD COLUMN expiry_date TEXT"); } catch { /* existing column */ }
   return db;
 }
