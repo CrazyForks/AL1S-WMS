@@ -24,7 +24,7 @@ export function createMcpServer(db: DatabaseSync) {
     if (locationId) { conditions.push("items.default_location_id = ?"); params.push(locationId); }
     if (lowStockOnly) conditions.push("(SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id) < items.reorder_point");
     if (expiryBefore) { conditions.push("items.expiry_date IS NOT NULL AND items.expiry_date <= ?"); params.push(expiryBefore); }
-    const rows = db.prepare(`SELECT items.id, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, (SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id) AS quantity FROM items WHERE ${conditions.join(" AND ")} ORDER BY items.name LIMIT 50`).all(...params);
+    const rows = db.prepare(`SELECT items.id, items.sku, items.name, items.category, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, (SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id) AS quantity FROM items WHERE ${conditions.join(" AND ")} ORDER BY items.name LIMIT 50`).all(...params);
     return { content: [{ type: "text", text: JSON.stringify(rows) }] };
   });
 
@@ -46,14 +46,14 @@ export function createMcpServer(db: DatabaseSync) {
     description: "Get one item with its replenishment and expiry fields.",
     inputSchema: { homeId: z.string().uuid(), itemId: z.string().uuid() }
   }, async ({ homeId, itemId }) => {
-    const row = db.prepare("SELECT id, sku, name, base_unit AS baseUnit, reorder_point AS reorderPoint, manufactured_date AS manufacturedDate, expiry_date AS expiryDate, default_location_id AS locationId FROM items WHERE home_id = ? AND id = ? AND active = 1").get(homeId, itemId);
+    const row = db.prepare("SELECT id, sku, name, category, base_unit AS baseUnit, reorder_point AS reorderPoint, manufactured_date AS manufacturedDate, expiry_date AS expiryDate, default_location_id AS locationId FROM items WHERE home_id = ? AND id = ? AND active = 1").get(homeId, itemId);
     return { content: [{ type: "text", text: JSON.stringify(row ?? { code: "ITEM_NOT_FOUND" }) }] };
   });
 
   server.registerTool("update_item", {
     title: "Update item",
     description: "Update editable item fields. System SKU cannot be changed.",
-    inputSchema: { homeId: z.string().uuid(), itemId: z.string().uuid(), name: z.string().min(1).optional(), baseUnit: z.string().min(1).optional(), reorderPoint: z.number().nonnegative().optional(), locationId: z.string().uuid().nullable().optional(), manufacturedDate: z.string().date().nullable().optional(), expiryDate: z.string().date().nullable().optional() }
+    inputSchema: { homeId: z.string().uuid(), itemId: z.string().uuid(), name: z.string().min(1).optional(), category: z.string().min(1).optional(), baseUnit: z.string().min(1).optional(), reorderPoint: z.number().nonnegative().optional(), locationId: z.string().uuid().nullable().optional(), manufacturedDate: z.string().date().nullable().optional(), expiryDate: z.string().date().nullable().optional() }
   }, async ({ homeId, itemId, ...changes }) => {
     const fields = Object.entries(changes).filter(([, value]) => value !== undefined).map(([key, value]) => ({ name: key === "baseUnit" ? "base_unit" : key === "reorderPoint" ? "reorder_point" : key === "locationId" ? "default_location_id" : key === "manufacturedDate" ? "manufactured_date" : key === "expiryDate" ? "expiry_date" : key, value: value ?? null }));
     if (!fields.length) return { isError: true, content: [{ type: "text", text: JSON.stringify({ code: "NO_CHANGES" }) }] };

@@ -7,6 +7,7 @@ export const itemSchema = z.object({
   homeId: homeIdSchema,
   sku: z.string().min(1),
   name: z.string().min(1),
+  category: z.string().min(1),
   baseUnit: z.string().min(1),
   reorderPoint: z.number().nonnegative(),
   reorderQuantity: z.number().nonnegative(),
@@ -24,6 +25,7 @@ export type Item = z.infer<typeof itemSchema>;
 export type CreateItem = z.infer<typeof createItemSchema>;
 export const updateItemSchema = z.object({
   name: z.string().min(1).optional(),
+  category: z.string().min(1).optional(),
   baseUnit: z.string().min(1).optional(),
   reorderPoint: z.number().nonnegative().optional(),
   locationId: z.string().uuid().nullable().optional(),

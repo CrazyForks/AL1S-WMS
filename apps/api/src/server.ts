@@ -83,11 +83,11 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
 app.get("/healthz", async () => ({ status: "ok" }));
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async (request) => {
-  return db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.active = 1 ORDER BY items.name").all(request.params.homeId);
+  return db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.category, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.active = 1 ORDER BY items.name").all(request.params.homeId);
 });
 
 app.get<{ Params: { homeId: string; itemId: string } }>("/api/v1/homes/:homeId/items/:itemId", async (request, reply) => {
-  const item = db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1").get(request.params.homeId, request.params.itemId);
+  const item = db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.category, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1").get(request.params.homeId, request.params.itemId);
   return item ?? reply.code(404).send({ code: "ITEM_NOT_FOUND" });
 });
 
@@ -110,7 +110,7 @@ app.patch<{ Params: { homeId: string; itemId: string }; Body: unknown }>("/api/v
     }
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
-  return db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.id = ? AND items.home_id = ?").get(request.params.itemId, request.params.homeId);
+  return db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.category, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.id = ? AND items.home_id = ?").get(request.params.itemId, request.params.homeId);
 });
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/stock", async (request) => {
@@ -172,7 +172,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/i
   if (locationId && !db.prepare("SELECT id FROM locations WHERE id = ? AND home_id = ? AND active = 1").get(locationId, request.params.homeId)) return reply.code(400).send({ code: "LOCATION_NOT_FOUND" });
   db.exec("BEGIN");
   try {
-    db.prepare("INSERT INTO items (id, home_id, sku, name, base_unit, reorder_point, reorder_quantity, default_location_id, manufactured_date, expiry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(item.id, item.homeId, sku, item.name, item.baseUnit, item.reorderPoint, item.reorderQuantity, locationId, parsed.data.manufacturedDate ?? null, parsed.data.expiryDate ?? null);
+    db.prepare("INSERT INTO items (id, home_id, sku, name, category, base_unit, reorder_point, reorder_quantity, default_location_id, manufactured_date, expiry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(item.id, item.homeId, sku, item.name, item.category, item.baseUnit, item.reorderPoint, item.reorderQuantity, locationId, parsed.data.manufacturedDate ?? null, parsed.data.expiryDate ?? null);
     if (parsed.data.initialStock > 0) db.prepare("INSERT INTO stock_transactions (id, home_id, item_id, location_id, type, quantity, reason, idempotency_key, occurred_at) VALUES (?, ?, ?, ?, 'receipt', ?, ?, ?, ?)").run(randomUUID(), item.homeId, item.id, locationId, parsed.data.initialStock, "初始库存", `initial:${item.id}`, new Date().toISOString());
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }

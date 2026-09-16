@@ -20,6 +20,7 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
       home_id TEXT NOT NULL REFERENCES homes(id),
       sku TEXT NOT NULL,
       name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT '其他',
       base_unit TEXT NOT NULL,
       reorder_point REAL NOT NULL DEFAULT 0,
       reorder_quantity REAL NOT NULL DEFAULT 1,
@@ -69,5 +70,6 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
   try { db.exec("ALTER TABLE homes ADD COLUMN icon TEXT NOT NULL DEFAULT '🏠'"); } catch { /* existing column */ }
   try { db.exec("ALTER TABLE items ADD COLUMN manufactured_date TEXT"); } catch { /* existing column */ }
   try { db.exec("ALTER TABLE items ADD COLUMN expiry_date TEXT"); } catch { /* existing column */ }
+  try { db.exec("ALTER TABLE items ADD COLUMN category TEXT NOT NULL DEFAULT '其他'"); } catch { /* existing column */ }
   return db;
 }
