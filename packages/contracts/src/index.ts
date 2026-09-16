@@ -13,7 +13,10 @@ export const itemSchema = z.object({
   active: z.boolean()
 });
 
-export const createItemSchema = itemSchema.omit({ id: true, active: true });
+export const createItemSchema = itemSchema.omit({ id: true, active: true }).extend({
+  sku: z.string().trim().max(80).optional(),
+  locationId: z.string().uuid().optional()
+});
 export type Item = z.infer<typeof itemSchema>;
 export type CreateItem = z.infer<typeof createItemSchema>;
 

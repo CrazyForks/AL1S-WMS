@@ -22,6 +22,7 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
       base_unit TEXT NOT NULL,
       reorder_point REAL NOT NULL DEFAULT 0,
       reorder_quantity REAL NOT NULL DEFAULT 1,
+      default_location_id TEXT,
       active INTEGER NOT NULL DEFAULT 1,
       UNIQUE(home_id, sku)
     );
@@ -56,5 +57,6 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
       value TEXT NOT NULL
     );
   `);
+  try { db.exec("ALTER TABLE items ADD COLUMN default_location_id TEXT"); } catch { /* existing column */ }
   return db;
 }

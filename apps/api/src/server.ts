@@ -50,7 +50,7 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
 app.get("/healthz", async () => ({ status: "ok" }));
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async (request) => {
-  return db.prepare("SELECT id, home_id AS homeId, sku, name, base_unit AS baseUnit, reorder_point AS reorderPoint, reorder_quantity AS reorderQuantity, active FROM items WHERE home_id = ? AND active = 1 ORDER BY name").all(request.params.homeId);
+  return db.prepare("SELECT id, home_id AS homeId, sku, name, base_unit AS baseUnit, reorder_point AS reorderPoint, reorder_quantity AS reorderQuantity, default_location_id AS locationId, active FROM items WHERE home_id = ? AND active = 1 ORDER BY name").all(request.params.homeId);
 });
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/stock", async (request) => {
@@ -104,9 +104,13 @@ app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/i
   if (!parsed.success) return reply.code(400).send({ code: "VALIDATION_ERROR", details: parsed.error.flatten() });
 
   db.prepare("INSERT OR IGNORE INTO homes (id, name) VALUES (?, ?)").run(request.params.homeId, "Home");
-  const item: Item = { ...parsed.data, id: randomUUID(), active: true };
-  db.prepare("INSERT INTO items (id, home_id, sku, name, base_unit, reorder_point, reorder_quantity) VALUES (?, ?, ?, ?, ?, ?, ?)").run(item.id, item.homeId, item.sku, item.name, item.baseUnit, item.reorderPoint, item.reorderQuantity);
-  return reply.code(201).send(item);
+  const id = randomUUID();
+  const sku = parsed.data.sku || `ITEM-${id.slice(0, 8).toUpperCase()}`;
+  const item: Item = { ...parsed.data, id, sku, active: true };
+  if (item.sku && !db.prepare("SELECT id FROM homes WHERE id = ?").get(item.homeId)) return reply.code(404).send({ code: "HOME_NOT_FOUND" });
+  const locationId = parsed.data.locationId ?? null;
+  db.prepare("INSERT INTO items (id, home_id, sku, name, base_unit, reorder_point, reorder_quantity, default_location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(item.id, item.homeId, sku, item.name, item.baseUnit, item.reorderPoint, item.reorderQuantity, locationId);
+  return reply.code(201).send({ ...item, sku, locationId });
 });
 
 app.post<{ Params: { homeId: string; type: "receipt" | "issue" }; Body: unknown }>("/api/v1/homes/:homeId/stock/:type", async (request, reply) => {
