@@ -101,7 +101,7 @@ export function App() {
     <header className="topbar">
       <div className="brand"><span className="brand-mark" role="img" aria-label="家庭">{localStorage.getItem("family-erp-home-emoji") || "🏠"}</span><div><strong>家庭物资</strong><span>Home inventory</span></div></div>
       <div className="home-switch"><span className="status-dot" />我的家庭 <span className="chevron">⌄</span></div>
-      <div className="top-actions"><button className="icon-button" title="通知" aria-label="通知">◌</button><span className="avatar">我</span></div>
+      <div className="top-actions"><button className="icon-button" title="通知" aria-label="通知">🔔</button><span className="avatar">我</span></div>
     </header>
     <main>
       <section className="welcome"><div><p className="eyebrow">周三 · 9 月 16 日</p><h1>家庭物资总览</h1><p className="muted">掌握家里有什么，及时补充需要的东西。</p></div><button className="primary" onClick={() => setShowForm(true)}>＋ 添加物资</button></section>
