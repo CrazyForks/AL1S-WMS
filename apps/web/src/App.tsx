@@ -194,12 +194,12 @@ export function App() {
     setCategoryName(""); setCategoryParent(""); setCategoryManager(false); load();
   }
   function navigate(page: "home" | "count" | "locations" | "categories") {
-    setActivePage(page); setLogView(false); setCountView(page === "locations" || page === "categories");
+    setActivePage(page); setLogView(false); setCategoryManager(page === "categories"); setCountView(page === "locations" || page === "categories");
     if (page === "locations") setTreeMode("location");
     if (page === "categories") { setTreeMode("category"); setCategoryManager(true); }
   }
 
-  return <div className="shell">
+  return <div className="shell" data-page={activePage}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark" role="img" aria-label="家庭">{setup.home?.icon || localStorage.getItem("family-erp-home-emoji") || "🏠"}</span><div><strong>{setup.home?.name || "家庭"}</strong><span>Home inventory</span></div></div>
       <div className="home-switch"><span className="status-dot" />{setup.home?.name || "家庭"} <span className="chevron">⌄</span></div>
