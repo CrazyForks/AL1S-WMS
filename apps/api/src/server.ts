@@ -14,6 +14,10 @@ app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async (re
   return db.prepare("SELECT id, home_id AS homeId, sku, name, base_unit AS baseUnit, reorder_point AS reorderPoint, reorder_quantity AS reorderQuantity, active FROM items WHERE home_id = ? AND active = 1 ORDER BY name").all(request.params.homeId);
 });
 
+app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/stock", async (request) => {
+  return db.prepare("SELECT item_id AS itemId, location_id AS locationId, COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) AS quantity FROM stock_transactions WHERE home_id = ? GROUP BY item_id, location_id").all(request.params.homeId);
+});
+
 app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/items", async (request, reply) => {
   const body = request.body && typeof request.body === "object" ? request.body : {};
   const parsed = createItemSchema.safeParse({ ...body, homeId: request.params.homeId });
