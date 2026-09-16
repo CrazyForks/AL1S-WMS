@@ -115,6 +115,9 @@ export function App() {
   const [treeMode, setTreeMode] = useState<"location" | "category">("location");
   const [prefillLocationId, setPrefillLocationId] = useState("");
   const [prefillCategory, setPrefillCategory] = useState("");
+  const [categoryManager, setCategoryManager] = useState(false);
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryParent, setCategoryParent] = useState("");
   const [expandedLocations, setExpandedLocations] = useState<Record<string, boolean>>({});
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -183,6 +186,13 @@ export function App() {
     setDetailItem(null); load();
   }
 
+  async function addCategory(event: FormEvent) {
+    event.preventDefault();
+    const response = await fetch(`/api/v1/homes/${getHomeId()}/categories`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: categoryName.trim(), parentId: categoryParent || undefined }) });
+    if (!response.ok) { setNotice("分类添加失败"); return; }
+    setCategoryName(""); setCategoryParent(""); setCategoryManager(false); load();
+  }
+
   return <div className="shell">
     <header className="topbar">
       <div className="brand"><span className="brand-mark" role="img" aria-label="家庭">{setup.home?.icon || localStorage.getItem("family-erp-home-emoji") || "🏠"}</span><div><strong>{setup.home?.name || "家庭"}</strong><span>Home inventory</span></div></div>
@@ -190,8 +200,9 @@ export function App() {
       <div className="top-actions"><button className="icon-button" title="通知" aria-label="通知"><Bell size={17} strokeWidth={1.8} /></button><span className="avatar">我</span></div>
     </header>
     <main>
-      <section className="welcome"><div><p className="eyebrow">周三 · 9 月 16 日</p><h1>AL1S-ERP总览</h1><p className="muted">掌握家里有什么，及时补充需要的东西。</p></div><button className="primary" onClick={() => setShowForm(true)}>＋ 添加物资</button></section>
+      <section className="welcome"><div><p className="eyebrow">周三 · 9 月 16 日</p><h1>AL1S-ERP总览</h1><p className="muted">掌握家里有什么，及时补充需要的东西。</p></div><div className="welcome-actions"><button className="secondary" onClick={() => setCategoryManager(true)}>分类管理</button><button className="primary" onClick={() => setShowForm(true)}>＋ 添加物资</button></div></section>
       {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")} aria-label="关闭">×</button></div>}
+      {categoryManager && <section className="panel category-manager"><div className="panel-head"><div><h2>分类管理</h2><p className="muted">新增一级分类或子分类</p></div><button className="text-button" onClick={() => setCategoryManager(false)}>关闭</button></div><form className="category-form" onSubmit={addCategory}><input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="分类名称" required /><select value={categoryParent} onChange={(event) => setCategoryParent(event.target.value)}><option value="">一级分类</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><button className="primary">添加分类</button></form></section>}
       <section className="summary-grid">
         <div className="summary-card"><span className="summary-label">物资总数</span><strong>{items.length}</strong><span className="summary-foot">当前AL1S-ERP</span></div>
         <div className="summary-card warning"><span className="summary-label">需要补充</span><strong>{lowStock}</strong><span className="summary-foot">按实际库存余额</span></div>
