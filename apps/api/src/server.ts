@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { randomUUID } from "node:crypto";
-import { randomBytes, scryptSync } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { createItemSchema, type Item } from "@family-erp/contracts";
 import { stockCommandSchema } from "@family-erp/contracts";
 import { openDatabase } from "@family-erp/db";
@@ -9,10 +9,41 @@ import { handleMcpRequest } from "./mcp.js";
 const app = Fastify({ logger: true });
 const db = openDatabase();
 
+function setSession(reply: any, userId: string) {
+  const id = randomUUID();
+  db.prepare("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)").run(id, userId, new Date(Date.now() + 30 * 86400000).toISOString());
+  reply.header("set-cookie", `session=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`);
+}
+function sessionUser(request: any) {
+  const cookie = request.headers.cookie?.split(";").map((part: string) => part.trim()).find((part: string) => part.startsWith("session="));
+  const id = cookie?.slice(8);
+  if (!id) return undefined;
+  return db.prepare("SELECT users.id, users.username, users.role FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.id = ? AND sessions.expires_at > ?").get(id, new Date().toISOString());
+}
+
+app.addHook("preHandler", async (request, reply) => {
+  const publicPath = request.url === "/healthz" || request.url === "/api/v1/setup/status" || request.url === "/api/v1/setup" || request.url === "/api/v1/auth/login";
+  if (!publicPath && !sessionUser(request)) return reply.code(401).send({ code: "UNAUTHENTICATED" });
+});
+
+app.get("/api/v1/auth/me", async (request, reply) => sessionUser(request) ?? reply.code(401).send({ code: "UNAUTHENTICATED" }));
+app.post<{ Body: unknown }>("/api/v1/auth/login", async (request, reply) => {
+  const body = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+  const username = typeof body.username === "string" ? body.username.trim() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  const user = db.prepare("SELECT id, password_hash FROM users WHERE username = ?").get(username) as { id: string; password_hash: string } | undefined;
+  if (!user) return reply.code(401).send({ code: "INVALID_CREDENTIALS", message: "用户名或密码错误" });
+  const [salt, expected] = user.password_hash.split(":");
+  const actual = scryptSync(password, salt, 64).toString("hex");
+  if (actual.length !== expected.length || !timingSafeEqual(Buffer.from(actual), Buffer.from(expected))) return reply.code(401).send({ code: "INVALID_CREDENTIALS", message: "用户名或密码错误" });
+  setSession(reply, user.id);
+  return { username };
+});
+
 app.get("/api/v1/setup/status", async () => {
-  const setting = db.prepare("SELECT value FROM app_settings WHERE key = 'setup_complete'").get() as { value: string } | undefined;
+  const setting = db.prepare("SELECT COUNT(*) AS count FROM users").get() as { count: number };
   const home = db.prepare("SELECT id, name, icon FROM homes ORDER BY rowid LIMIT 1").get() as { id: string; name: string; icon: string } | undefined;
-  return { complete: setting?.value === "true", home };
+  return { complete: setting.count > 0, home };
 });
 
 app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
@@ -45,6 +76,7 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
     db.exec("ROLLBACK");
     throw error;
   }
+  setSession(reply, userId);
   return reply.code(201).send({ home: { id: homeId, name: homeName, icon: homeIcon }, username });
 });
 

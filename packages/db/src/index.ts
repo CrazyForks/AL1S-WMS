@@ -57,6 +57,11 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      expires_at TEXT NOT NULL
+    );
   `);
   try { db.exec("ALTER TABLE items ADD COLUMN default_location_id TEXT"); } catch { /* existing column */ }
   try { db.exec("ALTER TABLE homes ADD COLUMN icon TEXT NOT NULL DEFAULT '🏠'"); } catch { /* existing column */ }
