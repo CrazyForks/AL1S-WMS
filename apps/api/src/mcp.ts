@@ -76,7 +76,7 @@ export function createMcpServer(db: DatabaseSync) {
     description: "List recent inventory transactions in a Home.",
     inputSchema: { homeId: z.string().uuid(), limit: z.number().int().min(1).max(100).optional() }
   }, async ({ homeId, limit = 50 }) => {
-    const rows = db.prepare("SELECT id, item_id AS itemId, location_id AS locationId, type, quantity, reason, occurred_at AS occurredAt FROM stock_transactions WHERE home_id = ? ORDER BY occurred_at DESC LIMIT ?").all(homeId, limit);
+    const rows = db.prepare("SELECT stock_transactions.id, stock_transactions.item_id AS itemId, items.name AS itemName, stock_transactions.location_id AS locationId, locations.name AS locationName, stock_transactions.type, stock_transactions.quantity, stock_transactions.reason, stock_transactions.occurred_at AS occurredAt FROM stock_transactions JOIN items ON items.id = stock_transactions.item_id JOIN locations ON locations.id = stock_transactions.location_id WHERE stock_transactions.home_id = ? ORDER BY stock_transactions.occurred_at DESC LIMIT ?").all(homeId, limit);
     return { content: [{ type: "text", text: JSON.stringify(rows) }] };
   });
 

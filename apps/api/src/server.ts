@@ -120,7 +120,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/l
 });
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/transactions", async (request) => {
-  return db.prepare("SELECT id, item_id AS itemId, location_id AS locationId, type, quantity, reason, idempotency_key AS idempotencyKey, occurred_at AS occurredAt FROM stock_transactions WHERE home_id = ? ORDER BY occurred_at DESC LIMIT 100").all(request.params.homeId);
+  return db.prepare("SELECT stock_transactions.id, stock_transactions.item_id AS itemId, items.name AS itemName, stock_transactions.location_id AS locationId, locations.name AS locationName, stock_transactions.type, stock_transactions.quantity, stock_transactions.reason, stock_transactions.idempotency_key AS idempotencyKey, stock_transactions.occurred_at AS occurredAt FROM stock_transactions JOIN items ON items.id = stock_transactions.item_id JOIN locations ON locations.id = stock_transactions.location_id WHERE stock_transactions.home_id = ? ORDER BY stock_transactions.occurred_at DESC LIMIT 100").all(request.params.homeId);
 });
 
 app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/stock/transfers", async (request, reply) => {
