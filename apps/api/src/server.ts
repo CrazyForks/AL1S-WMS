@@ -14,7 +14,8 @@ app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async (re
 });
 
 app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/items", async (request, reply) => {
-  const parsed = createItemSchema.safeParse({ ...request.body, homeId: request.params.homeId });
+  const body = request.body && typeof request.body === "object" ? request.body : {};
+  const parsed = createItemSchema.safeParse({ ...body, homeId: request.params.homeId });
   if (!parsed.success) return reply.code(400).send({ code: "VALIDATION_ERROR", details: parsed.error.flatten() });
 
   db.prepare("INSERT OR IGNORE INTO homes (id, name) VALUES (?, ?)").run(request.params.homeId, "Home");
@@ -23,7 +24,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/i
   return reply.code(201).send(item);
 });
 
-app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/stock/:type", async (request, reply) => {
+app.post<{ Params: { homeId: string; type: "receipt" | "issue" }; Body: unknown }>("/api/v1/homes/:homeId/stock/:type", async (request, reply) => {
   if (request.params.type !== "receipt" && request.params.type !== "issue") return reply.code(404).send({ code: "NOT_FOUND" });
   const parsed = stockCommandSchema.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ code: "VALIDATION_ERROR", details: parsed.error.flatten() });
