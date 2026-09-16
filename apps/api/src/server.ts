@@ -57,6 +57,47 @@ app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/stock", async (re
   return db.prepare("SELECT item_id AS itemId, location_id AS locationId, COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) AS quantity FROM stock_transactions WHERE home_id = ? GROUP BY item_id, location_id").all(request.params.homeId);
 });
 
+app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/locations", async (request) => {
+  return db.prepare("SELECT id, home_id AS homeId, name, active FROM locations WHERE home_id = ? AND active = 1 ORDER BY name").all(request.params.homeId);
+});
+
+app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/locations", async (request, reply) => {
+  const body = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) return reply.code(400).send({ code: "VALIDATION_ERROR", message: "地点名称不能为空" });
+  const id = randomUUID();
+  try { db.prepare("INSERT INTO locations (id, home_id, name) VALUES (?, ?, ?)").run(id, request.params.homeId, name); }
+  catch (error) { if (String(error).includes("UNIQUE")) return reply.code(409).send({ code: "LOCATION_EXISTS" }); throw error; }
+  return reply.code(201).send({ id, homeId: request.params.homeId, name, active: true });
+});
+
+app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/transactions", async (request) => {
+  return db.prepare("SELECT id, item_id AS itemId, location_id AS locationId, type, quantity, reason, idempotency_key AS idempotencyKey, occurred_at AS occurredAt FROM stock_transactions WHERE home_id = ? ORDER BY occurred_at DESC LIMIT 100").all(request.params.homeId);
+});
+
+app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/stock/transfers", async (request, reply) => {
+  const body = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+  const itemId = typeof body.itemId === "string" ? body.itemId : "";
+  const sourceLocationId = typeof body.sourceLocationId === "string" ? body.sourceLocationId : "";
+  const targetLocationId = typeof body.targetLocationId === "string" ? body.targetLocationId : "";
+  const quantity = typeof body.quantity === "number" ? body.quantity : Number(body.quantity);
+  const idempotencyKey = typeof body.idempotencyKey === "string" ? body.idempotencyKey : "";
+  if (!itemId || !sourceLocationId || !targetLocationId || !Number.isFinite(quantity) || quantity <= 0 || !idempotencyKey) return reply.code(400).send({ code: "VALIDATION_ERROR" });
+  const balance = db.prepare("SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) AS quantity FROM stock_transactions WHERE home_id = ? AND item_id = ? AND location_id = ?").get(request.params.homeId, itemId, sourceLocationId) as { quantity: number };
+  if (balance.quantity < quantity) return reply.code(409).send({ code: "INSUFFICIENT_STOCK", available: balance.quantity });
+  const exists = db.prepare("SELECT id FROM stock_transactions WHERE home_id = ? AND idempotency_key = ?").get(request.params.homeId, idempotencyKey);
+  if (exists) return exists;
+  const outId = randomUUID(); const inId = randomUUID(); const now = new Date().toISOString();
+  db.exec("BEGIN");
+  try {
+    const insert = db.prepare("INSERT INTO stock_transactions (id, home_id, item_id, location_id, type, quantity, reason, idempotency_key, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    insert.run(outId, request.params.homeId, itemId, sourceLocationId, "issue", quantity, "调拨出库", `${idempotencyKey}:out`, now);
+    insert.run(inId, request.params.homeId, itemId, targetLocationId, "receipt", quantity, "调拨入库", `${idempotencyKey}:in`, now);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return reply.code(201).send({ idempotencyKey, outId, inId, itemId, sourceLocationId, targetLocationId, quantity });
+});
+
 app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/items", async (request, reply) => {
   const body = request.body && typeof request.body === "object" ? request.body : {};
   const parsed = createItemSchema.safeParse({ ...body, homeId: request.params.homeId });
