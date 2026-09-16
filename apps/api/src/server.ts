@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import { randomUUID } from "node:crypto";
+import { randomBytes, scryptSync } from "node:crypto";
 import { createItemSchema, type Item } from "@family-erp/contracts";
 import { stockCommandSchema } from "@family-erp/contracts";
 import { openDatabase } from "@family-erp/db";
@@ -7,6 +8,44 @@ import { handleMcpRequest } from "./mcp.js";
 
 const app = Fastify({ logger: true });
 const db = openDatabase();
+
+app.get("/api/v1/setup/status", async () => {
+  const setting = db.prepare("SELECT value FROM app_settings WHERE key = 'setup_complete'").get() as { value: string } | undefined;
+  const home = db.prepare("SELECT id, name FROM homes ORDER BY rowid LIMIT 1").get() as { id: string; name: string } | undefined;
+  return { complete: setting?.value === "true", home };
+});
+
+app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
+  const body = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+  const username = typeof body.username === "string" ? body.username.trim() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  const homeName = typeof body.homeName === "string" ? body.homeName.trim() : "";
+  const timezone = typeof body.timezone === "string" && body.timezone ? body.timezone : "Asia/Shanghai";
+  const currency = typeof body.currency === "string" && body.currency ? body.currency : "CNY";
+  const locationNames = Array.isArray(body.locations) ? body.locations.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean) : [];
+  if (username.length < 2 || password.length < 8 || !homeName || locationNames.length === 0) return reply.code(400).send({ code: "SETUP_INVALID", message: "账号、密码、家庭名称和至少一个地点不能为空" });
+  const complete = db.prepare("SELECT value FROM app_settings WHERE key = 'setup_complete'").get() as { value: string } | undefined;
+  if (complete?.value === "true") return reply.code(409).send({ code: "SETUP_COMPLETE" });
+  const homeId = randomUUID();
+  const userId = randomUUID();
+  const salt = randomBytes(16).toString("hex");
+  const passwordHash = `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
+  const insert = db.prepare("INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)");
+  const home = db.prepare("INSERT INTO homes (id, name, timezone, default_currency) VALUES (?, ?, ?, ?)");
+  const location = db.prepare("INSERT INTO locations (id, home_id, name) VALUES (?, ?, ?)");
+  db.exec("BEGIN");
+  try {
+    insert.run(userId, username, passwordHash, new Date().toISOString());
+    home.run(homeId, homeName, timezone, currency);
+    for (const name of [...new Set(locationNames)]) location.run(randomUUID(), homeId, name);
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('setup_complete', 'true')").run();
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return reply.code(201).send({ home: { id: homeId, name: homeName }, username });
+});
 
 app.get("/healthz", async () => ({ status: "ok" }));
 

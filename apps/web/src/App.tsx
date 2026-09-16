@@ -12,21 +12,44 @@ type Item = {
 };
 type Stock = { itemId: string; locationId: string; quantity: number };
 
-const homeId = "11111111-1111-4111-8111-111111111111";
+const fallbackHomeId = "11111111-1111-4111-8111-111111111111";
 const locationId = "22222222-2222-4222-8222-222222222222";
+const getHomeId = () => localStorage.getItem("family-erp-home-id") ?? fallbackHomeId;
 
 async function getItems() {
-  const response = await fetch(`/api/v1/homes/${homeId}/items`);
+  const response = await fetch(`/api/v1/homes/${getHomeId()}/items`);
   if (!response.ok) throw new Error("无法加载物资");
   return response.json() as Promise<Item[]>;
 }
 async function getStock() {
-  const response = await fetch(`/api/v1/homes/${homeId}/stock`);
+  const response = await fetch(`/api/v1/homes/${getHomeId()}/stock`);
   if (!response.ok) throw new Error("无法加载库存");
   return response.json() as Promise<Stock[]>;
 }
 
+function Setup({ onComplete }: { onComplete: (home: { id: string; name: string }) => void }) {
+  const [step, setStep] = useState(1);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [homeName, setHomeName] = useState("");
+  const [locations, setLocations] = useState(["储物间", "厨房"]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const canNext = step === 1 ? username.trim().length >= 2 && password.length >= 8 : step === 2 ? homeName.trim().length > 0 : locations.some((name) => name.trim());
+  const submit = async () => {
+    if (!canNext) return;
+    if (step < 3) { setStep(step + 1); return; }
+    setBusy(true); setError("");
+    const response = await fetch("/api/v1/setup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password, homeName, locations }) });
+    const data = await response.json(); setBusy(false);
+    if (!response.ok) { setError(data.message ?? "初始化失败，请检查输入"); return; }
+    localStorage.setItem("family-erp-home-id", data.home.id); onComplete(data.home);
+  };
+  return <div className="setup-shell"><div className="setup-card"><div className="setup-brand"><span className="brand-mark" role="img" aria-label="家庭">🏠</span><div><strong>家庭物资</strong><span>首次启动设置</span></div></div><div className="setup-progress"><span className={step >= 1 ? "active" : ""}>1 账号</span><i /><span className={step >= 2 ? "active" : ""}>2 家庭</span><i /><span className={step >= 3 ? "active" : ""}>3 地点</span></div>{step === 1 && <div className="setup-step"><p className="eyebrow">建立本地管理员</p><h1>先创建你的账号</h1><p className="muted">账号只保存在这台家庭 ERP 中，用于管理成员和敏感操作。</p><label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="例如：主人" autoFocus /></label><label>密码<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="至少 8 位" /></label></div>}{step === 2 && <div className="setup-step"><p className="eyebrow">建立你的 Home</p><h1>这个家庭怎么称呼？</h1><p className="muted">Home 是物资、成员、地点和预算的共同边界。</p><label>家庭名称<input value={homeName} onChange={(event) => setHomeName(event.target.value)} placeholder="例如：我们家" autoFocus /></label><label>默认货币<select defaultValue="CNY"><option value="CNY">人民币（CNY）</option><option value="USD">美元（USD）</option></select></label></div>}{step === 3 && <div className="setup-step"><p className="eyebrow">整理空间</p><h1>先添加几个存放地点</h1><p className="muted">之后可以继续增加。地点帮助你知道物资放在哪里。</p><div className="location-inputs">{locations.map((name, index) => <div className="location-input" key={index}><input value={name} onChange={(event) => setLocations(locations.map((value, i) => i === index ? event.target.value : value))} placeholder="例如：储物间" /><button type="button" onClick={() => setLocations(locations.filter((_, i) => i !== index))} aria-label="删除地点">×</button></div>)}</div><button className="add-location" type="button" onClick={() => setLocations([...locations, ""])}>＋ 添加另一个地点</button></div>}{error && <div className="setup-error">{error}</div>}<div className="setup-footer">{step > 1 ? <button className="secondary" onClick={() => setStep(step - 1)}>上一步</button> : <span /> }<button className="primary" disabled={!canNext || busy} onClick={submit}>{busy ? "创建中…" : step === 3 ? "完成设置，进入 Dashboard" : "继续"}</button></div></div></div>;
+}
+
 export function App() {
+  const [setup, setSetup] = useState<{ complete: boolean; home?: { id: string; name: string } } | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [stock, setStock] = useState<Stock[]>([]);
   const [query, setQuery] = useState("");
@@ -35,17 +58,19 @@ export function App() {
   const [busy, setBusy] = useState(false);
 
   const load = () => Promise.all([getItems(), getStock()]).then(([nextItems, nextStock]) => { setItems(nextItems); setStock(nextStock); }).catch((error) => setNotice(error.message));
-  useEffect(() => { load(); }, []);
-
+  useEffect(() => { fetch("/api/v1/setup/status").then((response) => response.json()).then((data) => { setSetup(data); if (data.home?.id) localStorage.setItem("family-erp-home-id", data.home.id); }).catch(() => setSetup({ complete: false })); }, []);
+  useEffect(() => { if (setup?.complete) load(); }, [setup?.complete]);
   const filtered = useMemo(() => items.filter((item) => `${item.name} ${item.sku}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
   const balanceFor = (itemId: string) => stock.filter((row) => row.itemId === itemId).reduce((total, row) => total + row.quantity, 0);
   const lowStock = items.filter((item) => item.reorderPoint > 0 && balanceFor(item.id) <= item.reorderPoint).length;
+  if (!setup) return <div className="loading-screen">正在检查家庭设置…</div>;
+  if (!setup.complete) return <Setup onComplete={(home) => setSetup({ complete: true, home })} />;
 
   async function addItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     const data = new FormData(event.currentTarget);
-    const response = await fetch(`/api/v1/homes/${homeId}/items`, {
+    const response = await fetch(`/api/v1/homes/${getHomeId()}/items`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -64,7 +89,7 @@ export function App() {
   async function recordStock(type: "receipt" | "issue", item: Item) {
     const quantity = Number(window.prompt(`${type === "receipt" ? "入库" : "领用"}数量`, "1"));
     if (!quantity || quantity <= 0) return;
-    const response = await fetch(`/api/v1/homes/${homeId}/stock/${type}`, {
+    const response = await fetch(`/api/v1/homes/${getHomeId()}/stock/${type}`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ itemId: item.id, locationId, quantity, idempotencyKey: crypto.randomUUID(), reason: "Dashboard 操作" })
     });
@@ -73,7 +98,7 @@ export function App() {
 
   return <div className="shell">
     <header className="topbar">
-      <div className="brand"><span className="brand-mark">家</span><div><strong>家庭物资</strong><span>Home inventory</span></div></div>
+      <div className="brand"><span className="brand-mark" role="img" aria-label="家庭">🏠</span><div><strong>家庭物资</strong><span>Home inventory</span></div></div>
       <div className="home-switch"><span className="status-dot" />我的家庭 <span className="chevron">⌄</span></div>
       <div className="top-actions"><button className="icon-button" title="通知" aria-label="通知">◌</button><span className="avatar">我</span></div>
     </header>

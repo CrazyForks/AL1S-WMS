@@ -37,6 +37,24 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
       occurred_at TEXT NOT NULL,
       UNIQUE(home_id, idempotency_key)
     );
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'admin',
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS locations (
+      id TEXT PRIMARY KEY,
+      home_id TEXT NOT NULL REFERENCES homes(id),
+      name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      UNIQUE(home_id, name)
+    );
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
   return db;
 }
