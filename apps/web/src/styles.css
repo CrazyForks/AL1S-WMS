@@ -6,4 +6,5 @@
 .brand .brand-mark,.setup-brand .brand-mark{display:grid;place-items:center;line-height:1;text-align:center;flex:0 0 auto}
 
 .home-switch{line-height:1}.home-switch .status-dot{flex:0 0 auto}.home-switch .chevron{display:inline-flex;align-items:center;line-height:1;transform:translateY(-1px)}
+.side-column{gap:14px}
 .home-switch .chevron{display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;font-size:0;line-height:1;transform:none;position:relative;top:-1px}.home-switch .chevron::before{content:"";width:6px;height:6px;border-right:1px solid #89929e;border-bottom:1px solid #89929e;transform:rotate(45deg) translate(-1px,-1px)}
