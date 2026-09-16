@@ -8,6 +8,8 @@ import { handleMcpRequest } from "./mcp.js";
 
 const app = Fastify({ logger: true });
 const db = openDatabase();
+const defaultCategories = ["食品", "饮品", "日用品", "药品与健康", "衣物", "工具", "电器", "文具", "宠物用品", "其他"];
+for (const home of db.prepare("SELECT id FROM homes").all() as { id: string }[]) for (const name of defaultCategories) db.prepare("INSERT OR IGNORE INTO item_categories (id, home_id, name, is_system) VALUES (?, ?, ?, 1)").run(randomUUID(), home.id, name);
 
 function setSession(reply: any, userId: string) {
   const id = randomUUID();
@@ -69,6 +71,7 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
   try {
     insert.run(userId, username, passwordHash, new Date().toISOString());
     home.run(homeId, homeName, homeIcon, timezone, currency);
+    for (const name of defaultCategories) db.prepare("INSERT INTO item_categories (id, home_id, name, is_system) VALUES (?, ?, ?, 1)").run(randomUUID(), homeId, name);
     for (const name of [...new Set(locationNames)]) location.run(randomUUID(), homeId, name);
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('setup_complete', 'true')").run();
     db.exec("COMMIT");
@@ -119,6 +122,18 @@ app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/stock", async (re
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/locations", async (request) => {
   return db.prepare("SELECT id, home_id AS homeId, name, active FROM locations WHERE home_id = ? AND active = 1 ORDER BY name").all(request.params.homeId);
+});
+
+app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/categories", async (request) => db.prepare("SELECT id, parent_id AS parentId, name, is_system AS isSystem, active FROM item_categories WHERE home_id = ? AND active = 1 ORDER BY parent_id, name").all(request.params.homeId));
+app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/categories", async (request, reply) => {
+  const body = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const parentId = typeof body.parentId === "string" ? body.parentId : null;
+  if (!name) return reply.code(400).send({ code: "VALIDATION_ERROR", message: "分类名称不能为空" });
+  if (parentId && !db.prepare("SELECT id FROM item_categories WHERE id = ? AND home_id = ? AND active = 1").get(parentId, request.params.homeId)) return reply.code(400).send({ code: "PARENT_CATEGORY_NOT_FOUND" });
+  const id = randomUUID();
+  try { db.prepare("INSERT INTO item_categories (id, home_id, parent_id, name) VALUES (?, ?, ?, ?)").run(id, request.params.homeId, parentId, name); } catch (error) { if (String(error).includes("UNIQUE")) return reply.code(409).send({ code: "CATEGORY_EXISTS" }); throw error; }
+  return reply.code(201).send({ id, parentId, name, isSystem: false, active: true });
 });
 
 app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/locations", async (request, reply) => {

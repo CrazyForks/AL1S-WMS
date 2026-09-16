@@ -18,12 +18,13 @@ type Item = {
 };
 type Stock = { itemId: string; locationId: string; quantity: number };
 type Location = { id: string; homeId: string; name: string; active: boolean };
+type Category = { id: string; parentId: string | null; name: string; isSystem: boolean; active: boolean };
 type Transaction = { id: string; itemName: string; locationName: string; type: "receipt" | "issue"; quantity: number; reason?: string | null; occurredAt: string };
 
 const fallbackHomeId = "11111111-1111-4111-8111-111111111111";
 const locationId = "22222222-2222-4222-8222-222222222222";
 const getHomeId = () => localStorage.getItem("family-erp-home-id") ?? fallbackHomeId;
-const itemCategories = ["食品", "饮料", "清洁用品", "日用品", "药品", "工具", "电器", "衣物", "文具", "其他"];
+const itemCategories = ["食品", "饮品", "日用品", "药品与健康", "衣物", "工具", "电器", "文具", "宠物用品", "其他"];
 const newIdempotencyKey = () => globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 function addShelfLife(date: string, amountText: string, unit: string) {
   if (!date || !amountText || !unit) return undefined;
@@ -55,6 +56,11 @@ async function getTransactions() {
   const response = await fetch(`/api/v1/homes/${getHomeId()}/transactions`);
   if (!response.ok) throw new Error("无法加载变动记录");
   return response.json() as Promise<Transaction[]>;
+}
+async function getCategories() {
+  const response = await fetch(`/api/v1/homes/${getHomeId()}/categories`);
+  if (!response.ok) throw new Error("无法加载物资类型");
+  return response.json() as Promise<Category[]>;
 }
 
 function Setup({ onComplete }: { onComplete: (home: { id: string; name: string; icon: string }) => void }) {
@@ -108,9 +114,11 @@ export function App() {
   const [countView, setCountView] = useState(false);
   const [expandedLocations, setExpandedLocations] = useState<Record<string, boolean>>({});
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const itemCategories = categories.length ? categories.map((category) => category.name) : ["食品", "饮品", "日用品", "药品与健康", "衣物", "工具", "电器", "文具", "宠物用品", "其他"];
   const [logView, setLogView] = useState(false);
 
-  const load = () => Promise.all([getItems(), getStock(), getLocations(), getTransactions()]).then(([nextItems, nextStock, nextLocations, nextTransactions]) => { setItems(nextItems); setStock(nextStock); setLocations(nextLocations); setTransactions(nextTransactions); }).catch((error) => setNotice(error.message));
+  const load = () => Promise.all([getItems(), getStock(), getLocations(), getTransactions(), getCategories()]).then(([nextItems, nextStock, nextLocations, nextTransactions, nextCategories]) => { setItems(nextItems); setStock(nextStock); setLocations(nextLocations); setTransactions(nextTransactions); setCategories(nextCategories); }).catch((error) => setNotice(error.message));
   useEffect(() => { fetch("/api/v1/setup/status").then((response) => response.json()).then((data) => { setSetup(data); if (data.home?.id) localStorage.setItem("family-erp-home-id", data.home.id); if (data.complete) fetch("/api/v1/auth/me").then((response) => setAuthenticated(response.ok)); }).catch(() => setSetup({ complete: false })); }, []);
   useEffect(() => { if (setup?.complete) load(); }, [setup?.complete]);
   const balanceFor = (itemId: string) => stock.filter((row) => row.itemId === itemId).reduce((total, row) => total + row.quantity, 0);

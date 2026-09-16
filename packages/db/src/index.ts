@@ -30,6 +30,15 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
       active INTEGER NOT NULL DEFAULT 1,
       UNIQUE(home_id, sku)
     );
+    CREATE TABLE IF NOT EXISTS item_categories (
+      id TEXT PRIMARY KEY,
+      home_id TEXT NOT NULL REFERENCES homes(id),
+      parent_id TEXT REFERENCES item_categories(id),
+      name TEXT NOT NULL,
+      is_system INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      UNIQUE(home_id, parent_id, name)
+    );
     CREATE TABLE IF NOT EXISTS stock_transactions (
       id TEXT PRIMARY KEY,
       home_id TEXT NOT NULL REFERENCES homes(id),
