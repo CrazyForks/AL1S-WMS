@@ -106,7 +106,6 @@ export function App() {
     if (!response.ok) { const result = await response.json().catch(() => ({})); setNotice(result.message || "保存失败，请检查填写内容"); return; }
     form.reset();
     setShowForm(false);
-    setNotice("物资已添加");
     load();
   }
 
@@ -117,7 +116,7 @@ export function App() {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ itemId: stockAction.item.id, locationId: selectedLocation, quantity, idempotencyKey: newIdempotencyKey(), reason: data.get("reason") || "Dashboard 操作" })
     });
-    setNotice(response.ok ? `${stockAction.item.name} 已${stockAction.type === "receipt" ? "入库" : "领用"}` : "操作失败，可能是库存不足"); if (response.ok) { setStockAction(null); load(); }
+    if (response.ok) { setStockAction(null); load(); } else setNotice("操作失败，可能是库存不足");
   }
 
   const replenishmentFor = (item: Item) => Math.max(item.reorderPoint - balanceFor(item.id), 0);
