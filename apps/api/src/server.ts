@@ -96,8 +96,20 @@ app.patch<{ Params: { homeId: string; itemId: string }; Body: unknown }>("/api/v
   if (!parsed.success) return reply.code(400).send({ code: "VALIDATION_ERROR", details: parsed.error.flatten() });
   if (!db.prepare("SELECT id FROM items WHERE id = ? AND home_id = ? AND active = 1").get(request.params.itemId, request.params.homeId)) return reply.code(404).send({ code: "ITEM_NOT_FOUND" });
   if (parsed.data.locationId && !db.prepare("SELECT id FROM locations WHERE id = ? AND home_id = ? AND active = 1").get(parsed.data.locationId, request.params.homeId)) return reply.code(400).send({ code: "LOCATION_NOT_FOUND" });
+  const current = db.prepare("SELECT default_location_id AS locationId FROM items WHERE id = ? AND home_id = ?").get(request.params.itemId, request.params.homeId) as { locationId: string | null };
   const fields = Object.keys(parsed.data).map((key) => ({ name: key === "baseUnit" ? "base_unit" : key === "reorderPoint" ? "reorder_point" : key === "locationId" ? "default_location_id" : key === "manufacturedDate" ? "manufactured_date" : key === "expiryDate" ? "expiry_date" : key, value: ((parsed.data as Record<string, unknown>)[key] ?? null) as string | number | null }));
-  db.prepare(`UPDATE items SET ${fields.map((field) => `${field.name} = ?`).join(", ")} WHERE id = ? AND home_id = ?`).run(...fields.map((field) => field.value), request.params.itemId, request.params.homeId);
+  db.exec("BEGIN");
+  try {
+    db.prepare(`UPDATE items SET ${fields.map((field) => `${field.name} = ?`).join(", ")} WHERE id = ? AND home_id = ?`).run(...fields.map((field) => field.value), request.params.itemId, request.params.homeId);
+    const nextLocation = parsed.data.locationId === undefined ? current.locationId : parsed.data.locationId;
+    if (parsed.data.locationId !== undefined && nextLocation && nextLocation !== current.locationId) {
+      const balances = db.prepare("SELECT location_id AS locationId, COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) AS quantity FROM stock_transactions WHERE home_id = ? AND item_id = ? GROUP BY location_id HAVING quantity > 0").all(request.params.homeId, request.params.itemId) as { locationId: string; quantity: number }[];
+      const insert = db.prepare("INSERT INTO stock_transactions (id, home_id, item_id, location_id, type, quantity, reason, idempotency_key, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      const now = new Date().toISOString();
+      for (const balance of balances) if (balance.locationId !== nextLocation) { const key = `relocate:${request.params.itemId}:${randomUUID()}`; insert.run(randomUUID(), request.params.homeId, request.params.itemId, balance.locationId, "issue", balance.quantity, "更改存放地点", `${key}:out`, now); insert.run(randomUUID(), request.params.homeId, request.params.itemId, nextLocation, "receipt", balance.quantity, "更改存放地点", `${key}:in`, now); }
+    }
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
   return db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.id = ? AND items.home_id = ?").get(request.params.itemId, request.params.homeId);
 });
 

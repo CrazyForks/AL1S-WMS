@@ -58,7 +58,20 @@ export function createMcpServer(db: DatabaseSync) {
     const fields = Object.entries(changes).filter(([, value]) => value !== undefined).map(([key, value]) => ({ name: key === "baseUnit" ? "base_unit" : key === "reorderPoint" ? "reorder_point" : key === "locationId" ? "default_location_id" : key === "manufacturedDate" ? "manufactured_date" : key === "expiryDate" ? "expiry_date" : key, value: value ?? null }));
     if (!fields.length) return { isError: true, content: [{ type: "text", text: JSON.stringify({ code: "NO_CHANGES" }) }] };
     if (!db.prepare("SELECT id FROM items WHERE home_id = ? AND id = ? AND active = 1").get(homeId, itemId)) return { isError: true, content: [{ type: "text", text: JSON.stringify({ code: "ITEM_NOT_FOUND" }) }] };
-    db.prepare(`UPDATE items SET ${fields.map((field) => `${field.name} = ?`).join(", ")} WHERE home_id = ? AND id = ?`).run(...fields.map((field) => field.value), homeId, itemId);
+    const current = db.prepare("SELECT default_location_id AS locationId FROM items WHERE home_id = ? AND id = ?").get(homeId, itemId) as { locationId: string | null };
+    db.exec("BEGIN");
+    try {
+      db.prepare(`UPDATE items SET ${fields.map((field) => `${field.name} = ?`).join(", ")} WHERE home_id = ? AND id = ?`).run(...fields.map((field) => field.value), homeId, itemId);
+      const changedLocation = Object.prototype.hasOwnProperty.call(changes, "locationId") && changes.locationId && changes.locationId !== current.locationId;
+      if (changedLocation) {
+        const destination = changes.locationId as string;
+        const balances = db.prepare("SELECT location_id AS locationId, COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) AS quantity FROM stock_transactions WHERE home_id = ? AND item_id = ? GROUP BY location_id HAVING quantity > 0").all(homeId, itemId) as { locationId: string; quantity: number }[];
+        const insert = db.prepare("INSERT INTO stock_transactions (id, home_id, item_id, location_id, type, quantity, reason, idempotency_key, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        const now = new Date().toISOString();
+        for (const balance of balances) if (balance.locationId !== destination) { const key = `relocate:${itemId}:${randomUUID()}`; insert.run(randomUUID(), homeId, itemId, balance.locationId, "issue", balance.quantity, "更改存放地点", `${key}:out`, now); insert.run(randomUUID(), homeId, itemId, destination, "receipt", balance.quantity, "更改存放地点", `${key}:in`, now); }
+      }
+      db.exec("COMMIT");
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
     return { content: [{ type: "text", text: JSON.stringify({ id: itemId, updated: fields.map((field) => field.name) }) }] };
   });
 
