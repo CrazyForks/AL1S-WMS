@@ -10,6 +10,7 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
     CREATE TABLE IF NOT EXISTS homes (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      icon TEXT NOT NULL DEFAULT '🏠',
       timezone TEXT NOT NULL DEFAULT 'UTC',
       default_currency TEXT NOT NULL DEFAULT 'CNY',
       active INTEGER NOT NULL DEFAULT 1
@@ -58,5 +59,6 @@ export function openDatabase(filename = process.env.DATABASE_URL ?? "./data/fami
     );
   `);
   try { db.exec("ALTER TABLE items ADD COLUMN default_location_id TEXT"); } catch { /* existing column */ }
+  try { db.exec("ALTER TABLE homes ADD COLUMN icon TEXT NOT NULL DEFAULT '🏠'"); } catch { /* existing column */ }
   return db;
 }

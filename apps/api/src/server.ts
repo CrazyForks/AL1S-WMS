@@ -11,7 +11,7 @@ const db = openDatabase();
 
 app.get("/api/v1/setup/status", async () => {
   const setting = db.prepare("SELECT value FROM app_settings WHERE key = 'setup_complete'").get() as { value: string } | undefined;
-  const home = db.prepare("SELECT id, name FROM homes ORDER BY rowid LIMIT 1").get() as { id: string; name: string } | undefined;
+  const home = db.prepare("SELECT id, name, icon FROM homes ORDER BY rowid LIMIT 1").get() as { id: string; name: string; icon: string } | undefined;
   return { complete: setting?.value === "true", home };
 });
 
@@ -20,6 +20,7 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
   const username = typeof body.username === "string" ? body.username.trim() : "";
   const password = typeof body.password === "string" ? body.password : "";
   const homeName = typeof body.homeName === "string" ? body.homeName.trim() : "";
+  const homeIcon = typeof body.homeIcon === "string" && body.homeIcon ? body.homeIcon : "🏠";
   const timezone = typeof body.timezone === "string" && body.timezone ? body.timezone : "Asia/Shanghai";
   const currency = typeof body.currency === "string" && body.currency ? body.currency : "CNY";
   const locationNames = Array.isArray(body.locations) ? body.locations.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean) : [];
@@ -31,12 +32,12 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
   const salt = randomBytes(16).toString("hex");
   const passwordHash = `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
   const insert = db.prepare("INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)");
-  const home = db.prepare("INSERT INTO homes (id, name, timezone, default_currency) VALUES (?, ?, ?, ?)");
+  const home = db.prepare("INSERT INTO homes (id, name, icon, timezone, default_currency) VALUES (?, ?, ?, ?, ?)");
   const location = db.prepare("INSERT INTO locations (id, home_id, name) VALUES (?, ?, ?)");
   db.exec("BEGIN");
   try {
     insert.run(userId, username, passwordHash, new Date().toISOString());
-    home.run(homeId, homeName, timezone, currency);
+    home.run(homeId, homeName, homeIcon, timezone, currency);
     for (const name of [...new Set(locationNames)]) location.run(randomUUID(), homeId, name);
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('setup_complete', 'true')").run();
     db.exec("COMMIT");
@@ -44,13 +45,13 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
     db.exec("ROLLBACK");
     throw error;
   }
-  return reply.code(201).send({ home: { id: homeId, name: homeName }, username });
+  return reply.code(201).send({ home: { id: homeId, name: homeName, icon: homeIcon }, username });
 });
 
 app.get("/healthz", async () => ({ status: "ok" }));
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async (request) => {
-  return db.prepare("SELECT id, home_id AS homeId, sku, name, base_unit AS baseUnit, reorder_point AS reorderPoint, reorder_quantity AS reorderQuantity, default_location_id AS locationId, active FROM items WHERE home_id = ? AND active = 1 ORDER BY name").all(request.params.homeId);
+  return db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.active = 1 ORDER BY items.name").all(request.params.homeId);
 });
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/stock", async (request) => {
