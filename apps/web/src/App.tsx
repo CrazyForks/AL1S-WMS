@@ -194,7 +194,7 @@ export function App() {
     setCategoryName(""); setCategoryParent(""); setCategoryManager(false); load();
   }
   function navigate(page: "home" | "count" | "locations" | "categories") {
-    setActivePage(page); setLogView(false); setCountView(page !== "home");
+    setActivePage(page); setLogView(false); setCountView(page === "locations" || page === "categories");
     if (page === "locations") setTreeMode("location");
     if (page === "categories") { setTreeMode("category"); setCategoryManager(true); }
   }
