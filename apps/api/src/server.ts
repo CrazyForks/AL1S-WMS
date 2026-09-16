@@ -52,7 +52,7 @@ app.post<{ Params: { homeId: string; type: "receipt" | "issue" }; Body: unknown 
 app.all("/mcp", async (request, reply) => handleMcpRequest(request, reply, db));
 
 const port = Number(process.env.PORT ?? 8080);
-app.listen({ host: process.env.BIND_ADDRESS ?? "127.0.0.1", port }).catch((error) => {
+app.listen({ host: process.env.BIND_ADDRESS ?? "0.0.0.0", port }).catch((error) => {
   app.log.error(error);
   process.exit(1);
 });
