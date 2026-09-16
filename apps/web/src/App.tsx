@@ -22,6 +22,16 @@ const fallbackHomeId = "11111111-1111-4111-8111-111111111111";
 const locationId = "22222222-2222-4222-8222-222222222222";
 const getHomeId = () => localStorage.getItem("family-erp-home-id") ?? fallbackHomeId;
 const newIdempotencyKey = () => globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function addShelfLife(date: string, value: string) {
+  if (!date || !value) return undefined;
+  const result = new Date(`${date}T00:00:00`);
+  const amount = Number(value.slice(0, -1));
+  const unit = value.slice(-1);
+  if (unit === "d") result.setDate(result.getDate() + amount);
+  if (unit === "m") result.setMonth(result.getMonth() + amount);
+  if (unit === "y") result.setFullYear(result.getFullYear() + amount);
+  return `${result.getFullYear()}-${String(result.getMonth() + 1).padStart(2, "0")}-${String(result.getDate()).padStart(2, "0")}`;
+}
 
 async function getItems() {
   const response = await fetch(`/api/v1/homes/${getHomeId()}/items`);
@@ -118,7 +128,7 @@ export function App() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: data.get("name"), baseUnit: data.get("baseUnit"), locationId: data.get("locationId") || undefined,
-        reorderPoint: Number(data.get("reorderPoint") || 0), reorderQuantity: 0, initialStock: Number(data.get("initialStock") || 0), manufacturedDate: data.get("manufacturedDate") || undefined, expiryDate: data.get("expiryDate") || undefined
+        reorderPoint: Number(data.get("reorderPoint") || 0), reorderQuantity: 0, initialStock: Number(data.get("initialStock") || 0), manufacturedDate: data.get("manufacturedDate") || undefined, expiryDate: addShelfLife(String(data.get("manufacturedDate") || ""), String(data.get("shelfLife") || ""))
       })
     });
     setBusy(false);
@@ -164,6 +174,6 @@ export function App() {
       </section>
     </main>
     {stockAction && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setStockAction(null)}><form className="modal" onSubmit={recordStock}><div className="modal-head"><div><h2>{stockAction.type === "receipt" ? "入库物资" : "领用物资"}</h2><p className="muted">{stockAction.item.name}</p></div><button type="button" className="close" onClick={() => setStockAction(null)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>存放地点<select name="locationId" defaultValue={stockAction.item.locationId || locations[0]?.id || ""}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>数量<input name="quantity" type="number" min="0.1" step="0.1" defaultValue="1" autoFocus required /></label><label>备注（可选）<input name="reason" placeholder="例如：本周采购" /></label><button className="primary full">确认{stockAction.type === "receipt" ? "入库" : "领用"}</button></form></div>}
-    {showForm && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowForm(false)}><form className="modal" onSubmit={addItem}><div className="modal-head"><div><h2>添加物资</h2><p className="muted">登记名称、当前库存和补充规则</p></div><button type="button" className="close" onClick={() => setShowForm(false)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>物资名称<input name="name" required placeholder="例如：洗衣液" /></label><div className="form-row"><label>单位<select name="baseUnit" defaultValue="个"><option>个</option><option>瓶</option><option>盒</option><option>包</option><option>箱</option><option>袋</option><option>千克</option><option>升</option><option>米</option><option>其他</option></select></label><label>库存<input name="initialStock" type="number" min="0" step="0.1" defaultValue="0" /></label></div><label>最低库存<input name="reorderPoint" type="number" min="0" step="0.1" defaultValue="0" /></label><label>生产日期<input name="manufacturedDate" type="date" /></label><label>保质期至<input name="expiryDate" type="date" /></label><label>存放地点<select name="locationId" defaultValue={locations[0]?.id || ""}><option value="">暂不指定</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><button className="primary full" disabled={busy}>{busy ? "保存中…" : "保存物资"}</button></form></div>}
+    {showForm && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowForm(false)}><form className="modal" onSubmit={addItem}><div className="modal-head"><div><h2>添加物资</h2><p className="muted">登记名称、当前库存和补充规则</p></div><button type="button" className="close" onClick={() => setShowForm(false)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>物资名称<input name="name" required placeholder="例如：洗衣液" /></label><div className="form-row"><label>单位<select name="baseUnit" defaultValue="个"><option>个</option><option>瓶</option><option>盒</option><option>包</option><option>箱</option><option>袋</option><option>千克</option><option>升</option><option>米</option><option>其他</option></select></label><label>库存<input name="initialStock" type="number" min="0" step="0.1" defaultValue="0" /></label></div><label>最低库存<input name="reorderPoint" type="number" min="0" step="0.1" defaultValue="0" /></label><div className="form-row"><label>生产日期（可选）<input name="manufacturedDate" type="date" /></label><label>保质期（可选）<select name="shelfLife" defaultValue=""><option value="">不设置</option><option value="1d">1 天</option><option value="30d">30 天</option><option value="6m">6 个月</option><option value="12m">12 个月</option><option value="2y">2 年</option></select></label></div><label>存放地点<select name="locationId" defaultValue={locations[0]?.id || ""}><option value="">暂不指定</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><button className="primary full" disabled={busy}>{busy ? "保存中…" : "保存物资"}</button></form></div>}
   </div>;
 }
