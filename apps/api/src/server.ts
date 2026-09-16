@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createItemSchema, type Item } from "@family-erp/contracts";
 import { stockCommandSchema } from "@family-erp/contracts";
 import { openDatabase } from "@family-erp/db";
+import { handleMcpRequest } from "./mcp.js";
 
 const app = Fastify({ logger: true });
 const db = openDatabase();
@@ -44,13 +45,7 @@ app.post<{ Params: { homeId: string; type: "receipt" | "issue" }; Body: unknown 
   return reply.code(201).send({ id, ...parsed.data, homeId: request.params.homeId, type: request.params.type });
 });
 
-app.register(async (mcp) => {
-  mcp.post("/mcp", async () => ({
-    jsonrpc: "2.0",
-    error: { code: -32601, message: "MCP transport is reserved for the Streamable HTTP adapter" },
-    id: null
-  }));
-});
+app.all("/mcp", async (request, reply) => handleMcpRequest(request, reply, db));
 
 const port = Number(process.env.PORT ?? 8080);
 app.listen({ host: process.env.BIND_ADDRESS ?? "127.0.0.1", port }).catch((error) => {
