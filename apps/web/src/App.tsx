@@ -92,6 +92,7 @@ export function App() {
   useEffect(() => { setPage(1); }, [query]);
   useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
   const balanceFor = (itemId: string) => stock.filter((row) => row.itemId === itemId).reduce((total, row) => total + row.quantity, 0);
+  const replenishmentFor = (item: Item) => Math.max(item.reorderPoint - balanceFor(item.id), 0);
   const lowStock = items.filter((item) => replenishmentFor(item) > 0).length;
   if (!setup) return <div className="loading-screen">正在检查家庭设置…</div>;
   if (!setup.complete) return <Setup onComplete={(home) => { setAuthenticated(true); setSetup({ complete: true, home }); }} />;
@@ -127,7 +128,6 @@ export function App() {
     if (response.ok) { setStockAction(null); load(); } else setNotice("操作失败，可能是库存不足");
   }
 
-  const replenishmentFor = (item: Item) => Math.max(item.reorderPoint - balanceFor(item.id), 0);
   return <div className="shell">
     <header className="topbar">
       <div className="brand"><span className="brand-mark" role="img" aria-label="家庭">{setup.home?.icon || localStorage.getItem("family-erp-home-emoji") || "🏠"}</span><div><strong>{setup.home?.name || "家庭"}</strong><span>Home inventory</span></div></div>
