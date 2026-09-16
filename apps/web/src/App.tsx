@@ -19,6 +19,7 @@ type Location = { id: string; homeId: string; name: string; active: boolean };
 const fallbackHomeId = "11111111-1111-4111-8111-111111111111";
 const locationId = "22222222-2222-4222-8222-222222222222";
 const getHomeId = () => localStorage.getItem("family-erp-home-id") ?? fallbackHomeId;
+const newIdempotencyKey = () => globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 async function getItems() {
   const response = await fetch(`/api/v1/homes/${getHomeId()}/items`);
@@ -114,7 +115,7 @@ export function App() {
     const data = new FormData(event.currentTarget); const quantity = Number(data.get("quantity")); const selectedLocation = String(data.get("locationId") || locations[0]?.id || locationId); if (!quantity || quantity <= 0) return;
     const response = await fetch(`/api/v1/homes/${getHomeId()}/stock/${stockAction.type}`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ itemId: stockAction.item.id, locationId: selectedLocation, quantity, idempotencyKey: crypto.randomUUID(), reason: data.get("reason") || "Dashboard 操作" })
+      body: JSON.stringify({ itemId: stockAction.item.id, locationId: selectedLocation, quantity, idempotencyKey: newIdempotencyKey(), reason: data.get("reason") || "Dashboard 操作" })
     });
     setNotice(response.ok ? `${stockAction.item.name} 已${stockAction.type === "receipt" ? "入库" : "领用"}` : "操作失败，可能是库存不足"); if (response.ok) { setStockAction(null); load(); }
   }
