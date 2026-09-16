@@ -1,0 +1,15 @@
+{
+  "name": "@family-erp/db",
+  "private": true,
+  "type": "module",
+  "exports": "./src/schema.ts",
+  "scripts": {
+    "typecheck": "tsc -p ../../tsconfig.json"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.5"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.4"
+  }
+}
