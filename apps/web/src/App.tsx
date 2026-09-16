@@ -96,12 +96,12 @@ export function App() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: data.get("name"), baseUnit: data.get("baseUnit"), locationId: data.get("locationId"),
-        reorderPoint: Number(data.get("reorderPoint") || 0), reorderQuantity: 0
+        name: data.get("name"), baseUnit: data.get("baseUnit"), locationId: data.get("locationId") || undefined,
+        reorderPoint: Number(data.get("reorderPoint") || 0), reorderQuantity: 0, initialStock: Number(data.get("initialStock") || 0)
       })
     });
     setBusy(false);
-    if (!response.ok) { setNotice("保存失败，请检查填写内容"); return; }
+    if (!response.ok) { const result = await response.json().catch(() => ({})); setNotice(result.message || "保存失败，请检查填写内容"); return; }
     event.currentTarget.reset();
     setShowForm(false);
     setNotice("物资已添加");
@@ -143,6 +143,6 @@ export function App() {
       </section>
     </main>
     {stockAction && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setStockAction(null)}><form className="modal" onSubmit={recordStock}><div className="modal-head"><div><h2>{stockAction.type === "receipt" ? "入库物资" : "领用物资"}</h2><p className="muted">{stockAction.item.name}</p></div><button type="button" className="close" onClick={() => setStockAction(null)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>存放地点<select name="locationId" defaultValue={stockAction.item.locationId || locations[0]?.id || ""}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label>数量<input name="quantity" type="number" min="0.1" step="0.1" defaultValue="1" autoFocus required /></label><label>备注（可选）<input name="reason" placeholder="例如：本周采购" /></label><button className="primary full">确认{stockAction.type === "receipt" ? "入库" : "领用"}</button></form></div>}
-    {showForm && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowForm(false)}><form className="modal" onSubmit={addItem}><div className="modal-head"><div><h2>添加物资</h2><p className="muted">先登记名称和基本补货规则</p></div><button type="button" className="close" onClick={() => setShowForm(false)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>物资名称<input name="name" required placeholder="例如：洗衣液" /></label><div className="form-row"><label>单位<select name="baseUnit" defaultValue="个"><option>个</option><option>瓶</option><option>盒</option><option>包</option><option>箱</option><option>袋</option><option>千克</option><option>升</option><option>米</option><option>其他</option></select></label><label>最低库存<input name="reorderPoint" type="number" min="0" step="0.1" defaultValue="0" /></label></div><label>存放地点<select name="locationId" defaultValue=""><option value="">暂不指定</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><button className="primary full" disabled={busy}>{busy ? "保存中…" : "保存物资"}</button></form></div>}
+    {showForm && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowForm(false)}><form className="modal" onSubmit={addItem}><div className="modal-head"><div><h2>添加物资</h2><p className="muted">登记名称、当前库存和补充规则</p></div><button type="button" className="close" onClick={() => setShowForm(false)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>物资名称<input name="name" required placeholder="例如：洗衣液" /></label><div className="form-row"><label>单位<select name="baseUnit" defaultValue="个"><option>个</option><option>瓶</option><option>盒</option><option>包</option><option>箱</option><option>袋</option><option>千克</option><option>升</option><option>米</option><option>其他</option></select></label><label>库存<input name="initialStock" type="number" min="0" step="0.1" defaultValue="0" /></label></div><label>最低库存<input name="reorderPoint" type="number" min="0" step="0.1" defaultValue="0" /></label><label>存放地点<select name="locationId" defaultValue={locations[0]?.id || ""}><option value="">暂不指定</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><button className="primary full" disabled={busy}>{busy ? "保存中…" : "保存物资"}</button></form></div>}
   </div>;
 }

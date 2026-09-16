@@ -9,13 +9,14 @@ export const itemSchema = z.object({
   name: z.string().min(1),
   baseUnit: z.string().min(1),
   reorderPoint: z.number().nonnegative(),
-  reorderQuantity: z.number().positive(),
+  reorderQuantity: z.number().nonnegative(),
   active: z.boolean()
 });
 
 export const createItemSchema = itemSchema.omit({ id: true, active: true }).extend({
   sku: z.string().trim().max(80).optional(),
-  locationId: z.string().uuid().optional()
+  locationId: z.string().uuid().optional(),
+  initialStock: z.number().nonnegative().optional().default(0)
 });
 export type Item = z.infer<typeof itemSchema>;
 export type CreateItem = z.infer<typeof createItemSchema>;

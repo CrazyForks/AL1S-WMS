@@ -141,8 +141,14 @@ app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/i
   const sku = parsed.data.sku || `ITEM-${id.slice(0, 8).toUpperCase()}`;
   const item: Item = { ...parsed.data, id, sku, active: true };
   const locationId = parsed.data.locationId ?? null;
+  if (parsed.data.initialStock > 0 && !locationId) return reply.code(400).send({ code: "LOCATION_REQUIRED", message: "有初始库存时必须指定地点" });
   if (locationId && !db.prepare("SELECT id FROM locations WHERE id = ? AND home_id = ? AND active = 1").get(locationId, request.params.homeId)) return reply.code(400).send({ code: "LOCATION_NOT_FOUND" });
-  db.prepare("INSERT INTO items (id, home_id, sku, name, base_unit, reorder_point, reorder_quantity, default_location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(item.id, item.homeId, sku, item.name, item.baseUnit, item.reorderPoint, item.reorderQuantity, locationId);
+  db.exec("BEGIN");
+  try {
+    db.prepare("INSERT INTO items (id, home_id, sku, name, base_unit, reorder_point, reorder_quantity, default_location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(item.id, item.homeId, sku, item.name, item.baseUnit, item.reorderPoint, item.reorderQuantity, locationId);
+    if (parsed.data.initialStock > 0) db.prepare("INSERT INTO stock_transactions (id, home_id, item_id, location_id, type, quantity, reason, idempotency_key, occurred_at) VALUES (?, ?, ?, ?, 'receipt', ?, ?, ?, ?)").run(randomUUID(), item.homeId, item.id, locationId, parsed.data.initialStock, "初始库存", `initial:${item.id}`, new Date().toISOString());
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
   return reply.code(201).send({ ...item, sku, locationId });
 });
 
