@@ -41,6 +41,27 @@ export function createMcpServer(db: DatabaseSync) {
     return { content: [{ type: "text", text: JSON.stringify({ homeId, itemId, locationId, ...row }) }] };
   });
 
+  server.registerTool("get_item", {
+    title: "Get item",
+    description: "Get one item with its replenishment and expiry fields.",
+    inputSchema: { homeId: z.string().uuid(), itemId: z.string().uuid() }
+  }, async ({ homeId, itemId }) => {
+    const row = db.prepare("SELECT id, sku, name, base_unit AS baseUnit, reorder_point AS reorderPoint, manufactured_date AS manufacturedDate, expiry_date AS expiryDate, default_location_id AS locationId FROM items WHERE home_id = ? AND id = ? AND active = 1").get(homeId, itemId);
+    return { content: [{ type: "text", text: JSON.stringify(row ?? { code: "ITEM_NOT_FOUND" }) }] };
+  });
+
+  server.registerTool("update_item", {
+    title: "Update item",
+    description: "Update editable item fields. System SKU cannot be changed.",
+    inputSchema: { homeId: z.string().uuid(), itemId: z.string().uuid(), name: z.string().min(1).optional(), baseUnit: z.string().min(1).optional(), reorderPoint: z.number().nonnegative().optional(), locationId: z.string().uuid().nullable().optional(), manufacturedDate: z.string().date().nullable().optional(), expiryDate: z.string().date().nullable().optional() }
+  }, async ({ homeId, itemId, ...changes }) => {
+    const fields = Object.entries(changes).filter(([, value]) => value !== undefined).map(([key, value]) => ({ name: key === "baseUnit" ? "base_unit" : key === "reorderPoint" ? "reorder_point" : key === "locationId" ? "default_location_id" : key === "manufacturedDate" ? "manufactured_date" : key === "expiryDate" ? "expiry_date" : key, value: value ?? null }));
+    if (!fields.length) return { isError: true, content: [{ type: "text", text: JSON.stringify({ code: "NO_CHANGES" }) }] };
+    if (!db.prepare("SELECT id FROM items WHERE home_id = ? AND id = ? AND active = 1").get(homeId, itemId)) return { isError: true, content: [{ type: "text", text: JSON.stringify({ code: "ITEM_NOT_FOUND" }) }] };
+    db.prepare(`UPDATE items SET ${fields.map((field) => `${field.name} = ?`).join(", ")} WHERE home_id = ? AND id = ?`).run(...fields.map((field) => field.value), homeId, itemId);
+    return { content: [{ type: "text", text: JSON.stringify({ id: itemId, updated: fields.map((field) => field.name) }) }] };
+  });
+
   server.registerTool("list_locations", {
     title: "List locations",
     description: "List active storage locations in a Home.",

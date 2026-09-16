@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import { randomUUID } from "node:crypto";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { createItemSchema, type Item } from "@family-erp/contracts";
+import { createItemSchema, updateItemSchema, type Item } from "@family-erp/contracts";
 import { stockCommandSchema } from "@family-erp/contracts";
 import { openDatabase } from "@family-erp/db";
 import { handleMcpRequest } from "./mcp.js";
@@ -84,6 +84,21 @@ app.get("/healthz", async () => ({ status: "ok" }));
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async (request) => {
   return db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.active = 1 ORDER BY items.name").all(request.params.homeId);
+});
+
+app.get<{ Params: { homeId: string; itemId: string } }>("/api/v1/homes/:homeId/items/:itemId", async (request, reply) => {
+  const item = db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1").get(request.params.homeId, request.params.itemId);
+  return item ?? reply.code(404).send({ code: "ITEM_NOT_FOUND" });
+});
+
+app.patch<{ Params: { homeId: string; itemId: string }; Body: unknown }>("/api/v1/homes/:homeId/items/:itemId", async (request, reply) => {
+  const parsed = updateItemSchema.safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ code: "VALIDATION_ERROR", details: parsed.error.flatten() });
+  if (!db.prepare("SELECT id FROM items WHERE id = ? AND home_id = ? AND active = 1").get(request.params.itemId, request.params.homeId)) return reply.code(404).send({ code: "ITEM_NOT_FOUND" });
+  if (parsed.data.locationId && !db.prepare("SELECT id FROM locations WHERE id = ? AND home_id = ? AND active = 1").get(parsed.data.locationId, request.params.homeId)) return reply.code(400).send({ code: "LOCATION_NOT_FOUND" });
+  const fields = Object.keys(parsed.data).map((key) => ({ name: key === "baseUnit" ? "base_unit" : key === "reorderPoint" ? "reorder_point" : key === "locationId" ? "default_location_id" : key === "manufacturedDate" ? "manufactured_date" : key === "expiryDate" ? "expiry_date" : key, value: ((parsed.data as Record<string, unknown>)[key] ?? null) as string | number | null }));
+  db.prepare(`UPDATE items SET ${fields.map((field) => `${field.name} = ?`).join(", ")} WHERE id = ? AND home_id = ?`).run(...fields.map((field) => field.value), request.params.itemId, request.params.homeId);
+  return db.prepare("SELECT items.id, items.home_id AS homeId, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.id = ? AND items.home_id = ?").get(request.params.itemId, request.params.homeId);
 });
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/stock", async (request) => {

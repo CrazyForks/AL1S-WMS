@@ -22,6 +22,15 @@ export const createItemSchema = itemSchema.omit({ id: true, active: true }).exte
 });
 export type Item = z.infer<typeof itemSchema>;
 export type CreateItem = z.infer<typeof createItemSchema>;
+export const updateItemSchema = z.object({
+  name: z.string().min(1).optional(),
+  baseUnit: z.string().min(1).optional(),
+  reorderPoint: z.number().nonnegative().optional(),
+  locationId: z.string().uuid().nullable().optional(),
+  manufacturedDate: z.string().date().nullable().optional(),
+  expiryDate: z.string().date().nullable().optional()
+}).refine((value) => Object.keys(value).length > 0);
+export type UpdateItem = z.infer<typeof updateItemSchema>;
 
 export const stockCommandSchema = z.object({
   itemId: z.string().uuid(),
