@@ -91,7 +91,8 @@ export function App() {
   async function addItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const response = await fetch(`/api/v1/homes/${getHomeId()}/items`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -102,7 +103,7 @@ export function App() {
     });
     setBusy(false);
     if (!response.ok) { const result = await response.json().catch(() => ({})); setNotice(result.message || "保存失败，请检查填写内容"); return; }
-    event.currentTarget.reset();
+    form.reset();
     setShowForm(false);
     setNotice("物资已添加");
     load();
