@@ -136,12 +136,12 @@ app.post<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId/i
   const parsed = createItemSchema.safeParse({ ...body, homeId: request.params.homeId });
   if (!parsed.success) return reply.code(400).send({ code: "VALIDATION_ERROR", details: parsed.error.flatten() });
 
-  db.prepare("INSERT OR IGNORE INTO homes (id, name) VALUES (?, ?)").run(request.params.homeId, "Home");
+  if (!db.prepare("SELECT id FROM homes WHERE id = ?").get(request.params.homeId)) return reply.code(404).send({ code: "HOME_NOT_FOUND" });
   const id = randomUUID();
   const sku = parsed.data.sku || `ITEM-${id.slice(0, 8).toUpperCase()}`;
   const item: Item = { ...parsed.data, id, sku, active: true };
-  if (item.sku && !db.prepare("SELECT id FROM homes WHERE id = ?").get(item.homeId)) return reply.code(404).send({ code: "HOME_NOT_FOUND" });
   const locationId = parsed.data.locationId ?? null;
+  if (locationId && !db.prepare("SELECT id FROM locations WHERE id = ? AND home_id = ? AND active = 1").get(locationId, request.params.homeId)) return reply.code(400).send({ code: "LOCATION_NOT_FOUND" });
   db.prepare("INSERT INTO items (id, home_id, sku, name, base_unit, reorder_point, reorder_quantity, default_location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(item.id, item.homeId, sku, item.name, item.baseUnit, item.reorderPoint, item.reorderQuantity, locationId);
   return reply.code(201).send({ ...item, sku, locationId });
 });
