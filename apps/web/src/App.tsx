@@ -82,17 +82,27 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [stockAction, setStockAction] = useState<{ type: "receipt" | "issue"; item: Item } | null>(null);
   const [page, setPage] = useState(1);
+  const [showFilters, setShowFilters] = useState(false);
+  const [locationFilter, setLocationFilter] = useState("");
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [expiringOnly, setExpiringOnly] = useState(false);
 
   const load = () => Promise.all([getItems(), getStock(), getLocations()]).then(([nextItems, nextStock, nextLocations]) => { setItems(nextItems); setStock(nextStock); setLocations(nextLocations); }).catch((error) => setNotice(error.message));
   useEffect(() => { fetch("/api/v1/setup/status").then((response) => response.json()).then((data) => { setSetup(data); if (data.home?.id) localStorage.setItem("family-erp-home-id", data.home.id); if (data.complete) fetch("/api/v1/auth/me").then((response) => setAuthenticated(response.ok)); }).catch(() => setSetup({ complete: false })); }, []);
   useEffect(() => { if (setup?.complete) load(); }, [setup?.complete]);
-  const filtered = useMemo(() => items.filter((item) => `${item.name} ${item.sku}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
+  const balanceFor = (itemId: string) => stock.filter((row) => row.itemId === itemId).reduce((total, row) => total + row.quantity, 0);
+  const replenishmentFor = (item: Item) => Math.max(item.reorderPoint - balanceFor(item.id), 0);
+  const filtered = useMemo(() => items.filter((item) => {
+    if (!`${item.name} ${item.sku}`.toLowerCase().includes(query.toLowerCase())) return false;
+    if (locationFilter && item.locationId !== locationFilter) return false;
+    if (lowStockOnly && replenishmentFor(item) <= 0) return false;
+    if (expiringOnly && (!item.expiryDate || item.expiryDate > new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10))) return false;
+    return true;
+  }), [items, query, locationFilter, lowStockOnly, expiringOnly, stock]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / 10));
   const pagedItems = filtered.slice((page - 1) * 10, page * 10);
   useEffect(() => { setPage(1); }, [query]);
   useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
-  const balanceFor = (itemId: string) => stock.filter((row) => row.itemId === itemId).reduce((total, row) => total + row.quantity, 0);
-  const replenishmentFor = (item: Item) => Math.max(item.reorderPoint - balanceFor(item.id), 0);
   const lowStock = items.filter((item) => replenishmentFor(item) > 0).length;
   if (!setup) return <div className="loading-screen">正在检查家庭设置…</div>;
   if (!setup.complete) return <Setup onComplete={(home) => { setAuthenticated(true); setSetup({ complete: true, home }); }} />;
@@ -145,7 +155,8 @@ export function App() {
       </section>
       <section className="content-grid">
         <div className="panel inventory-panel">
-          <div className="panel-head"><div><h2>物资清单</h2><p className="muted">按名称或编码快速查找</p></div><div className="panel-tools"><label className="search"><Search size={16} strokeWidth={1.8} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物资" /></label><button className="filter"><SlidersHorizontal size={15} strokeWidth={1.8} /> 筛选</button></div></div>
+          <div className="panel-head"><div><h2>物资清单</h2><p className="muted">按名称快速查找</p></div><div className="panel-tools"><label className="search"><Search size={16} strokeWidth={1.8} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物资" /></label><button className="filter" onClick={() => setShowFilters(!showFilters)}><SlidersHorizontal size={15} strokeWidth={1.8} /> 筛选</button></div></div>
+          {showFilters && <div className="filter-bar"><label>地点<select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}><option value="">全部地点</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label className="check-filter"><input type="checkbox" checked={lowStockOnly} onChange={(event) => setLowStockOnly(event.target.checked)} /> 仅看需补充</label><label className="check-filter"><input type="checkbox" checked={expiringOnly} onChange={(event) => setExpiringOnly(event.target.checked)} /> 未来 30 天到期</label></div>}
           <div className="table-wrap"><table><thead><tr><th>物资</th><th>库存</th><th>位置</th><th>操作</th></tr></thead><tbody>{filtered.length === 0 ? <tr><td colSpan={4} className="empty">还没有物资，先添加一项常用物品。</td></tr> : pagedItems.map((item) => <tr key={item.id}><td><div className="item-name"><span className="item-icon">{item.name.slice(0, 1)}</span><div><strong>{item.name}</strong><span>{item.baseUnit}</span></div></div></td><td>{balanceFor(item.id)} {item.baseUnit}{replenishmentFor(item) > 0 ? ` · 建议补充 ${replenishmentFor(item)} ${item.baseUnit}` : ""}</td><td>{item.locationName || "未指定"}</td><td><div className="row-actions"><button onClick={() => setStockAction({ type: "receipt", item })}>入库</button><button onClick={() => setStockAction({ type: "issue", item })}>领用</button></div></td></tr>)}</tbody></table></div>
           {filtered.length > 10 && <div className="pagination"><button type="button" aria-label="上一页" title="上一页" disabled={page === 1} onClick={() => setPage(page - 1)}><ArrowLeft size={15} /></button><span>{page} / {pageCount}</span><button type="button" aria-label="下一页" title="下一页" disabled={page === pageCount} onClick={() => setPage(page + 1)}><ArrowRight size={15} /></button></div>}
         </div>

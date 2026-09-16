@@ -9,13 +9,22 @@ export function createMcpServer(db: DatabaseSync) {
 
   server.registerTool("search_items", {
     title: "Search items",
-    description: "Search active items in a Home by name or SKU.",
+    description: "Search active items in a Home with optional location, low-stock, and expiry filters.",
     inputSchema: {
       homeId: z.string().uuid(),
-      query: z.string().min(1).max(100)
+      query: z.string().min(1).max(100).optional(),
+      locationId: z.string().uuid().optional(),
+      lowStockOnly: z.boolean().optional(),
+      expiryBefore: z.string().date().optional()
     }
-  }, async ({ homeId, query }) => {
-    const rows = db.prepare("SELECT id, sku, name, base_unit AS baseUnit, reorder_point AS reorderPoint, reorder_quantity AS reorderQuantity FROM items WHERE home_id = ? AND active = 1 AND (name LIKE ? OR sku LIKE ?) ORDER BY name LIMIT 50").all(homeId, `%${query}%`, `%${query}%`);
+  }, async ({ homeId, query, locationId, lowStockOnly, expiryBefore }) => {
+    const conditions = ["items.home_id = ?", "items.active = 1"];
+    const params: (string | number)[] = [homeId];
+    if (query) { conditions.push("(items.name LIKE ? OR items.sku LIKE ?)"); params.push(`%${query}%`, `%${query}%`); }
+    if (locationId) { conditions.push("items.default_location_id = ?"); params.push(locationId); }
+    if (lowStockOnly) conditions.push("(SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id) < items.reorder_point");
+    if (expiryBefore) { conditions.push("items.expiry_date IS NOT NULL AND items.expiry_date <= ?"); params.push(expiryBefore); }
+    const rows = db.prepare(`SELECT items.id, items.sku, items.name, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, (SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id) AS quantity FROM items WHERE ${conditions.join(" AND ")} ORDER BY items.name LIMIT 50`).all(...params);
     return { content: [{ type: "text", text: JSON.stringify(rows) }] };
   });
 
