@@ -12,6 +12,7 @@ type Item = {
   active: boolean;
 };
 type Stock = { itemId: string; locationId: string; quantity: number };
+type Location = { id: string; homeId: string; name: string; active: boolean };
 
 const fallbackHomeId = "11111111-1111-4111-8111-111111111111";
 const locationId = "22222222-2222-4222-8222-222222222222";
@@ -26,6 +27,11 @@ async function getStock() {
   const response = await fetch(`/api/v1/homes/${getHomeId()}/stock`);
   if (!response.ok) throw new Error("无法加载库存");
   return response.json() as Promise<Stock[]>;
+}
+async function getLocations() {
+  const response = await fetch(`/api/v1/homes/${getHomeId()}/locations`);
+  if (!response.ok) throw new Error("无法加载地点");
+  return response.json() as Promise<Location[]>;
 }
 
 function Setup({ onComplete }: { onComplete: (home: { id: string; name: string }) => void }) {
@@ -54,12 +60,13 @@ export function App() {
   const [setup, setSetup] = useState<{ complete: boolean; home?: { id: string; name: string } } | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [stock, setStock] = useState<Stock[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const load = () => Promise.all([getItems(), getStock()]).then(([nextItems, nextStock]) => { setItems(nextItems); setStock(nextStock); }).catch((error) => setNotice(error.message));
+  const load = () => Promise.all([getItems(), getStock(), getLocations()]).then(([nextItems, nextStock, nextLocations]) => { setItems(nextItems); setStock(nextStock); setLocations(nextLocations); }).catch((error) => setNotice(error.message));
   useEffect(() => { fetch("/api/v1/setup/status").then((response) => response.json()).then((data) => { setSetup(data); if (data.home?.id) localStorage.setItem("family-erp-home-id", data.home.id); }).catch(() => setSetup({ complete: false })); }, []);
   useEffect(() => { if (setup?.complete) load(); }, [setup?.complete]);
   const filtered = useMemo(() => items.filter((item) => `${item.name} ${item.sku}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
@@ -93,7 +100,7 @@ export function App() {
     if (!quantity || quantity <= 0) return;
     const response = await fetch(`/api/v1/homes/${getHomeId()}/stock/${type}`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ itemId: item.id, locationId, quantity, idempotencyKey: crypto.randomUUID(), reason: "Dashboard 操作" })
+      body: JSON.stringify({ itemId: item.id, locationId: locations[0]?.id ?? locationId, quantity, idempotencyKey: crypto.randomUUID(), reason: "Dashboard 操作" })
     });
     setNotice(response.ok ? `${item.name} 已${type === "receipt" ? "入库" : "领用"}` : "操作失败，可能是库存不足");
   }
@@ -118,7 +125,7 @@ export function App() {
           <div className="panel-head"><div><h2>物资清单</h2><p className="muted">按名称或编码快速查找</p></div><div className="panel-tools"><label className="search"><Search size={16} strokeWidth={1.8} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物资" /></label><button className="filter"><SlidersHorizontal size={15} strokeWidth={1.8} /> 筛选</button></div></div>
           <div className="table-wrap"><table><thead><tr><th>物资</th><th>分类编码</th><th>当前库存</th><th>操作</th></tr></thead><tbody>{filtered.length === 0 ? <tr><td colSpan={4} className="empty">还没有物资，先添加一项常用物品。</td></tr> : filtered.map((item) => <tr key={item.id}><td><div className="item-name"><span className="item-icon">{item.name.slice(0, 1)}</span><div><strong>{item.name}</strong><span>{item.baseUnit}</span></div></div></td><td><code>{item.sku}</code></td><td>{balanceFor(item.id)} {item.baseUnit}{item.reorderPoint > 0 && balanceFor(item.id) <= item.reorderPoint ? " · 需补充" : ""}</td><td><div className="row-actions"><button onClick={() => recordStock("receipt", item)}>入库</button><button onClick={() => recordStock("issue", item)}>领用</button></div></td></tr>)}</tbody></table></div>
         </div>
-        <aside className="side-column"><div className="panel quick-panel"><div className="panel-head"><div><h2>快捷操作</h2><p className="muted">常用的家庭整理动作</p></div></div><button className="quick-action" onClick={() => setShowForm(true)}><span className="quick-icon blue"><Plus size={16} strokeWidth={2} /></span><span><strong>添加新物资</strong><small>登记家里新增的物品</small></span><ArrowRight size={15} strokeWidth={1.8} /></button><button className="quick-action"><span className="quick-icon green"><Check size={16} strokeWidth={2} /></span><span><strong>开始盘点</strong><small>核对一个地点的实际库存</small></span><ArrowRight size={15} strokeWidth={1.8} /></button><button className="quick-action"><span className="quick-icon amber"><ClipboardList size={16} strokeWidth={1.8} /></span><span><strong>查看采购清单</strong><small>整理需要购买的物品</small></span><ArrowRight size={15} strokeWidth={1.8} /></button></div><div className="panel locations"><div className="panel-head"><div><h2>存放地点</h2><p className="muted">按空间整理物资</p></div><button className="text-button">管理</button></div><div className="location-row"><Home size={15} strokeWidth={1.8} className="location-icon" /><span>储物间</span><strong>{items.length}</strong></div><div className="location-row"><Home size={15} strokeWidth={1.8} className="location-icon" /><span>厨房</span><strong>0</strong></div><div className="location-row"><Home size={15} strokeWidth={1.8} className="location-icon" /><span>卫生间</span><strong>0</strong></div></div></aside>
+        <aside className="side-column"><div className="panel quick-panel"><div className="panel-head"><div><h2>快捷操作</h2><p className="muted">常用的家庭整理动作</p></div></div><button className="quick-action" onClick={() => setShowForm(true)}><span className="quick-icon blue"><Plus size={16} strokeWidth={2} /></span><span><strong>添加新物资</strong><small>登记家里新增的物品</small></span><ArrowRight size={15} strokeWidth={1.8} /></button><button className="quick-action"><span className="quick-icon green"><Check size={16} strokeWidth={2} /></span><span><strong>开始盘点</strong><small>核对一个地点的实际库存</small></span><ArrowRight size={15} strokeWidth={1.8} /></button><button className="quick-action"><span className="quick-icon amber"><ClipboardList size={16} strokeWidth={1.8} /></span><span><strong>查看采购清单</strong><small>整理需要购买的物品</small></span><ArrowRight size={15} strokeWidth={1.8} /></button></div><div className="panel locations"><div className="panel-head"><div><h2>存放地点</h2><p className="muted">按空间整理物资</p></div><button className="text-button">管理</button></div>{locations.map((location) => <div className="location-row" key={location.id}><Home size={15} strokeWidth={1.8} className="location-icon" /><span>{location.name}</span><strong>{stock.filter((row) => row.locationId === location.id).reduce((sum, row) => sum + row.quantity, 0)}</strong></div>)}</div></aside>
       </section>
     </main>
     {showForm && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowForm(false)}><form className="modal" onSubmit={addItem}><div className="modal-head"><div><h2>添加物资</h2><p className="muted">先登记名称和基本补货规则</p></div><button type="button" className="close" onClick={() => setShowForm(false)} aria-label="关闭"><X size={18} strokeWidth={1.8} /></button></div><label>物资名称<input name="name" required placeholder="例如：洗衣液" /></label><label>编码<input name="sku" required placeholder="例如：CLEAN-001" /></label><div className="form-row"><label>单位<input name="baseUnit" required defaultValue="个" /></label><label>最低库存<input name="reorderPoint" type="number" min="0" step="0.1" defaultValue="0" /></label></div><label>建议补充量<input name="reorderQuantity" type="number" min="0.1" step="0.1" defaultValue="1" /></label><button className="primary full" disabled={busy}>{busy ? "保存中…" : "保存物资"}</button></form></div>}
