@@ -2,7 +2,10 @@
   "name": "@family-erp/db",
   "private": true,
   "type": "module",
-  "exports": "./src/schema.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p ../../tsconfig.json"
   },

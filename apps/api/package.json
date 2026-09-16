@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@family-erp/contracts": "workspace:*",
+    "@family-erp/db": "workspace:*",
     "fastify": "^5.4.0"
   },
   "devDependencies": {

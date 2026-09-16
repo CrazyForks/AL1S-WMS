@@ -16,3 +16,13 @@ export const itemSchema = z.object({
 export const createItemSchema = itemSchema.omit({ id: true, active: true });
 export type Item = z.infer<typeof itemSchema>;
 export type CreateItem = z.infer<typeof createItemSchema>;
+
+export const stockCommandSchema = z.object({
+  itemId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  quantity: z.number().positive(),
+  reason: z.string().max(200).optional(),
+  idempotencyKey: z.string().min(1).max(200)
+});
+
+export type StockCommand = z.infer<typeof stockCommandSchema>;

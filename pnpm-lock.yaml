@@ -6,13 +6,20 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
   apps/api:
     dependencies:
       '@family-erp/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@family-erp/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       fastify:
         specifier: ^5.4.0
         version: 5.12.5
