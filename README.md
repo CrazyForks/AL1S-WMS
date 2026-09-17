@@ -35,6 +35,8 @@ Open `http://localhost:8080` and follow the initial setup.
 
 The SQLite database is stored at `/data/family-erp.db`. Always persist `/data` with a Docker volume or bind mount.
 
+Set `APIZERO_API_KEY` to use an authenticated ApiZero barcode lookup; without it, AL1S ERP uses the anonymous free quota.
+
 To use a host directory:
 
 ```bash

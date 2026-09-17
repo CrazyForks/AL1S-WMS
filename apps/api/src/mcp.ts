@@ -73,7 +73,7 @@ export function createMcpServer(api: ApiCall, boundHomeId: string | null = null)
   register("get_home_overview", "Primary proactive-management call. Summarizes low stock, expiring batches, expired batches, pending purchases, and recommended actions.", scoped({
     expiryDays:z.number().int().min(1).max(365).optional().describe("Upcoming expiry window; default 30 days"),limit:z.number().int().min(1).max(50).optional().describe("Maximum rows per section; default 10"),
   }), "GET", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/overview?${query(value.body)}`};});
-  register("lookup_barcode", "Resolve a GTIN/EAN/UPC. Checks this household and the local product cache first, then Open Food, Beauty, Pet Food, and Products Facts. Use returned fields to confirm create_item input.", scoped({barcode:barcodeSchema}), "GET", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/barcodes/${value.body.barcode}`};});
+  register("lookup_barcode", "Resolve a GTIN/EAN/UPC. Checks household inventory and local cache first, then ApiZero for Chinese barcodes and the Open Facts databases. Use returned fields to confirm create_item input.", scoped({barcode:barcodeSchema}), "GET", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/barcodes/${value.body.barcode}`};});
   register("search_items", "Search inventory for stocktake or maintenance. Returns a page object; location and category filters include descendants by default.", scoped({
     query: name.optional(), category: name.optional(), locationId: locationId.optional(),
     includeDescendantLocations: z.boolean().optional(), includeDescendantCategories: z.boolean().optional(),

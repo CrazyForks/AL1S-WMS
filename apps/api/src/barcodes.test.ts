@@ -58,6 +58,28 @@ test("barcode providers fall back and misses use a short negative cache",async()
   db.close();
 });
 
+test("Chinese barcodes prefer ApiZero and optionally send its API key",async()=>{
+  const {db,homeId}=fixture(),barcode="6946852340434";
+  process.env.APIZERO_API_KEY="sk_test_example";
+  let calls=0;
+  const fetcher:typeof fetch=async(input,init)=>{
+    calls++;
+    assert.equal(new Headers(init?.headers).get("Authorization"),"Bearer sk_test_example");
+    return new Response(JSON.stringify(String(input).includes("barcode-gs1")
+      ?{code:0,data:{barcode,found:true,name:"小白鲸75%乙醇消毒液100ml",brand:"小白鲸",category:"消毒剂",specification:"100毫升"}}
+      :{code:0,data:{barcode,found:false}}),{status:200});
+  };
+  try {
+    const result=await lookupBarcode(db,homeId,barcode,fetcher);
+    assert.equal(result.product?.provider,"apizero-gs1");
+    assert.equal(result.product?.name,"小白鲸75%乙醇消毒液100ml");
+    assert.equal(calls,2);
+  } finally {
+    delete process.env.APIZERO_API_KEY;
+    db.close();
+  }
+});
+
 test("barcode checksum is validated",()=>{
   assert.equal(normalizeBarcode("3017 6204-22003"),"3017620422003");
   assert.throws(()=>normalizeBarcode("3017620422004"),(error:unknown)=>error instanceof InventoryError&&error.code==="INVALID_BARCODE_CHECKSUM");
