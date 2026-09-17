@@ -281,9 +281,9 @@ tbody tr:hover td{background:#f3f9fd}
   white-space:nowrap;
 }
 .stock-status::before,.expiry-status::before{content:"";width:4px;height:8px;flex:none;background:currentColor;opacity:.8}
-.stock-status.warning,.expiry-status.expiring{--status-ink:#916519;--status-fill:#fcf5e6;background:var(--status-fill);color:var(--status-ink)}
+.stock-status.warning,.stock-status.expiring,.expiry-status.expiring{--status-ink:#916519;--status-fill:#fcf5e6;background:var(--status-fill);color:var(--status-ink)}
 .stock-status.low{--status-ink:#a15c26;--status-fill:#fff1e5;background:var(--status-fill);color:var(--status-ink)}
-.stock-status.empty,.expiry-status.expired{--status-ink:#ab3e50;--status-fill:#fceef1;background:var(--status-fill);color:var(--status-ink)}
+.stock-status.empty,.stock-status.expired,.expiry-status.expired{--status-ink:#ab3e50;--status-fill:#fceef1;background:var(--status-fill);color:var(--status-ink)}
 
 .count-summary button{border-top:3px solid #9dcfe9;color:#5d748a}
 .count-summary button:hover{border-color:var(--aris-blue);background:#f5fbff}

@@ -659,6 +659,14 @@ export function App() {
       return { level: "expiring", label: "临期" };
     return { level: "valid", label: "有效" };
   };
+  const displayStatusFor = (item: Item) => {
+    const expiry = expiryStatusFor(item);
+    if (expiry.level === "expired")
+      return { ...expiry, priority: -2 };
+    if (expiry.level === "expiring")
+      return { ...expiry, priority: -1 };
+    return stockStatusFor(item);
+  };
   const locationScopeIds = useMemo(() => {
     if (!locationFilter) return null;
     const ids = new Set<string>([locationFilter]);
@@ -737,7 +745,7 @@ export function App() {
         return true;
       }).sort(
         (left, right) =>
-          stockStatusFor(left).priority - stockStatusFor(right).priority ||
+          displayStatusFor(left).priority - displayStatusFor(right).priority ||
           replenishmentFor(right) - replenishmentFor(left) ||
           left.name.localeCompare(right.name, "zh-CN"),
       ),
@@ -784,7 +792,7 @@ export function App() {
   const dashboardItems = [...items]
     .sort(
       (left, right) =>
-        stockStatusFor(left).priority - stockStatusFor(right).priority ||
+        displayStatusFor(left).priority - displayStatusFor(right).priority ||
         replenishmentFor(right) - replenishmentFor(left) ||
         left.name.localeCompare(right.name, "zh-CN"),
     )
@@ -1253,7 +1261,7 @@ export function App() {
         {open && (
           <>
             {node.items.map((item) => {
-              const status = stockStatusFor(item);
+              const status = displayStatusFor(item);
               return (
                 <div
                   className="tree-item-row"
@@ -1722,7 +1730,7 @@ export function App() {
                     <thead><tr><th>物资</th><th>库存</th><th className="dashboard-minimum">最低库存</th><th>状态</th><th className="dashboard-location">位置</th></tr></thead>
                     <tbody>
                       {dashboardItems.map((item) => {
-                        const status = stockStatusFor(item);
+                        const status = displayStatusFor(item);
                         return (
                           <tr key={item.id}>
                             <td><div className="item-name"><span className="item-icon"><MaterialIcon value={itemIconFor(item)} /></span><strong>{item.name}</strong></div></td>
@@ -1859,8 +1867,7 @@ export function App() {
                       {filtered.length === 0 ? (
                         <tr><td colSpan={8} className="empty">没有符合当前条件的物资。</td></tr>
                       ) : pagedItems.map((item) => {
-                        const stockStatus = stockStatusFor(item);
-                        const expiryStatus = expiryStatusFor(item);
+                        const stockStatus = displayStatusFor(item);
                         const replenishment = replenishmentFor(item);
                         return (
                           <tr key={item.id}>
@@ -1870,7 +1877,7 @@ export function App() {
                             <td className={replenishment > 0 ? "replenishment" : "muted-cell"}>{replenishment > 0 ? `${replenishment} ${item.baseUnit}` : "—"}</td>
                             <td><span className={`stock-status ${stockStatus.level}`}>{stockStatus.label}</span></td>
                             <td>{item.locationName || "未指定"}</td>
-                            <td><div className="date-cell"><span>生产 {item.manufacturedDate || "—"}</span><span>到期 {item.expiryDate || "—"}</span>{expiryStatus.level !== "none" && expiryStatus.level !== "valid" && <em className={`expiry-status ${expiryStatus.level}`}>{expiryStatus.label}</em>}</div></td>
+                            <td><div className="date-cell"><span>生产 {item.manufacturedDate || "—"}</span><span>到期 {item.expiryDate || "—"}</span></div></td>
                             <td><div className="row-actions"><button onClick={() => openStockAction("receipt", item)}>入库</button><button onClick={() => openStockAction("issue", item)}>领用</button><button onClick={() => setBatchItem(item)}>批次</button><button onClick={() => setDetailItem(item)}>编辑</button><button className="danger-action" onClick={() => confirmDelete("item", item)}>删除</button></div></td>
                           </tr>
                         );
