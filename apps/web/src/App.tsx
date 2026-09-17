@@ -1030,7 +1030,8 @@ export function App() {
     }
     setShowShoppingForm(false);
     setShoppingItemId("");
-    load();
+    setSelectedShoppingDate("");
+    await load();
   }
   async function receiveShopping(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
