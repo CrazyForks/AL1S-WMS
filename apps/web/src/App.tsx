@@ -1,5 +1,10 @@
 import { MaterialIcon, IconPicker, itemIconFor } from "./Icons.js";
-import i18n, { localeForDates, setLocale, type Locale } from "./i18n/index.js";
+import i18n, {
+  displayUnit,
+  localeForDates,
+  setLocale,
+  type Locale,
+} from "./i18n/index.js";
 import { apiFetch } from "./i18n/apiFetch.js";
 const t = i18n.t.bind(i18n);
 import { BatchFields } from "./BatchFields.js";
@@ -1679,7 +1684,8 @@ export function App() {
                     {item.name}
                   </strong>
                   <span className="tree-item-stock">
-                    {item.treeQuantity ?? balanceFor(item.id)} {item.baseUnit}
+                    {item.treeQuantity ?? balanceFor(item.id)}{" "}
+                    {displayUnit(item.baseUnit)}
                   </span>
                   <span className={`stock-status ${status.level}`}>
                     {status.label}
@@ -2316,21 +2322,25 @@ export function App() {
                               <span>
                                 <strong>{item.name}</strong>
                                 <small>
-                                  {item.category || t("未分类")} ·{" "}
-                                  {locations.find(
-                                    (location) =>
-                                      location.id === item.locationId,
-                                  )?.name || t("未指定存放地点")}{" "}
-                                  ·{" "}
-                                  {item.source === "automatic"
-                                    ? t("低库存建议")
-                                    : t("手动添加")}
+                                  {[
+                                    item.category || t("未分类"),
+                                    locations.find(
+                                      (location) =>
+                                        location.id === item.locationId,
+                                    )?.name || t("未指定存放地点"),
+                                    item.source === "automatic"
+                                      ? t("低库存建议")
+                                      : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
                                 </small>
                               </span>
                             </div>
                           </td>
                           <td>
-                            {item.quantity} {item.unit || t("件")}
+                            {item.quantity}{" "}
+                            {displayUnit(item.unit) || t("件")}
                           </td>
                           <td>
                             <span className="shopping-plan">
@@ -2617,10 +2627,10 @@ export function App() {
                                 </div>
                               </td>
                               <td>
-                                {balanceFor(item.id)} {item.baseUnit}
+                                {balanceFor(item.id)} {displayUnit(item.baseUnit)}
                               </td>
                               <td className="dashboard-minimum">
-                                {item.reorderPoint} {item.baseUnit}
+                                {item.reorderPoint} {displayUnit(item.baseUnit)}
                               </td>
                               <td>
                                 <span
@@ -2721,7 +2731,8 @@ export function App() {
                             <small>{item.category || t("未分类")}</small>
                           </span>
                           <b>
-                            {item.quantity} {item.unit || t("件")}
+                            {item.quantity}{" "}
+                            {displayUnit(item.unit) || t("件")}
                           </b>
                         </button>
                       ))
@@ -2983,7 +2994,7 @@ export function App() {
                         const stockStatus = displayStatusFor(item);
                         const replenishment = replenishmentFor(item);
                         return (
-                          <tr key={item.id}>
+                          <tr key={`${item.id}:${item.locationId??"none"}`}>
                             <td>
                               <div className="item-name">
                                 <span className="item-icon">
@@ -2997,11 +3008,12 @@ export function App() {
                             </td>
                             <td>
                               <strong>
-                                {balanceFor(item.id)} {item.baseUnit}
+                                {item.treeQuantity ?? balanceFor(item.id)}{" "}
+                                {displayUnit(item.baseUnit)}
                               </strong>
                             </td>
                             <td>
-                              {item.reorderPoint} {item.baseUnit}
+                              {item.reorderPoint} {displayUnit(item.baseUnit)}
                             </td>
                             <td
                               className={
@@ -3011,7 +3023,7 @@ export function App() {
                               }
                             >
                               {replenishment > 0
-                                ? `${replenishment} ${item.baseUnit}`
+                                ? `${replenishment} ${displayUnit(item.baseUnit)}`
                                 : "—"}
                             </td>
                             <td>
@@ -3051,7 +3063,15 @@ export function App() {
                                 <button onClick={() => setBatchItem(item)}>
                                   {t("批次")}
                                 </button>
-                                <button onClick={() => setDetailItem(item)}>
+                                <button
+                                  onClick={() =>
+                                    setDetailItem(
+                                      items.find(
+                                        (current) => current.id === item.id,
+                                      ) ?? item,
+                                    )
+                                  }
+                                >
                                   {t("编辑")}
                                 </button>
                                 <button
@@ -3808,7 +3828,7 @@ export function App() {
                 <p className="muted">
                   {receiveShoppingItem.name} {t("· 建议")}{" "}
                   {receiveShoppingItem.quantity}{" "}
-                  {receiveShoppingItem.unit || t("件")}
+                  {displayUnit(receiveShoppingItem.unit) || t("件")}
                 </p>
               </div>
               <button

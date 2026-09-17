@@ -71,6 +71,8 @@ test("shopping plans validate channels and materialize automatic suggestions",()
   assert.equal(planned.channelName,"京东");
   assert.equal(planned.plannedDate,"2026-10-08");
   assert.equal(planned.id.startsWith("auto:"),false);
+  assert.equal(planned.source,"automatic");
+  assert.equal(saveShopping(db,homeId,{plannedDate:"2026-10-09"},planned.id).source,"automatic","editing a persisted recommendation retains its automatic source");
   const otherHome=randomUUID(),otherChannel=randomUUID();
   db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(otherHome,"其他家");
   db.prepare("INSERT INTO shopping_channels(id,home_id,name) VALUES (?,?,?)").run(otherChannel,otherHome,"其他渠道");
