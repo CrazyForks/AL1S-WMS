@@ -33,8 +33,7 @@ WORKDIR /app
 COPY --from=build /app/runtime ./
 COPY --from=build /app/apps/web/dist ./public
 
-RUN mkdir -p /data && chown -R node:node /app /data
-USER node
+RUN mkdir -p /data
 
 EXPOSE 8080
 VOLUME ["/data"]
