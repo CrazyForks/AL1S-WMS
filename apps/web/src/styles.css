@@ -609,6 +609,7 @@ input:disabled,select:disabled{background:#edf3f7!important;color:#768a9c!import
 .item-icon{background:#edf5f8;border-color:#d0e0e8;color:#4e7387}
 th,.count-table th:last-child{background:#f0f5f8;color:#617789}
 .count-summary button.active{background:#edf9f9;border-color:#75bfc8;box-shadow:inset 3px 0 0 #4ca4b1}
+.count-summary-copy{min-width:0}.count-summary-copy b,.count-summary-copy small{display:block}.count-summary-copy b{color:var(--aris-ink);font-size:13px}.count-summary-copy small{margin-top:4px;color:var(--aris-muted);font-size:10px;font-weight:500;white-space:nowrap}
 .tree-expander:not(:disabled):hover,.tree-icon-button:hover,.tree-add:hover{background:#e3f5f5;color:#256c7d}
 @media(max-width:860px){.main-nav{border-top-color:#e1e9ef}.main-nav button.active{box-shadow:inset 0 -2px 0 var(--aris-cyan)}}
 @media(max-width:540px){.shell,.setup-shell,.loading-screen{background-size:170px 134px,auto,24px 24px}.panel-head::before{top:17px}}

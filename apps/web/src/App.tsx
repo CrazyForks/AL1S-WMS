@@ -1836,19 +1836,19 @@ export function App() {
             <section className="count-workspace">
               <div className="count-summary" aria-label="库存状态概览">
                 <button className={!stockStatusFilter && !expiryFilter ? "active" : ""} onClick={() => { setStockStatusFilter(""); setExpiryFilter(""); }}>
-                  <span>全部物资</span><strong>{items.length}</strong>
+                  <span className="count-summary-copy"><b>全部物资</b><small>当前在管物资</small></span><strong>{items.length}</strong>
                 </button>
                 <button className={stockStatusFilter === "empty" ? "active danger" : ""} onClick={() => { setStockStatusFilter("empty"); setExpiryFilter(""); }}>
-                  <span>缺货</span><strong>{emptyStockCount}</strong>
+                  <span className="count-summary-copy"><b>缺货</b><small>库存为 0，无补货要求</small></span><strong>{emptyStockCount}</strong>
                 </button>
                 <button className={stockStatusFilter === "replenishment" ? "active warning" : ""} onClick={() => { setStockStatusFilter("replenishment"); setExpiryFilter(""); }}>
-                  <span>不足</span><strong>{belowStockCount}</strong>
+                  <span className="count-summary-copy"><b>不足</b><small>低于最低库存</small></span><strong>{belowStockCount}</strong>
                 </button>
                 <button className={stockStatusFilter === "warning" ? "active warning" : ""} onClick={() => { setStockStatusFilter("warning"); setExpiryFilter(""); }}>
-                  <span>临界</span><strong>{criticalStockCount}</strong>
+                  <span className="count-summary-copy"><b>临界</b><small>等于最低库存</small></span><strong>{criticalStockCount}</strong>
                 </button>
                 <button className={expiryFilter === "expiring" ? "active" : ""} onClick={() => { setStockStatusFilter(""); setExpiryFilter("expiring"); }}>
-                  <span>30 天内到期</span><strong>{expiringItems.length}</strong>
+                  <span className="count-summary-copy"><b>临期</b><small>未来 30 天到期</small></span><strong>{expiringItems.length}</strong>
                 </button>
               </div>
               <div className="panel inventory-panel count-inventory">
