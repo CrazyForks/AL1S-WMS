@@ -2211,10 +2211,10 @@ export function App() {
               <label>
                 当前库存（只读）
                 <input
-                  value={`${balanceFor(detailItem.id)} ${detailItem.baseUnit}`}
+                  value={balanceFor(detailItem.id)}
                   readOnly
                 />
-                <small className="muted">请通过入库、领用或盘点调整库存</small>
+                <small className="form-hint">请通过入库、领用或盘点调整库存</small>
               </label>
               <label>
                 单位
