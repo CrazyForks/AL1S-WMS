@@ -2209,11 +2209,12 @@ export function App() {
             </label>
             <div className="form-row">
               <label>
-                当前库存
+                当前库存（只读）
                 <input
                   value={`${balanceFor(detailItem.id)} ${detailItem.baseUnit}`}
                   readOnly
                 />
+                <small className="muted">请通过入库、领用或盘点调整库存</small>
               </label>
               <label>
                 单位
@@ -2233,6 +2234,7 @@ export function App() {
                   <option>米</option>
                   <option>其他</option>
                 </select>
+                <small className="muted">已有库存流水后不可更改单位</small>
               </label>
               <label>
                 最低库存
