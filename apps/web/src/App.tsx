@@ -1,4 +1,6 @@
 import { MaterialIcon, IconPicker, itemIconFor } from "./Icons.js";
+import { BatchFields } from "./BatchFields.js";
+import { Batches, BatchSelect } from "./Batches.js";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -61,13 +63,15 @@ type Transaction = {
   id: string;
   itemName: string;
   locationName: string;
-  type: "receipt" | "issue" | "delete" | "reclassify" | "move";
+  type: "receipt" | "issue" | "delete" | "reclassify" | "move" | "update";
   quantity: number | null;
   reason?: string | null;
   occurredAt: string;
+  batchId?: string | null;
 };
+type TransactionPage = {items:Transaction[];total:number;limit:number;offset:number;hasMore:boolean;nextOffset:number|null;snapshotAt:string};
 function TransactionRow({ transaction }: { transaction: Transaction }) {
-  const labels = { receipt: "入库", issue: "领用", delete: "删除", reclassify: "分类变更", move: "位置变更" };
+  const labels = { receipt: "入库", issue: "领用", delete: "删除", reclassify: "分类变更", move: "位置变更", update: "批次变更" };
   const stockChange = transaction.type === "receipt" || transaction.type === "issue";
   return <div className="log-row">
     <span className={`log-badge ${transaction.type}`} title={labels[transaction.type]}>
@@ -169,17 +173,6 @@ const itemCategories = [
 const newIdempotencyKey = () =>
   globalThis.crypto?.randomUUID?.() ??
   `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-function addShelfLife(date: string, amountText: string, unit: string) {
-  if (!date || !amountText || !unit) return undefined;
-  const result = new Date(`${date}T00:00:00`);
-  const amount = Number(amountText);
-  if (!Number.isFinite(amount) || amount <= 0) return undefined;
-  if (unit === "day") result.setDate(result.getDate() + amount);
-  if (unit === "month") result.setMonth(result.getMonth() + amount);
-  if (unit === "year") result.setFullYear(result.getFullYear() + amount);
-  return `${result.getFullYear()}-${String(result.getMonth() + 1).padStart(2, "0")}-${String(result.getDate()).padStart(2, "0")}`;
-}
-
 async function getItems() {
   const response = await fetch(`/api/v1/homes/${getHomeId()}/items`);
   if (!response.ok) throw new Error("无法加载物资");
@@ -195,10 +188,10 @@ async function getLocations() {
   if (!response.ok) throw new Error("无法加载地点");
   return response.json() as Promise<Location[]>;
 }
-async function getTransactions() {
-  const response = await fetch(`/api/v1/homes/${getHomeId()}/transactions`);
+async function getTransactions(page = 1, snapshotAt = "") {
+  const response = await fetch(`/api/v1/homes/${getHomeId()}/transactions?limit=10&offset=${(page-1)*10}${snapshotAt?`&snapshotAt=${encodeURIComponent(snapshotAt)}`:""}`);
   if (!response.ok) throw new Error("无法加载变动记录");
-  return response.json() as Promise<Transaction[]>;
+  return response.json() as Promise<TransactionPage>;
 }
 async function getShoppingList() {
   const response = await fetch(`/api/v1/homes/${getHomeId()}/shopping-list`);
@@ -486,6 +479,8 @@ export function App() {
     type: "receipt" | "issue";
     item: Item;
   } | null>(null);
+  const [stockLocationId, setStockLocationId] = useState("");
+  const [stockOperationKey, setStockOperationKey] = useState("");
   const [page, setPage] = useState(1);
   const [locationFilter, setLocationFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -505,6 +500,9 @@ export function App() {
     parentId: string | null;
   } | null>(null);
   const [transactionPage, setTransactionPage] = useState(1);
+  const [transactionTotal,setTransactionTotal]=useState(0);
+  const [transactionSnapshot,setTransactionSnapshot]=useState("");
+  const [batchItem,setBatchItem]=useState<Item|null>(null);
   const [activePage, setActivePage] = useState<Page>(pageFromUrl);
   const countView = activePage === "locations" || activePage === "categories";
   const treeMode = activePage === "categories" ? "category" : "location";
@@ -523,6 +521,7 @@ export function App() {
   );
   const [receiveShoppingItem, setReceiveShoppingItem] =
     useState<ShoppingItem | null>(null);
+  const [receiveOperationKey, setReceiveOperationKey] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const itemCategories = categories.length
     ? categories.map((category) => category.name)
@@ -560,22 +559,25 @@ export function App() {
   const linkedEditShoppingItem = items.find(
     (item) => item.id === editShoppingItemId,
   );
-  const transactionPageCount = Math.max(1, Math.ceil(transactions.length / 10));
-  const pagedTransactions = transactions.slice(
-    (transactionPage - 1) * 10,
-    transactionPage * 10,
-  );
+  const transactionPageCount = Math.max(1, Math.ceil(transactionTotal / 10));
+  const pagedTransactions = transactions;
   useEffect(() => {
     if (transactionPage > transactionPageCount)
       setTransactionPage(transactionPageCount);
   }, [transactionPage, transactionPageCount]);
+  useEffect(() => {
+    if (!authenticated) return;
+    getTransactions(transactionPage,transactionPage===1?"":transactionSnapshot).then(next=>{
+      setTransactions(next.items);setTransactionTotal(next.total);if(transactionPage===1)setTransactionSnapshot(next.snapshotAt);
+    }).catch(error=>setNotice(error.message));
+  },[transactionPage]);
 
   const load = () =>
     Promise.all([
       getItems(),
       getStock(),
       getLocations(),
-      getTransactions(),
+      getTransactions(transactionPage,transactionPage===1?"":transactionSnapshot),
       getShoppingList(),
       getCategories(),
     ])
@@ -591,7 +593,9 @@ export function App() {
           setItems(nextItems);
           setStock(nextStock);
           setLocations(nextLocations);
-          setTransactions(nextTransactions);
+          setTransactions(nextTransactions.items);
+          setTransactionTotal(nextTransactions.total);
+          if(transactionPage===1)setTransactionSnapshot(nextTransactions.snapshotAt);
           setShoppingList(nextShoppingList);
           setCategories(nextCategories);
         },
@@ -802,11 +806,7 @@ export function App() {
         reorderQuantity: 0,
         initialStock: Number(data.get("initialStock") || 0),
         manufacturedDate: data.get("manufacturedDate") || undefined,
-        expiryDate: addShelfLife(
-          String(data.get("manufacturedDate") || ""),
-          String(data.get("shelfLifeValue") || ""),
-          String(data.get("shelfLifeUnit") || ""),
-        ),
+        expiryDate: data.get("expiryDate") || undefined,
       }),
     });
     setBusy(false);
@@ -822,13 +822,14 @@ export function App() {
 
   async function recordStock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!stockAction) return;
+    if (!stockAction || busy) return;
     const data = new FormData(event.currentTarget);
     const quantity = Number(data.get("quantity"));
     const selectedLocation = String(
       data.get("locationId") || locations[0]?.id || locationId,
     );
     if (!quantity || quantity <= 0) return;
+    setBusy(true);
     const response = await fetch(
       `/api/v1/homes/${getHomeId()}/stock/${stockAction.type}`,
       {
@@ -838,11 +839,18 @@ export function App() {
           itemId: stockAction.item.id,
           locationId: selectedLocation,
           quantity,
-          idempotencyKey: newIdempotencyKey(),
+          idempotencyKey: stockOperationKey,
           reason: data.get("reason") || "Dashboard 操作",
+          ...(stockAction.type === "receipt"
+            ? {
+                manufacturedDate: data.get("manufacturedDate") || null,
+                expiryDate: data.get("expiryDate") || null,
+              }
+            : { batchId: data.get("batchId") || undefined }),
         }),
       },
     );
+    setBusy(false);
     if (response.ok) {
       setStockAction(null);
       load();
@@ -865,15 +873,6 @@ export function App() {
           baseUnit: data.get("baseUnit"),
           reorderPoint: Number(data.get("reorderPoint") || 0),
           locationId: data.get("locationId") || null,
-          manufacturedDate: data.get("manufacturedDate") || null,
-          expiryDate:
-            addShelfLife(
-              String(data.get("manufacturedDate") || ""),
-              String(data.get("shelfLifeValue") || ""),
-              String(data.get("shelfLifeUnit") || ""),
-            ) ||
-            data.get("expiryDate") ||
-            null,
         }),
       },
     );
@@ -944,33 +943,44 @@ export function App() {
     setShoppingItemId("");
     load();
   }
-  async function completeShoppingItem(item: ShoppingItem, quantity: number) {
-    const response = await fetch(
-      `/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,
-      {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ completed: true, quantity }),
-      },
-    );
-    if (!response.ok) {
-      const result = await response.json().catch(() => ({}));
-      setNotice(
-        result.code === "SHOPPING_LOCATION_REQUIRED"
-          ? "该物资没有存放地点，无法直接入库"
-          : `采购项处理失败（${response.status}）`,
-      );
-      return;
-    }
-    load();
-  }
   async function receiveShopping(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!receiveShoppingItem) return;
-    const quantity = Number(new FormData(event.currentTarget).get("quantity"));
+    if (!receiveShoppingItem || busy) return;
+    const data = new FormData(event.currentTarget);
+    const quantity = Number(data.get("quantity"));
     if (!Number.isFinite(quantity) || quantity <= 0) return;
-    await completeShoppingItem(receiveShoppingItem, quantity);
+    setBusy(true);
+    const response = await fetch(
+      `/api/v1/homes/${getHomeId()}/shopping-list/${encodeURIComponent(receiveShoppingItem.id)}/receive`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          actualQuantity: quantity,
+          idempotencyKey: receiveOperationKey,
+          locationId: data.get("locationId") || undefined,
+          manufacturedDate: data.get("manufacturedDate") || null,
+          expiryDate: data.get("expiryDate") || null,
+        }),
+      },
+    );
+    setBusy(false);
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      setNotice(result.message || `采购项处理失败（${response.status}）`);
+      return;
+    }
     setReceiveShoppingItem(null);
+    load();
+  }
+  function openStockAction(type: "receipt" | "issue", item: Item) {
+    setStockLocationId(item.locationId || locations[0]?.id || "");
+    setStockOperationKey(newIdempotencyKey());
+    setStockAction({ type, item });
+  }
+  function openShoppingReceipt(item: ShoppingItem) {
+    setReceiveOperationKey(newIdempotencyKey());
+    setReceiveShoppingItem(item);
   }
   async function updateShoppingItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1600,7 +1610,7 @@ export function App() {
                             )}
                             {!item.completed && (
                               <button
-                                onClick={() => setReceiveShoppingItem(item)}
+                                onClick={() => openShoppingReceipt(item)}
                               >
                                 完成入库
                               </button>
@@ -1707,7 +1717,7 @@ export function App() {
                   )}
                   {transactionPageCount > 1 && (
                     <div className="pagination">
-                      <span>{(transactionPage - 1) * 10 + 1}–{Math.min(transactionPage * 10, transactions.length)} / 共 {transactions.length} 条</span>
+                      <span>{(transactionPage - 1) * 10 + 1}–{Math.min(transactionPage * 10, transactionTotal)} / 共 {transactionTotal} 条</span>
                       <button type="button" aria-label="上一页" disabled={transactionPage === 1} onClick={() => setTransactionPage(transactionPage - 1)}><ArrowLeft size={15} /></button>
                       <span>{transactionPage} / {transactionPageCount}</span>
                       <button type="button" aria-label="下一页" disabled={transactionPage === transactionPageCount} onClick={() => setTransactionPage(transactionPage + 1)}><ArrowRight size={15} /></button>
@@ -1827,7 +1837,7 @@ export function App() {
                             <td><span className={`stock-status ${stockStatus.level}`}>{stockStatus.label}</span></td>
                             <td>{item.locationName || "未指定"}</td>
                             <td><div className="date-cell"><span>生产 {item.manufacturedDate || "—"}</span><span>到期 {item.expiryDate || "—"}</span>{expiryStatus.level !== "none" && expiryStatus.level !== "valid" && <em className={`expiry-status ${expiryStatus.level}`}>{expiryStatus.label}</em>}</div></td>
-                            <td><div className="row-actions"><button onClick={() => setStockAction({ type: "receipt", item })}>入库</button><button onClick={() => setStockAction({ type: "issue", item })}>领用</button><button onClick={() => setDetailItem(item)}>编辑</button><button className="danger-action" onClick={() => confirmDelete("item", item)}>删除</button></div></td>
+                            <td><div className="row-actions"><button onClick={() => openStockAction("receipt", item)}>入库</button><button onClick={() => openStockAction("issue", item)}>领用</button><button onClick={() => setBatchItem(item)}>批次</button><button onClick={() => setDetailItem(item)}>编辑</button><button className="danger-action" onClick={() => confirmDelete("item", item)}>删除</button></div></td>
                           </tr>
                         );
                       })}
@@ -1866,8 +1876,8 @@ export function App() {
               <div className="pagination">
                 <span>
                   {(transactionPage - 1) * 10 + 1}–
-                  {Math.min(transactionPage * 10, transactions.length)} / 共{" "}
-                  {transactions.length} 条
+                  {Math.min(transactionPage * 10, transactionTotal)} / 共{" "}
+                  {transactionTotal} 条
                 </span>
                 <button
                   type="button"
@@ -2126,6 +2136,14 @@ export function App() {
           </form>
         </div>
       )}
+      {batchItem && (
+        <Batches
+          homeId={getHomeId()}
+          item={batchItem}
+          onClose={() => setBatchItem(null)}
+          onChange={load}
+        />
+      )}
       {stockAction && (
         <div
           className="modal-backdrop"
@@ -2154,9 +2172,8 @@ export function App() {
               存放地点
               <select
                 name="locationId"
-                defaultValue={
-                  stockAction.item.locationId || locations[0]?.id || ""
-                }
+                value={stockLocationId}
+                onChange={(event) => setStockLocationId(event.target.value)}
               >
                 {locationOptions.map((location) => (
                   <option key={location.id} value={location.id}>
@@ -2166,6 +2183,15 @@ export function App() {
                 ))}
               </select>
             </label>
+            {stockAction.type === "receipt" ? (
+              <BatchFields title="新入库批次（可选）" />
+            ) : stockLocationId ? (
+              <BatchSelect
+                homeId={getHomeId()}
+                itemId={stockAction.item.id}
+                locationId={stockLocationId}
+              />
+            ) : null}
             <label>
               数量
               <input
@@ -2182,8 +2208,8 @@ export function App() {
               备注（可选）
               <input name="reason" placeholder="例如：本周采购" />
             </label>
-            <button className="primary full">
-              确认{stockAction.type === "receipt" ? "入库" : "领用"}
+            <button className="primary full" disabled={busy}>
+              {busy ? "处理中…" : `确认${stockAction.type === "receipt" ? "入库" : "领用"}`}
             </button>
           </form>
         </div>
@@ -2483,7 +2509,31 @@ export function App() {
                 required
               />
             </label>
-            <button className="primary full">确认入库</button>
+            <label>
+              入库地点
+              <select
+                name="locationId"
+                defaultValue={
+                  items.find((item) => item.id === receiveShoppingItem.itemId)
+                    ?.locationId ||
+                  receiveShoppingItem.locationId ||
+                  locations[0]?.id ||
+                  ""
+                }
+                required
+              >
+                {locationOptions.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {"　".repeat(location.depth)}
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <BatchFields title="采购入库批次（可选）" />
+            <button className="primary full" disabled={busy}>
+              {busy ? "入库中…" : "确认入库"}
+            </button>
           </form>
         </div>
       )}
@@ -2494,7 +2544,7 @@ export function App() {
             event.target === event.currentTarget && closeItemForm()
           }
         >
-          <form className="modal" onSubmit={addItem}>
+          <form className="modal item-form-modal" onSubmit={addItem}>
             <div className="modal-head">
               <div>
                 <h2>添加物资</h2>
@@ -2561,29 +2611,7 @@ export function App() {
                 defaultValue="0"
               />
             </label>
-            <div className="form-row">
-              <label>
-                生产日期（可选）
-                <input name="manufacturedDate" type="date" />
-              </label>
-              <label>
-                保质期（可选）
-                <div className="form-row">
-                  <input
-                    name="shelfLifeValue"
-                    type="number"
-                    min="1"
-                    step="1"
-                    placeholder="时长"
-                  />
-                  <select name="shelfLifeUnit" defaultValue="day">
-                    <option value="day">天</option>
-                    <option value="month">月</option>
-                    <option value="year">年</option>
-                  </select>
-                </div>
-              </label>
-            </div>
+            <BatchFields title="初始库存批次（可选）" />
             <label>
               存放地点
               <select

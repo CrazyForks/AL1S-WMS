@@ -32,9 +32,7 @@ export const updateItemSchema = z.object({
   baseUnit: z.string().min(1).optional(),
   reorderPoint: z.number().nonnegative().optional(),
   locationId: z.string().uuid().nullable().optional(),
-  manufacturedDate: z.string().date().nullable().optional(),
-  expiryDate: z.string().date().nullable().optional()
-}).refine((value) => Object.keys(value).length > 0);
+}).strict().refine((value) => Object.keys(value).length > 0);
 export type UpdateItem = z.infer<typeof updateItemSchema>;
 
 export const stockCommandSchema = z.object({

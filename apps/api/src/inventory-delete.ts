@@ -1,16 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { allocate, batchBalanceQuery, ledgerEntry, refreshItemDates } from "./stock.js";
 
 export const transactionQuery = `
   SELECT t.id, t.home_id AS homeId, t.item_id AS itemId, i.name AS itemName,
     t.location_id AS locationId, l.name AS locationName, t.type, t.quantity,
-    t.reason, t.idempotency_key AS idempotencyKey, t.occurred_at AS occurredAt
+    t.reason, t.idempotency_key AS idempotencyKey, t.occurred_at AS occurredAt, t.batch_id AS batchId
   FROM stock_transactions t JOIN items i ON i.id = t.item_id
   LEFT JOIN locations l ON l.id = t.location_id
   WHERE t.idempotency_key NOT LIKE 'event:%'
   UNION ALL
   SELECT id, home_id, item_id, item_name, location_id, location_name, type,
-    quantity, reason, NULL, occurred_at FROM item_events`;
+    quantity, reason, NULL, occurred_at, batch_id FROM item_events`;
 
 export class DeleteError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -31,8 +32,8 @@ export function deleteInventoryEntity(db: DatabaseSync, homeId: string, kind: "i
     return eventId;
   };
   const ledger = (eventId: string, itemId: string, locationId: string, type: string, quantity: number, reason: string) => {
-    db.prepare("INSERT INTO stock_transactions (id, home_id, item_id, location_id, type, quantity, reason, idempotency_key, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(randomUUID(), homeId, itemId, locationId, type, quantity, reason, `event:${eventId}:${randomUUID()}`, occurredAt);
+    const parts = allocate(db, homeId, itemId, locationId, quantity);
+    for (const part of parts) ledgerEntry(db,homeId,itemId,locationId,part.batchId,"issue",part.quantity,`event:${eventId}:${randomUUID()}`,reason);
   };
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -43,6 +44,7 @@ export function deleteInventoryEntity(db: DatabaseSync, homeId: string, kind: "i
       const quantity = balances.reduce((sum, row) => sum + row.quantity, 0);
       const eventId = event({ id, name: node.name }, "delete", `删除物资，移除库存 ${quantity} ${node.base_unit}；保留历史流水`, node.default_location_id ?? null, quantity);
       for (const balance of balances) ledger(eventId, id, balance.locationId, "issue", balance.quantity, "删除物资");
+      refreshItemDates(db,homeId,id);
       db.prepare("UPDATE items SET active = 0 WHERE id = ? AND home_id = ?").run(id, homeId);
       // Pending purchases remain usable as standalone purchases.
       db.prepare("UPDATE shopping_list SET item_id = NULL WHERE item_id = ? AND home_id = ?").run(id, homeId);
@@ -72,8 +74,11 @@ export function deleteInventoryEntity(db: DatabaseSync, homeId: string, kind: "i
         const reason = `${kind === "category" ? "分类" : "位置"}变更：${node.name} → ${target!.name}（原节点已删除）`;
         const eventId = event(item, kind === "category" ? "reclassify" : "move", reason, kind === "location" ? target!.id : null);
         if (quantity > 0) {
-          ledger(eventId, item.id, id, "issue", quantity, reason);
-          ledger(eventId, item.id, target!.id, "receipt", quantity, reason);
+          const parts=allocate(db,homeId,item.id,id,quantity);
+          for(const part of parts) {
+            ledgerEntry(db,homeId,item.id,id,part.batchId,"issue",part.quantity,`event:${eventId}:${randomUUID()}`,reason);
+            ledgerEntry(db,homeId,item.id,target!.id,part.batchId,"receipt",part.quantity,`event:${eventId}:${randomUUID()}`,reason);
+          }
         }
       }
       if (target) {

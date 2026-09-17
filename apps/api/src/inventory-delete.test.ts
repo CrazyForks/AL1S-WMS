@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { openDatabase } from "@family-erp/db";
 import { deleteInventoryEntity, transactionQuery } from "./inventory-delete.js";
 import { createMcpServer } from "./mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { buildApp } from "./app.js";
 
 test("deletion preserves stock, promotes children, logs only item changes and scopes homes", async () => {
   const db = openDatabase(":memory:");
@@ -20,7 +21,9 @@ test("deletion preserves stock, promotes children, logs only item changes and sc
   const food = node("item_categories", "食品"), dairy = node("item_categories", "乳品", food), yogurt = node("item_categories", "酸奶", dairy);
   const item = randomUUID();
   db.prepare("INSERT INTO items(id,home_id,sku,name,category,base_unit,default_location_id) VALUES (?,?,?,'牛奶','乳品','瓶',?)").run(item,home,item,child);
-  db.prepare("INSERT INTO stock_transactions(id,home_id,item_id,location_id,type,quantity,idempotency_key,occurred_at) VALUES (?,?,?,?,'receipt',12,?,?)").run(randomUUID(),home,item,child,randomUUID(),new Date().toISOString());
+  const batch = randomUUID(), receivedAt = new Date().toISOString();
+  db.prepare("INSERT INTO stock_batches(id,home_id,item_id,received_at) VALUES (?,?,?,?)").run(batch,home,item,receivedAt);
+  db.prepare("INSERT INTO stock_transactions(id,home_id,item_id,location_id,batch_id,type,quantity,idempotency_key,occurred_at) VALUES (?,?,?,?,?,'receipt',12,?,?)").run(randomUUID(),home,item,child,batch,randomUUID(),receivedAt);
   db.prepare("INSERT INTO shopping_list(id,home_id,item_id,name,quantity,category,location_id,created_at) VALUES (?,?,?,'牛奶',2,'乳品',?,?)").run(randomUUID(),home,item,child,new Date().toISOString());
   const balance = (location: string) => (db.prepare("SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) AS n FROM stock_transactions WHERE item_id=? AND location_id=?").get(item,location) as {n:number}).n;
   const events = () => db.prepare(`SELECT * FROM (${transactionQuery}) WHERE homeId=?`).all(home);
@@ -50,7 +53,14 @@ test("deletion preserves stock, promotes children, logs only item changes and sc
   assert.equal(db.prepare("SELECT location_id FROM shopping_list WHERE item_id=?").get(item)?.location_id,destination);
 
   // MCP shares deletion semantics and exposes/filter item event types.
-  const server = createMcpServer(db), client = new Client({name:"delete-check",version:"1"});
+  const token = `al1s_${"a".repeat(64)}`, userId = randomUUID();
+  db.prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(userId,randomUUID(),"test",new Date().toISOString());
+  db.prepare("INSERT INTO api_tokens(id,user_id,name,token_hash,token_prefix,created_at) VALUES (?,?,?,?,?,?)").run(randomUUID(),userId,"test",createHash("sha256").update(token).digest("hex"),"al1s_test",new Date().toISOString());
+  const api = await buildApp(db);
+  const server = createMcpServer(async (method,url,body) => {
+    const response = await api.inject({method,url,headers:{authorization:`Bearer ${token}`},payload:body});
+    return {status:response.statusCode,body:response.json()};
+  }), client = new Client({name:"delete-check",version:"1"});
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
@@ -60,13 +70,13 @@ test("deletion preserves stock, promotes children, logs only item changes and sc
   assert.equal(db.prepare("SELECT active FROM items WHERE id=?").get(item)?.active,0);
   assert.equal(db.prepare("SELECT item_id FROM shopping_list WHERE home_id=?").get(home)?.item_id,null);
   const log = await client.callTool({name:"list_transactions",arguments:{homeId:home,type:"delete"}});
-  const rows = JSON.parse((log.content as {text:string}[])[0].text);
+  const rows = JSON.parse((log.content as {text:string}[])[0].text).items;
   assert.equal(rows.length,1);
   assert.equal(rows[0].itemName,"牛奶");
   assert.equal(rows[0].quantity,12);
   assert.equal(events().filter(row => row.type === "receipt").length,1,"original history retained");
   assert.throws(() => deleteInventoryEntity(db,home,"item",item), /已删除/);
-  await client.close(); await server.close(); db.close();
+  await client.close(); await server.close(); await api.close(); db.close();
 });
 
 test("conflicting child promotion rolls back item changes and events", () => {
