@@ -261,9 +261,7 @@ function Setup({
     <div className="setup-shell">
       <div className="setup-card">
         <div className="setup-brand">
-          <span className="brand-mark" role="img" aria-label="家庭">
-            <MaterialIcon value={homeEmoji} home size={24} />
-          </span>
+          <img className="setup-mascot" src="/alice.gif" alt="Alice" />
           <div>
             <strong>AL1S-ERP</strong>
             <span>首次启动设置</span>
@@ -422,7 +420,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
     <div className="setup-shell">
       <form className="setup-card login-card" onSubmit={submit}>
         <div className="setup-brand">
-          <span className="brand-mark"><MaterialIcon home size={24} /></span>
+          <img className="setup-mascot" src="/alice.gif" alt="Alice" />
           <div>
             <strong>AL1S-ERP</strong>
             <span>登录你的家庭</span>
