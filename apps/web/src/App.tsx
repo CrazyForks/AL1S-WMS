@@ -1791,7 +1791,7 @@ export function App() {
                               <button
                                 onClick={() => openShoppingReceipt(item)}
                               >
-                                完成入库
+                                入库
                               </button>
                             )}
                             {item.source==="manual"&&<button
