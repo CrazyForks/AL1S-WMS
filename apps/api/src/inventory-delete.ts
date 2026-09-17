@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { allocate, batchBalanceQuery, ledgerEntry, refreshItemDates } from "./stock.js";
+import { translate, type Locale } from "./i18n/index.js";
 
 export const transactionQuery = `
   SELECT t.id, t.home_id AS homeId, t.item_id AS itemId, i.name AS itemName,
@@ -14,7 +15,10 @@ export const transactionQuery = `
     quantity, reason, NULL, occurred_at, batch_id FROM item_events`;
 
 export class DeleteError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, public messageKey: "error.deleteNotFound" | "error.deleteParentMissing" | "error.deleteNameConflict") {
+    super(translate("zh-CN", messageKey));
+  }
+  localized(locale: Locale) { return translate(locale, this.messageKey); }
 }
 
 // Shared by REST and MCP. History stays intact; all changes commit together.
@@ -22,7 +26,7 @@ export function deleteInventoryEntity(db: DatabaseSync, homeId: string, kind: "i
   const table = kind === "item" ? "items" : kind === "category" ? "item_categories" : "locations";
   const node = db.prepare(`SELECT * FROM ${table} WHERE id = ? AND home_id = ? AND active = 1`).get(id, homeId) as
     { name: string; base_unit?: string; parent_id?: string | null; default_location_id?: string | null } | undefined;
-  if (!node) throw new DeleteError(404, "对象不存在或已删除");
+  if (!node) throw new DeleteError(404, "error.deleteNotFound");
   const occurredAt = new Date().toISOString();
   const event = (item: { id: string; name: string }, type: string, reason: string, locationId: string | null = null, quantity: number | null = null) => {
     const eventId = randomUUID();
@@ -51,7 +55,7 @@ export function deleteInventoryEntity(db: DatabaseSync, homeId: string, kind: "i
       affectedItems = 1;
     } else {
       const parent = node.parent_id ? db.prepare(`SELECT id, name FROM ${table} WHERE id = ? AND home_id = ? AND active = 1`).get(node.parent_id, homeId) as { id: string; name: string } | undefined : undefined;
-      if (node.parent_id && !parent) throw new DeleteError(409, "上一级节点不存在，请先调整层级");
+      if (node.parent_id && !parent) throw new DeleteError(409, "error.deleteParentMissing");
       const stockRows = kind === "location" ? db.prepare("SELECT item_id AS itemId, SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END) AS quantity FROM stock_transactions WHERE home_id = ? AND location_id = ? GROUP BY item_id HAVING SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END) > 0").all(homeId, id) as { itemId: string; quantity: number }[] : [];
       const linkedItems = db.prepare(kind === "category"
         ? "SELECT id, name FROM items WHERE home_id = ? AND active = 1 AND category = ?"
@@ -101,7 +105,7 @@ export function deleteInventoryEntity(db: DatabaseSync, homeId: string, kind: "i
     return { id, deleted: true, affectedItems, destination };
   } catch (error) {
     db.exec("ROLLBACK");
-    if (String(error).includes("UNIQUE")) throw new DeleteError(409, "上一级存在同名节点或默认归属名称已被占用，请先重命名后再删除");
+    if (String(error).includes("UNIQUE")) throw new DeleteError(409, "error.deleteNameConflict");
     throw error;
   }
 }

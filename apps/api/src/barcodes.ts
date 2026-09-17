@@ -21,7 +21,7 @@ export function normalizeBarcode(raw:string) {
   const expected=digits.pop()!;
   let sum=0,weight=3;
   for(let index=digits.length-1;index>=0;index--){sum+=digits[index]*weight;weight=weight===3?1:3;}
-  if((10-sum%10)%10!==expected)throw new InventoryError(400,"INVALID_BARCODE_CHECKSUM","条码校验位不正确");
+  if((10-sum%10)%10!==expected)throw new InventoryError(400,"INVALID_BARCODE_CHECKSUM","error.invalidBarcodeChecksum");
   return barcode;
 }
 
@@ -88,7 +88,7 @@ export async function lookupBarcode(db:DatabaseSync,homeId:string,raw:string,fet
       // Try the next Open Facts database. Failed lookups are not cached.
     }
   }
-  if(completed!==providers.length)throw new InventoryError(503,"BARCODE_LOOKUP_UNAVAILABLE","在线条码数据库暂时不可用，请稍后重试");
+  if(completed!==providers.length)throw new InventoryError(503,"BARCODE_LOOKUP_UNAVAILABLE","error.barcodeLookupUnavailable");
   db.prepare("INSERT INTO barcode_catalog(barcode,found,fetched_at) VALUES (?,0,?) ON CONFLICT(barcode) DO UPDATE SET found=0,name=NULL,brand=NULL,category=NULL,base_unit=NULL,image_url=NULL,provider=NULL,fetched_at=excluded.fetched_at").run(barcode,new Date().toISOString());
   return {found:false,source:"online",barcode,product:null};
 }

@@ -22,14 +22,18 @@ import {
 import { openDatabase, seedShoppingChannels } from "@family-erp/db";
 import { handleMcpRequest } from "./mcp.js";
 import { deleteInventoryEntity, DeleteError } from "./inventory-delete.js";
+import { parseAcceptLanguage, sendCodeError, sendError } from "./i18n/index.js";
 
 export async function buildApp(db = openDatabase()) {
 const app = Fastify({ logger: process.env.NODE_ENV !== "test" });
+const localeOf = (request: { headers: Record<string, unknown> }) =>
+  parseAcceptLanguage(request.headers["accept-language"]);
 app.setErrorHandler((error, request, reply) => {
-  if (error instanceof z.ZodError) return reply.code(400).send({ code: "VALIDATION_ERROR", message: "参数格式不正确", details: error.flatten() });
-  if (error instanceof InventoryError) return reply.code(error.status).send({ code: error.code, message: error.message });
+  const locale = localeOf(request);
+  if (error instanceof z.ZodError) return sendError(reply,locale,400,{ code: "VALIDATION_ERROR", key: "error.validation", details: error.flatten() });
+  if (error instanceof InventoryError) return reply.code(error.status).send({ code: error.code, message: error.localized(locale) });
   request.log.error(error);
-  return reply.code(500).send({ code: "INTERNAL_ERROR", message: "操作失败，请稍后重试" });
+  return sendError(reply,locale,500,{ code: "INTERNAL_ERROR", key: "error.internal" });
 });
 const defaultCategories = [
   "食品",
@@ -123,10 +127,7 @@ function wouldCreateCycle(
 app.addHook("preHandler", async (request, reply) => {
   if (request.url.split("?")[0] === "/mcp") {
     if (!tokenUser(request))
-      return reply
-        .code(401)
-        .header("www-authenticate", "Bearer")
-        .send({ code: "INVALID_API_TOKEN" });
+      return sendCodeError(reply.header("www-authenticate", "Bearer"),localeOf(request),401,"INVALID_API_TOKEN","error.invalidApiToken");
     return;
   }
   const publicPath =
@@ -139,12 +140,12 @@ app.addHook("preHandler", async (request, reply) => {
   if (publicPath) return;
   if (sessionUser(request)) return;
   const token = request.url.startsWith("/api/v1/homes") ? tokenUser(request) : undefined;
-  if (!token) return reply.code(401).send({ code: "UNAUTHENTICATED" });
+  if (!token) return sendCodeError(reply,localeOf(request),401,"UNAUTHENTICATED","error.unauthenticated");
   const requestedHome = request.url.split("?")[0].match(/^\/api\/v1\/homes\/([^/]+)/)?.[1];
   if (token.homeId && requestedHome && requestedHome !== token.homeId)
-    return reply.code(403).send({ code: "HOME_SCOPE_FORBIDDEN", message: "该令牌不能访问其他家庭" });
+    return sendError(reply,localeOf(request),403,{ code: "HOME_SCOPE_FORBIDDEN", key: "error.homeScopeOther" });
   if (token.homeId && request.url.split("?")[0] === "/api/v1/homes" && request.method !== "GET")
-    return reply.code(403).send({ code: "HOME_SCOPE_FORBIDDEN", message: "家庭令牌不能创建其他家庭" });
+    return sendError(reply,localeOf(request),403,{ code: "HOME_SCOPE_FORBIDDEN", key: "error.homeScopeCreate" });
 });
 
 app.get("/api/v1/auth/tokens", async (request) => {
@@ -165,11 +166,11 @@ app.post<{ Body: unknown }>("/api/v1/auth/tokens", async (request, reply) => {
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const homeId = body.homeId === null ? null : typeof body.homeId === "string" ? body.homeId : undefined;
   if (!name || name.length > 80)
-    return reply.code(400).send({ code: "INVALID_TOKEN_NAME" });
+    return sendCodeError(reply,localeOf(request),400,"INVALID_TOKEN_NAME","error.invalidTokenName");
   if (homeId === undefined)
-    return reply.code(400).send({ code: "TOKEN_SCOPE_REQUIRED", message: "请选择令牌管理的家庭" });
+    return sendError(reply,localeOf(request),400,{ code: "TOKEN_SCOPE_REQUIRED", key: "error.tokenScopeRequired" });
   if (homeId && !db.prepare("SELECT 1 FROM homes WHERE id=? AND active=1").get(homeId))
-    return reply.code(400).send({ code: "HOME_NOT_FOUND", message: "所选家庭不存在" });
+    return sendError(reply,localeOf(request),400,{ code: "HOME_NOT_FOUND", key: "error.selectedHomeNotFound" });
   const token = `al1s_${randomBytes(32).toString("hex")}`;
   const id = randomUUID();
   const createdAt = new Date().toISOString();
@@ -199,28 +200,28 @@ app.delete<{ Params: { tokenId: string } }>(
       .run(new Date().toISOString(), request.params.tokenId, user.id);
     return result.changes
       ? { id: request.params.tokenId, revoked: true }
-      : reply.code(404).send({ code: "TOKEN_NOT_FOUND" });
+      : sendCodeError(reply,localeOf(request),404,"TOKEN_NOT_FOUND","error.tokenNotFound");
   },
 );
 
 app.get(
   "/api/v1/auth/me",
   async (request, reply) =>
-    sessionUser(request) ?? reply.code(401).send({ code: "UNAUTHENTICATED" }),
+    sessionUser(request) ?? sendCodeError(reply,localeOf(request),401,"UNAUTHENTICATED","error.unauthenticated"),
 );
 app.post<{Body:unknown}>("/api/v1/auth/password",async(request,reply)=>{
   const user=sessionUser(request) as {id:string}|undefined;
-  if(!user)return reply.code(401).send({code:"UNAUTHENTICATED"});
+  if(!user)return sendCodeError(reply,localeOf(request),401,"UNAUTHENTICATED","error.unauthenticated");
   const body=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
   const currentPassword=typeof body.currentPassword==="string"?body.currentPassword:"";
   const newPassword=typeof body.newPassword==="string"?body.newPassword:"";
   if(newPassword.length<8||newPassword.length>256)
-    return reply.code(400).send({code:"INVALID_NEW_PASSWORD",message:"新密码至少需要 8 个字符"});
+    return sendError(reply,localeOf(request),400,{code:"INVALID_NEW_PASSWORD",key:"error.invalidNewPassword"});
   const row=db.prepare("SELECT password_hash AS passwordHash FROM users WHERE id=?").get(user.id) as {passwordHash:string};
   if(!passwordMatches(currentPassword,row.passwordHash))
-    return reply.code(401).send({code:"INVALID_CURRENT_PASSWORD",message:"当前密码不正确"});
+    return sendError(reply,localeOf(request),401,{code:"INVALID_CURRENT_PASSWORD",key:"error.invalidCurrentPassword"});
   if(passwordMatches(newPassword,row.passwordHash))
-    return reply.code(400).send({code:"PASSWORD_UNCHANGED",message:"新密码不能与当前密码相同"});
+    return sendError(reply,localeOf(request),400,{code:"PASSWORD_UNCHANGED",key:"error.passwordUnchanged"});
   const salt=randomBytes(16).toString("hex");
   db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(`${salt}:${scryptSync(newPassword,salt,64).toString("hex")}`,user.id);
   return {changed:true};
@@ -237,13 +238,9 @@ app.post<{ Body: unknown }>("/api/v1/auth/login", async (request, reply) => {
     .prepare("SELECT id, password_hash FROM users WHERE username = ?")
     .get(username) as { id: string; password_hash: string } | undefined;
   if (!user)
-    return reply
-      .code(401)
-      .send({ code: "INVALID_CREDENTIALS", message: "用户名或密码错误" });
+    return sendError(reply,localeOf(request),401,{ code: "INVALID_CREDENTIALS", key: "error.invalidCredentials" });
   if (!passwordMatches(password,user.password_hash))
-    return reply
-      .code(401)
-      .send({ code: "INVALID_CREDENTIALS", message: "用户名或密码错误" });
+    return sendError(reply,localeOf(request),401,{ code: "INVALID_CREDENTIALS", key: "error.invalidCredentials" });
   setSession(reply, user.id);
   return { username };
 });
@@ -288,15 +285,12 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
     !homeName ||
     locationNames.length === 0
   )
-    return reply.code(400).send({
-      code: "SETUP_INVALID",
-      message: "账号、密码、家庭名称和至少一个地点不能为空",
-    });
+    return sendError(reply,localeOf(request),400,{ code: "SETUP_INVALID", key: "error.setupInvalid" });
   const complete = db
     .prepare("SELECT value FROM app_settings WHERE key = 'setup_complete'")
     .get() as { value: string } | undefined;
   if (complete?.value === "true")
-    return reply.code(409).send({ code: "SETUP_COMPLETE" });
+    return sendCodeError(reply,localeOf(request),409,"SETUP_COMPLETE","error.setupComplete");
   const homeId = randomUUID();
   const userId = randomUUID();
   const salt = randomBytes(16).toString("hex");
@@ -346,7 +340,7 @@ app.get("/api/v1/homes", async request => {
 app.post<{ Body: unknown }>("/api/v1/homes", async (request, reply) => {
   const body = request.body as { name?: unknown; icon?: unknown } | null;
   if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80 || typeof body.icon !== "string" || !["house", "building", "trees", "warehouse", "castle", "leaf", "star", "🏠", "🏡", "🏢", "🏘️", "🌿", "⭐"].includes(body.icon))
-    return reply.code(400).send({ message: "请填写家庭名称并选择图标" });
+    return sendError(reply,localeOf(request),400,{ key: "error.homeFields" });
   const home = { id: randomUUID(), name: body.name.trim(), icon: body.icon };
   db.exec("BEGIN");
   try {
@@ -361,9 +355,9 @@ app.post<{ Body: unknown }>("/api/v1/homes", async (request, reply) => {
 app.patch<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId", async (request, reply) => {
   const body = request.body as { name?: unknown; icon?: unknown } | null;
   if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80 || typeof body.icon !== "string" || !["house", "building", "trees", "warehouse", "castle", "leaf", "star", "🏠", "🏡", "🏢", "🏘️", "🌿", "⭐"].includes(body.icon))
-    return reply.code(400).send({ message: "请填写家庭名称并选择图标" });
+    return sendError(reply,localeOf(request),400,{ key: "error.homeFields" });
   const result = db.prepare("UPDATE homes SET name = ?, icon = ? WHERE id = ? AND active = 1").run(body.name.trim(), body.icon, request.params.homeId);
-  if (!result.changes) return reply.code(404).send({ message: "家庭不存在" });
+  if (!result.changes) return sendError(reply,localeOf(request),404,{ key: "error.homeNotFound" });
   return { id: request.params.homeId, name: body.name.trim(), icon: body.icon };
 });
 app.post("/api/v1/auth/logout", async (request, reply) => {
@@ -374,7 +368,7 @@ app.post("/api/v1/auth/logout", async (request, reply) => {
 });
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async request => listItems(db,request.params.homeId,request.query));
-app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/overview", async request => getHomeOverview(db,request.params.homeId,request.query));
+app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/overview", async request => getHomeOverview(db,request.params.homeId,request.query,localeOf(request)));
 app.get<{Params:{homeId:string;barcode:string}}>("/api/v1/homes/:homeId/barcodes/:barcode",async request=>lookupBarcode(db,request.params.homeId,request.params.barcode));
 
 app.get<{ Params: { homeId: string; itemId: string } }>(
@@ -385,7 +379,7 @@ app.get<{ Params: { homeId: string; itemId: string } }>(
         "SELECT items.icon, items.id, items.home_id AS homeId, items.sku, items.barcode, items.name, items.category, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1",
       )
       .get(request.params.homeId, request.params.itemId);
-    return item ?? reply.code(404).send({ code: "ITEM_NOT_FOUND" });
+    return item ?? sendCodeError(reply,localeOf(request),404,"ITEM_NOT_FOUND","error.itemNotFound");
   },
 );
 
@@ -396,11 +390,11 @@ app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:h
   const current=db.prepare("SELECT * FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as Record<string,any>;
   const columns:Record<string,string>={baseUnit:"base_unit",reorderPoint:"reorder_point",locationId:"default_location_id"};
   if(changes.barcode&&db.prepare("SELECT 1 FROM items WHERE home_id=? AND barcode=? AND id!=? AND active=1").get(homeId,changes.barcode,itemId))
-    throw new InventoryError(409,"BARCODE_EXISTS","该条码已关联其他物资");
+    throw new InventoryError(409,"BARCODE_EXISTS","error.barcodeExists");
   if(changes.baseUnit && changes.baseUnit!==current.base_unit && db.prepare("SELECT 1 FROM stock_transactions WHERE home_id=? AND item_id=? LIMIT 1").get(homeId,itemId))
-    throw new InventoryError(409,"UNIT_HAS_HISTORY","已有库存流水的物资暂不支持更改单位，避免改变历史数量含义");
+    throw new InventoryError(409,"UNIT_HAS_HISTORY","error.unitHasHistory");
   if(changes.locationId===null && db.prepare("SELECT 1 FROM stock_transactions WHERE home_id=? AND item_id=? GROUP BY item_id HAVING SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END)>0").get(homeId,itemId))
-    throw new InventoryError(409,"LOCATION_HAS_STOCK","仍有库存，不能清空地点；请选择新地点");
+    throw new InventoryError(409,"LOCATION_HAS_STOCK","error.locationHasStock");
   return atomic(db,()=>{
     const fields=Object.entries(changes).filter(([key,value])=>current[columns[key]??key]!==value);
     if(fields.length) db.prepare(`UPDATE items SET ${fields.map(([key])=>`${columns[key]??key}=?`).join(",")} WHERE id=? AND home_id=?`).run(...fields.map(([,value])=>value??null),itemId,homeId);
@@ -459,9 +453,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
     let name = typeof body.name === "string" ? body.name.trim() : "";
     const parentId = typeof body.parentId === "string" ? body.parentId : null;
     if (!name)
-      return reply
-        .code(400)
-        .send({ code: "VALIDATION_ERROR", message: "分类名称不能为空" });
+      return sendError(reply,localeOf(request),400,{ code: "VALIDATION_ERROR", key: "error.categoryNameRequired" });
     if (
       parentId &&
       !db
@@ -470,7 +462,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
         )
         .get(parentId, request.params.homeId)
     )
-      return reply.code(400).send({ code: "PARENT_CATEGORY_NOT_FOUND" });
+      return sendCodeError(reply,localeOf(request),400,"PARENT_CATEGORY_NOT_FOUND","error.parentCategoryNotFound");
     const id = randomUUID();
     try {
       db.prepare(
@@ -478,7 +470,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
       ).run(id, request.params.homeId, parentId, name);
     } catch (error) {
       if (String(error).includes("UNIQUE"))
-        return reply.code(409).send({ code: "CATEGORY_EXISTS" });
+        return sendCodeError(reply,localeOf(request),409,"CATEGORY_EXISTS","error.categoryExists");
       throw error;
     }
     return reply
@@ -502,7 +494,7 @@ app.patch<{ Params: { homeId: string; categoryId: string }; Body: unknown }>(
           ? body.parentId
           : undefined;
     if (!name || parentId === undefined)
-      return reply.code(400).send({ code: "VALIDATION_ERROR" });
+      return sendCodeError(reply,localeOf(request),400,"VALIDATION_ERROR","error.validation");
     if (
       !db
         .prepare(
@@ -510,7 +502,7 @@ app.patch<{ Params: { homeId: string; categoryId: string }; Body: unknown }>(
         )
         .get(request.params.categoryId, request.params.homeId)
     )
-      return reply.code(404).send({ code: "CATEGORY_NOT_FOUND" });
+      return sendCodeError(reply,localeOf(request),404,"CATEGORY_NOT_FOUND","error.categoryNotFound");
     const current = db
       .prepare("SELECT name FROM item_categories WHERE id = ? AND home_id = ?")
       .get(request.params.categoryId, request.params.homeId) as {
@@ -524,7 +516,7 @@ app.patch<{ Params: { homeId: string; categoryId: string }; Body: unknown }>(
         )
         .get(parentId, request.params.homeId)
     )
-      return reply.code(400).send({ code: "PARENT_CATEGORY_NOT_FOUND" });
+      return sendCodeError(reply,localeOf(request),400,"PARENT_CATEGORY_NOT_FOUND","error.parentCategoryNotFound");
     if (
       wouldCreateCycle(
         "item_categories",
@@ -533,7 +525,7 @@ app.patch<{ Params: { homeId: string; categoryId: string }; Body: unknown }>(
         request.params.homeId,
       )
     )
-      return reply.code(400).send({ code: "CATEGORY_CYCLE" });
+      return sendCodeError(reply,localeOf(request),400,"CATEGORY_CYCLE","error.categoryCycle");
     try {
       db.exec("BEGIN");
       db.prepare(
@@ -547,7 +539,7 @@ app.patch<{ Params: { homeId: string; categoryId: string }; Body: unknown }>(
     } catch (error) {
       db.exec("ROLLBACK");
       if (String(error).includes("UNIQUE"))
-        return reply.code(409).send({ code: "CATEGORY_EXISTS" });
+        return sendCodeError(reply,localeOf(request),409,"CATEGORY_EXISTS","error.categoryExists");
       throw error;
     }
     return { id: request.params.categoryId, parentId, name };
@@ -564,9 +556,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const parentId = typeof body.parentId === "string" ? body.parentId : null;
     if (!name)
-      return reply
-        .code(400)
-        .send({ code: "VALIDATION_ERROR", message: "地点名称不能为空" });
+      return sendError(reply,localeOf(request),400,{ code: "VALIDATION_ERROR", key: "error.locationNameRequired" });
     if (
       parentId &&
       !db
@@ -575,7 +565,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
         )
         .get(parentId, request.params.homeId)
     )
-      return reply.code(400).send({ code: "PARENT_LOCATION_NOT_FOUND" });
+      return sendCodeError(reply,localeOf(request),400,"PARENT_LOCATION_NOT_FOUND","error.parentLocationNotFound");
     const id = randomUUID();
     try {
       db.prepare(
@@ -583,7 +573,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
       ).run(id, request.params.homeId, parentId, name);
     } catch (error) {
       if (String(error).includes("UNIQUE"))
-        return reply.code(409).send({ code: "LOCATION_EXISTS" });
+        return sendCodeError(reply,localeOf(request),409,"LOCATION_EXISTS","error.locationExists");
       throw error;
     }
     return reply.code(201).send({
@@ -610,7 +600,7 @@ app.patch<{ Params: { homeId: string; locationId: string }; Body: unknown }>(
           ? body.parentId
           : undefined;
     if (!name || parentId === undefined)
-      return reply.code(400).send({ code: "VALIDATION_ERROR" });
+      return sendCodeError(reply,localeOf(request),400,"VALIDATION_ERROR","error.validation");
     if (
       !db
         .prepare(
@@ -618,7 +608,7 @@ app.patch<{ Params: { homeId: string; locationId: string }; Body: unknown }>(
         )
         .get(request.params.locationId, request.params.homeId)
     )
-      return reply.code(404).send({ code: "LOCATION_NOT_FOUND" });
+      return sendCodeError(reply,localeOf(request),404,"LOCATION_NOT_FOUND","error.locationNotFound");
     if (
       parentId &&
       !db
@@ -627,7 +617,7 @@ app.patch<{ Params: { homeId: string; locationId: string }; Body: unknown }>(
         )
         .get(parentId, request.params.homeId)
     )
-      return reply.code(400).send({ code: "PARENT_LOCATION_NOT_FOUND" });
+      return sendCodeError(reply,localeOf(request),400,"PARENT_LOCATION_NOT_FOUND","error.parentLocationNotFound");
     if (
       wouldCreateCycle(
         "locations",
@@ -636,14 +626,14 @@ app.patch<{ Params: { homeId: string; locationId: string }; Body: unknown }>(
         request.params.homeId,
       )
     )
-      return reply.code(400).send({ code: "LOCATION_CYCLE" });
+      return sendCodeError(reply,localeOf(request),400,"LOCATION_CYCLE","error.locationCycle");
     try {
       db.prepare(
         "UPDATE locations SET name = ?, parent_id = ? WHERE id = ? AND home_id = ?",
       ).run(name, parentId, request.params.locationId, request.params.homeId);
     } catch (error) {
       if (String(error).includes("UNIQUE"))
-        return reply.code(409).send({ code: "LOCATION_EXISTS" });
+        return sendCodeError(reply,localeOf(request),409,"LOCATION_EXISTS","error.locationExists");
       throw error;
     }
     return { id: request.params.locationId, parentId, name };
@@ -654,7 +644,7 @@ for (const [resource, kind] of [["items", "item"], ["categories", "category"], [
   app.delete<{ Params: { homeId: string; id: string } }>(`/api/v1/homes/:homeId/${resource}/:id`, async (request, reply) => {
     try { return deleteInventoryEntity(db, request.params.homeId, kind, request.params.id); }
     catch (error) {
-      if (error instanceof DeleteError) return reply.code(error.status).send({ message: error.message });
+      if (error instanceof DeleteError) return reply.code(error.status).send({ message: error.localized(localeOf(request)) });
       throw error;
     }
   });
@@ -669,7 +659,7 @@ app.patch<{Params:{homeId:string;batchId:string};Body:unknown}>("/api/v1/homes/:
   const input=z.object({label:z.string().trim().min(1).max(100).nullable().optional(),...batchDates}).strict().refine(value=>Object.keys(value).length>0).parse(request.body);
   const {homeId,batchId}=request.params;
   const current=db.prepare("SELECT * FROM stock_batches WHERE id=? AND home_id=?").get(batchId,homeId) as {item_id:string;label:string|null;manufactured_date:string|null;expiry_date:string|null}|undefined;
-  if(!current)throw new InventoryError(404,"BATCH_NOT_FOUND","批次不存在");
+  if(!current)throw new InventoryError(404,"BATCH_NOT_FOUND","error.batchNotFound");
   requireStockTarget(db,homeId,current.item_id);
   const manufactured=input.manufacturedDate===undefined?current.manufactured_date:input.manufacturedDate;
   const expiry=input.expiryDate===undefined?current.expiry_date:input.expiryDate;
@@ -694,27 +684,22 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
       homeId: request.params.homeId,
     });
     if (!parsed.success)
-      return reply
-        .code(400)
-        .send({ code: "VALIDATION_ERROR", details: parsed.error.flatten() });
+      return sendCodeError(reply,localeOf(request),400,"VALIDATION_ERROR","error.validation",parsed.error.flatten());
 
     if (
       !db
         .prepare("SELECT id FROM homes WHERE id = ?")
         .get(request.params.homeId)
     )
-      return reply.code(404).send({ code: "HOME_NOT_FOUND" });
+      return sendCodeError(reply,localeOf(request),404,"HOME_NOT_FOUND","error.homeNotFound");
     const id = randomUUID();
     const sku = parsed.data.sku || `ITEM-${id.slice(0, 8).toUpperCase()}`;
     const item: Item = { ...parsed.data,barcode:parsed.data.barcode?normalizeBarcode(parsed.data.barcode):null,id, sku, active: true };
     if(parsed.data.barcode&&db.prepare("SELECT 1 FROM items WHERE home_id=? AND barcode=? AND active=1").get(item.homeId,parsed.data.barcode))
-      throw new InventoryError(409,"BARCODE_EXISTS","该条码已关联其他物资");
+      throw new InventoryError(409,"BARCODE_EXISTS","error.barcodeExists");
     const locationId = parsed.data.locationId ?? null;
     if (parsed.data.initialStock > 0 && !locationId)
-      return reply.code(400).send({
-        code: "LOCATION_REQUIRED",
-        message: "有初始库存时必须指定地点",
-      });
+      return sendError(reply,localeOf(request),400,{ code: "LOCATION_REQUIRED", key: "error.initialLocationRequired" });
     if (
       locationId &&
       !db
@@ -723,7 +708,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
         )
         .get(locationId, request.params.homeId)
     )
-      return reply.code(400).send({ code: "LOCATION_NOT_FOUND" });
+      return sendCodeError(reply,localeOf(request),400,"LOCATION_NOT_FOUND","error.locationNotFound");
     db.exec("BEGIN");
     try {
       db.prepare(
@@ -758,7 +743,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
 );
 
 app.post<{Params:{homeId:string;type:string};Body:unknown}>("/api/v1/homes/:homeId/stock/:type",async(request,reply)=>{
-  if(request.params.type!=="receipt"&&request.params.type!=="issue")return reply.code(404).send({code:"NOT_FOUND"});
+  if(request.params.type!=="receipt"&&request.params.type!=="issue")return sendCodeError(reply,localeOf(request),404,"NOT_FOUND","error.notFound");
   return recordStock(db,request.params.homeId,request.params.type,request.body);
 });
 
@@ -784,18 +769,18 @@ app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-
   const input=z.object({name:z.string().trim().min(1).max(80)}).strict().parse(request.body),id=randomUUID();
   const order=(db.prepare("SELECT COALESCE(MAX(sort_order),-1)+1 AS value FROM shopping_channels WHERE home_id=?").get(request.params.homeId) as {value:number}).value;
   try{db.prepare("INSERT INTO shopping_channels(id,home_id,name,sort_order) VALUES (?,?,?,?)").run(id,request.params.homeId,input.name,order);}
-  catch(error){if(String(error).includes("UNIQUE"))return reply.code(409).send({code:"SHOPPING_CHANNEL_EXISTS",message:"购买渠道已存在"});throw error;}
+  catch(error){if(String(error).includes("UNIQUE"))return sendError(reply,localeOf(request),409,{code:"SHOPPING_CHANNEL_EXISTS",key:"error.shoppingChannelExists"});throw error;}
   return reply.code(201).send({id,name:input.name,isSystem:false,sortOrder:order});
 });
 app.patch<{Params:{homeId:string;channelId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-channels/:channelId",async(request,reply)=>{
   const input=z.object({name:z.string().trim().min(1).max(80)}).strict().parse(request.body);
-  try{const result=db.prepare("UPDATE shopping_channels SET name=? WHERE id=? AND home_id=? AND active=1").run(input.name,request.params.channelId,request.params.homeId);if(!result.changes)return reply.code(404).send({code:"SHOPPING_CHANNEL_NOT_FOUND"});}
-  catch(error){if(String(error).includes("UNIQUE"))return reply.code(409).send({code:"SHOPPING_CHANNEL_EXISTS",message:"购买渠道已存在"});throw error;}
+  try{const result=db.prepare("UPDATE shopping_channels SET name=? WHERE id=? AND home_id=? AND active=1").run(input.name,request.params.channelId,request.params.homeId);if(!result.changes)return sendCodeError(reply,localeOf(request),404,"SHOPPING_CHANNEL_NOT_FOUND","error.shoppingChannelNotFound");}
+  catch(error){if(String(error).includes("UNIQUE"))return sendError(reply,localeOf(request),409,{code:"SHOPPING_CHANNEL_EXISTS",key:"error.shoppingChannelExists"});throw error;}
   return {id:request.params.channelId,name:input.name};
 });
 app.delete<{Params:{homeId:string;channelId:string}}>("/api/v1/homes/:homeId/shopping-channels/:channelId",async(request,reply)=>{
   const result=db.prepare("UPDATE shopping_channels SET active=0 WHERE id=? AND home_id=? AND active=1").run(request.params.channelId,request.params.homeId);
-  return result.changes?{id:request.params.channelId,deleted:true}:reply.code(404).send({code:"SHOPPING_CHANNEL_NOT_FOUND"});
+  return result.changes?{id:request.params.channelId,deleted:true}:sendCodeError(reply,localeOf(request),404,"SHOPPING_CHANNEL_NOT_FOUND","error.shoppingChannelNotFound");
 });
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/shopping-calendar",async request=>{
   const input=z.object({month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),includeCompleted:z.enum(["true","false"]).default("false")}).strict().parse(request.query);
@@ -813,12 +798,20 @@ app.delete<{ Params: { homeId: string; shoppingId: string } }>(
       .run(request.params.shoppingId, request.params.homeId);
     return result.changes
       ? { id: request.params.shoppingId, deleted: true }
-      : reply.code(404).send({ code: "SHOPPING_ITEM_NOT_FOUND" });
+      : sendCodeError(reply,localeOf(request),404,"SHOPPING_ITEM_NOT_FOUND","error.shoppingItemNotFound");
   },
 );
 
 app.all("/mcp", async (request, reply) => handleMcpRequest(request, reply, async (method, url, body) => {
-  const response = await app.inject({ method, url, headers: { authorization: request.headers.authorization || "" }, payload: body });
+  const response = await app.inject({
+    method,
+    url,
+    headers: {
+      authorization: request.headers.authorization || "",
+      "accept-language": request.headers["accept-language"] || "",
+    },
+    payload: body,
+  });
   return { status: response.statusCode, body: response.json() };
 }, tokenUser(request)?.homeId??null));
 
@@ -832,7 +825,7 @@ if (existsSync(staticRoot)) {
       !request.url.startsWith("/mcp")
     )
       return reply.sendFile("index.html");
-    return reply.code(404).send({ code: "NOT_FOUND" });
+    return sendCodeError(reply,localeOf(request),404,"NOT_FOUND","error.notFound");
   });
 }
 

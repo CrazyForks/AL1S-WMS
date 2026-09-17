@@ -1,9 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
+import { renderTranslation, type Locale, type TranslationKey } from "./i18n/index.js";
 
 export class InventoryError extends Error {
-  constructor(public status: number, public code: string, message: string) { super(message); }
+  constructor(
+    public status: number,
+    public code: string,
+    public messageKey: TranslationKey,
+    public messageParams?: Record<string, unknown>,
+  ) {
+    super(renderTranslation("zh-CN", messageKey, messageParams));
+  }
+  localized(locale: Locale) {
+    return renderTranslation(locale, this.messageKey, this.messageParams);
+  }
 }
 export const batchDates = { manufacturedDate: z.string().date().nullable().optional(), expiryDate: z.string().date().nullable().optional() };
 export const stockInput = z.object({ itemId:z.string().uuid(),locationId:z.string().uuid(),quantity:z.number().positive().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),batchId:z.string().uuid().optional(),...batchDates }).strict();
@@ -21,11 +32,11 @@ export function atomic<T>(db:DatabaseSync, fn:()=>T):T {
   catch(error) { db.exec(`ROLLBACK TO ${key}; RELEASE ${key}`); throw error; }
 }
 export function validateDates(manufactured?:string|null, expiry?:string|null) {
-  if(manufactured && expiry && expiry < manufactured) throw new InventoryError(400,"INVALID_DATES","到期日期不能早于生产日期");
+  if(manufactured && expiry && expiry < manufactured) throw new InventoryError(400,"INVALID_DATES","error.invalidDates");
 }
 export function requireStockTarget(db:DatabaseSync,homeId:string,itemId:string,locationId?:string) {
-  if(!db.prepare("SELECT 1 FROM items WHERE id=? AND home_id=? AND active=1").get(itemId,homeId)) throw new InventoryError(404,"ITEM_NOT_FOUND","物资不存在或已删除");
-  if(locationId && !db.prepare("SELECT 1 FROM locations WHERE id=? AND home_id=? AND active=1").get(locationId,homeId)) throw new InventoryError(404,"LOCATION_NOT_FOUND","地点不存在或不属于当前家庭");
+  if(!db.prepare("SELECT 1 FROM items WHERE id=? AND home_id=? AND active=1").get(itemId,homeId)) throw new InventoryError(404,"ITEM_NOT_FOUND","error.itemNotFoundOrDeleted");
+  if(locationId && !db.prepare("SELECT 1 FROM locations WHERE id=? AND home_id=? AND active=1").get(locationId,homeId)) throw new InventoryError(404,"LOCATION_NOT_FOUND","error.locationNotInHome");
 }
 export function stockAt(db:DatabaseSync,homeId:string,itemId:string,locationId:string) {
   return (db.prepare("SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) AS quantity FROM stock_transactions WHERE home_id=? AND item_id=? AND location_id=?").get(homeId,itemId,locationId) as {quantity:number}).quantity;
@@ -49,7 +60,7 @@ export function refreshItemDates(db:DatabaseSync,homeId:string,itemId:string) {
 export function allocate(db:DatabaseSync,homeId:string,itemId:string,locationId:string,quantity:number,batchId?:string) {
   const rows=db.prepare(`SELECT * FROM (${batchBalanceQuery}) WHERE homeId=? AND itemId=? AND locationId=? AND quantity>0 ${batchId?"AND batchId=?":""} ORDER BY expiryDate IS NULL,expiryDate,receivedAt,batchId`).all(...[homeId,itemId,locationId,...(batchId?[batchId]:[])]) as BatchBalance[];
   const available=rows.reduce((sum,row)=>sum+row.quantity,0);
-  if(available+1e-9 < quantity) throw new InventoryError(409,"INSUFFICIENT_STOCK",`该地点${batchId?"的指定批次":""}库存不足，可用 ${available}`);
+  if(available+1e-9 < quantity) throw new InventoryError(409,"INSUFFICIENT_STOCK",batchId?"error.insufficientBatchStock":"error.insufficientStock",{available});
   let remaining=quantity;
   const parts:{batchId:string;quantity:number}[]=[];
   for(const row of rows) { const used=Math.min(row.quantity,remaining); if(used>1e-9) parts.push({batchId:row.batchId,quantity:used});remaining-=used; }
@@ -59,7 +70,7 @@ export function withStockOperation<T>(db:DatabaseSync,homeId:string,key:string,p
   return atomic(db,()=>{
     const serialized=JSON.stringify(payload);
     const previous=db.prepare("SELECT payload,response FROM stock_operations WHERE home_id=? AND idempotency_key=?").get(homeId,key) as {payload:string;response:string}|undefined;
-    if(previous) { if(previous.payload!==serialized) throw new InventoryError(409,"IDEMPOTENCY_CONFLICT","该操作编号已用于其他参数，请使用新的编号");return JSON.parse(previous.response) as T; }
+    if(previous) { if(previous.payload!==serialized) throw new InventoryError(409,"IDEMPOTENCY_CONFLICT","error.idempotencyConflict");return JSON.parse(previous.response) as T; }
     const result=fn();
     db.prepare("INSERT INTO stock_operations(home_id,idempotency_key,payload,response) VALUES (?,?,?,?)").run(homeId,key,serialized,JSON.stringify(result));
     return result;
@@ -72,8 +83,8 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
     requireStockTarget(db,homeId,itemId,locationId);
     const beforeQuantity=stockAt(db,homeId,itemId,locationId);
     validateDates(input.manufacturedDate,input.expiryDate);
-    if(type==="receipt" && input.batchId) throw new InventoryError(400,"NEW_BATCH_REQUIRED","每次入库创建独立批次，不可指定已有批次");
-    if(type==="issue" && (input.manufacturedDate!==undefined||input.expiryDate!==undefined)) throw new InventoryError(400,"INVALID_FIELDS","领用不能修改批次日期");
+    if(type==="receipt" && input.batchId) throw new InventoryError(400,"NEW_BATCH_REQUIRED","error.receiptExistingBatch");
+    if(type==="issue" && (input.manufacturedDate!==undefined||input.expiryDate!==undefined)) throw new InventoryError(400,"INVALID_FIELDS","error.issueBatchDates");
     let parts:{batchId:string;quantity:number}[];
     if(type==="receipt") {
       const batchId=randomUUID();
@@ -94,7 +105,7 @@ export function transferStock(db:DatabaseSync,homeId:string,raw:unknown) {
   const {itemId,sourceLocationId,targetLocationId,quantity,idempotencyKey,batchId}=input;
   return withStockOperation(db,homeId,idempotencyKey,{type:"transfer",...input},()=>{
     requireStockTarget(db,homeId,itemId,sourceLocationId); requireStockTarget(db,homeId,itemId,targetLocationId);
-    if(sourceLocationId===targetLocationId) throw new InventoryError(400,"SAME_LOCATION","调出和调入地点不能相同");
+    if(sourceLocationId===targetLocationId) throw new InventoryError(400,"SAME_LOCATION","error.sameLocation");
     const sourceBefore=stockAt(db,homeId,itemId,sourceLocationId),targetBefore=stockAt(db,homeId,itemId,targetLocationId);
     const parts=allocate(db,homeId,itemId,sourceLocationId,quantity,batchId);
     const source=db.prepare("SELECT name FROM locations WHERE id=?").get(sourceLocationId) as {name:string};
@@ -117,8 +128,8 @@ export function reconcileStock(db:DatabaseSync,homeId:string,raw:unknown) {
     const beforeQuantity=stockAt(db,homeId,input.itemId,input.locationId);
     const difference=input.countedQuantity-beforeQuantity;
     if(Math.abs(difference)<1e-9)return {homeId,itemId:input.itemId,locationId:input.locationId,beforeQuantity,afterQuantity:beforeQuantity,difference:0,action:"none",transactions:[]};
-    if(difference>0&&input.batchId)throw new InventoryError(400,"NEW_BATCH_REQUIRED","盘盈会创建新批次，不能指定已有批次");
-    if(difference<0&&(input.manufacturedDate!==undefined||input.expiryDate!==undefined))throw new InventoryError(400,"INVALID_FIELDS","盘亏不能修改批次日期");
+    if(difference>0&&input.batchId)throw new InventoryError(400,"NEW_BATCH_REQUIRED","error.reconcileGainBatch");
+    if(difference<0&&(input.manufacturedDate!==undefined||input.expiryDate!==undefined))throw new InventoryError(400,"INVALID_FIELDS","error.reconcileLossDates");
     const action=difference>0?"receipt":"issue";
     const result=recordStock(db,homeId,action,{
       itemId:input.itemId,locationId:input.locationId,quantity:Math.abs(difference),

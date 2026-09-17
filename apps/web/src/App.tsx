@@ -1,9 +1,19 @@
 import { MaterialIcon, IconPicker, itemIconFor } from "./Icons.js";
+import i18n, { localeForDates, setLocale, type Locale } from "./i18n/index.js";
+import { apiFetch } from "./i18n/apiFetch.js";
+const t = i18n.t.bind(i18n);
 import { BatchFields } from "./BatchFields.js";
 import { Batches, BatchSelect } from "./Batches.js";
 import { BarcodeScanner } from "./BarcodeScanner.js";
 import { ItemCombobox } from "./ItemCombobox.js";
-import { type CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,11 +33,22 @@ import {
   X,
 } from "lucide-react";
 
-const pagePaths = { home: "/", count: "/count", shopping: "/shopping", locations: "/locations", categories: "/categories", profile: "/profile" } as const;
+const pagePaths = {
+  home: "/",
+  count: "/count",
+  shopping: "/shopping",
+  locations: "/locations",
+  categories: "/categories",
+  profile: "/profile",
+} as const;
 type Page = keyof typeof pagePaths;
 function pageFromUrl(): Page {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  return (Object.keys(pagePaths) as Page[]).find(page => pagePaths[page] === path) ?? "home";
+  return (
+    (Object.keys(pagePaths) as Page[]).find(
+      (page) => pagePaths[page] === path,
+    ) ?? "home"
+  );
 }
 
 type Item = {
@@ -47,6 +68,7 @@ type Item = {
   manufacturedDate?: string | null;
   expiryDate?: string | null;
 };
+type LocationScopedItem=Item&{treeQuantity?:number};
 type Stock = { itemId: string; locationId: string; quantity: number };
 type Location = {
   id: string;
@@ -72,18 +94,70 @@ type Transaction = {
   occurredAt: string;
   batchId?: string | null;
 };
-type TransactionPage = {items:Transaction[];total:number;limit:number;offset:number;hasMore:boolean;nextOffset:number|null;snapshotAt:string};
+type TransactionPage = {
+  items: Transaction[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+  snapshotAt: string;
+};
 function TransactionRow({ transaction }: { transaction: Transaction }) {
-  const labels = { receipt: "入库", issue: "领用", delete: "删除", reclassify: "分类变更", move: "位置变更", update: "批次变更" };
-  const stockChange = transaction.type === "receipt" || transaction.type === "issue";
-  return <div className="log-row">
-    <span className={`log-badge ${transaction.type}`} title={labels[transaction.type]}>
-      {transaction.type === "delete" ? <Trash2 size={14} /> : stockChange ? (transaction.type === "receipt" ? "+" : "−") : <ArrowRight size={14} />}
-    </span>
-    <div><strong>{transaction.itemName}</strong><small>{[transaction.locationName, transaction.reason || labels[transaction.type]].filter(Boolean).join(" · ")}</small></div>
-    <b className={transaction.type}>{stockChange ? `${transaction.type === "receipt" ? "+" : "−"}${transaction.quantity}` : labels[transaction.type]}</b>
-    <time>{new Date(transaction.occurredAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time>
-  </div>;
+  const labels = {
+    receipt: t("入库"),
+    issue: t("领用"),
+    delete: t("删除"),
+    reclassify: t("分类变更"),
+    move: t("位置变更"),
+    update: t("批次变更"),
+  };
+  const stockChange =
+    transaction.type === "receipt" || transaction.type === "issue";
+  return (
+    <div className="log-row">
+      <span
+        className={`log-badge ${transaction.type}`}
+        title={labels[transaction.type]}
+      >
+        {transaction.type === "delete" ? (
+          <Trash2 size={14} />
+        ) : stockChange ? (
+          transaction.type === "receipt" ? (
+            "+"
+          ) : (
+            "−"
+          )
+        ) : (
+          <ArrowRight size={14} />
+        )}
+      </span>
+      <div>
+        <strong>{transaction.itemName}</strong>
+        <small>
+          {[
+            transaction.locationName,
+            transaction.reason || labels[transaction.type],
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </small>
+      </div>
+      <b className={transaction.type}>
+        {stockChange
+          ? `${transaction.type === "receipt" ? "+" : "−"}${transaction.quantity}`
+          : labels[transaction.type]}
+      </b>
+      <time>
+        {new Date(transaction.occurredAt).toLocaleString(localeForDates(), {
+          month: "numeric",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+      </time>
+    </div>
+  );
 }
 type ShoppingItem = {
   id: string;
@@ -99,7 +173,12 @@ type ShoppingItem = {
   source: "manual" | "automatic";
   completed: number;
 };
-type ShoppingChannel={id:string;name:string;isSystem:boolean;sortOrder:number};
+type ShoppingChannel = {
+  id: string;
+  name: string;
+  isSystem: boolean;
+  sortOrder: number;
+};
 type ApiToken = {
   id: string;
   name: string;
@@ -128,11 +207,7 @@ function flattenHierarchy<
 
 function summarizeHierarchy<
   T extends { id: string; name: string; parentId: string | null },
->(
-  nodes: T[],
-  items: Item[],
-  matches: (item: Item, node: T) => boolean,
-) {
+>(nodes: T[], items: Item[], matches: (item: Item, node: T) => boolean) {
   return flattenHierarchy(nodes)
     .map((node) => {
       const branchIds = new Set([node.id]);
@@ -183,46 +258,59 @@ const newIdempotencyKey = () =>
   globalThis.crypto?.randomUUID?.() ??
   `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 function BrandWordmark() {
-  return <strong className="brand-wordmark"><b>AL</b><i>1</i><b>S</b><small>ERP</small></strong>;
+  return (
+    <strong className="brand-wordmark">
+      <b>AL</b>
+      <i>1</i>
+      <b>S</b>
+      <small>ERP</small>
+    </strong>
+  );
 }
 async function getItems() {
-  const response = await fetch(`/api/v1/homes/${getHomeId()}/items`);
-  if (!response.ok) throw new Error("无法加载物资");
+  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/items`);
+  if (!response.ok) throw new Error(t("无法加载物资"));
   return response.json() as Promise<Item[]>;
 }
 async function getStock() {
-  const response = await fetch(`/api/v1/homes/${getHomeId()}/stock`);
-  if (!response.ok) throw new Error("无法加载库存");
+  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/stock`);
+  if (!response.ok) throw new Error(t("无法加载库存"));
   return response.json() as Promise<Stock[]>;
 }
 async function getLocations() {
-  const response = await fetch(`/api/v1/homes/${getHomeId()}/locations`);
-  if (!response.ok) throw new Error("无法加载地点");
+  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/locations`);
+  if (!response.ok) throw new Error(t("无法加载地点"));
   return response.json() as Promise<Location[]>;
 }
 async function getTransactions(page = 1, snapshotAt = "") {
-  const response = await fetch(`/api/v1/homes/${getHomeId()}/transactions?limit=10&offset=${(page-1)*10}${snapshotAt?`&snapshotAt=${encodeURIComponent(snapshotAt)}`:""}`);
-  if (!response.ok) throw new Error("无法加载变动记录");
+  const response = await apiFetch(
+    `/api/v1/homes/${getHomeId()}/transactions?limit=10&offset=${(page - 1) * 10}${snapshotAt ? `&snapshotAt=${encodeURIComponent(snapshotAt)}` : ""}`,
+  );
+  if (!response.ok) throw new Error(t("无法加载变动记录"));
   return response.json() as Promise<TransactionPage>;
 }
 async function getShoppingList() {
-  const response = await fetch(`/api/v1/homes/${getHomeId()}/shopping-list`);
-  if (!response.ok) throw new Error("无法加载采购清单");
+  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/shopping-list`);
+  if (!response.ok) throw new Error(t("无法加载采购清单"));
   return response.json() as Promise<ShoppingItem[]>;
 }
 async function getShoppingChannels() {
-  const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-channels`);
-  if(!response.ok)throw new Error("无法加载购买渠道");
+  const response = await apiFetch(
+    `/api/v1/homes/${getHomeId()}/shopping-channels`,
+  );
+  if (!response.ok) throw new Error(t("无法加载购买渠道"));
   return response.json() as Promise<ShoppingChannel[]>;
 }
-async function getShoppingCalendar(month:string,includeCompleted=false) {
-  const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-calendar?month=${month}&includeCompleted=${includeCompleted}`);
-  if(!response.ok)throw new Error("无法加载采购日历");
+async function getShoppingCalendar(month: string, includeCompleted = false) {
+  const response = await apiFetch(
+    `/api/v1/homes/${getHomeId()}/shopping-calendar?month=${month}&includeCompleted=${includeCompleted}`,
+  );
+  if (!response.ok) throw new Error(t("无法加载采购日历"));
   return response.json() as Promise<ShoppingItem[]>;
 }
 async function getCategories() {
-  const response = await fetch(`/api/v1/homes/${getHomeId()}/categories`);
-  if (!response.ok) throw new Error("无法加载物资类型");
+  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/categories`);
+  if (!response.ok) throw new Error(t("无法加载物资类型"));
   return response.json() as Promise<Category[]>;
 }
 
@@ -255,7 +343,7 @@ function Setup({
     }
     setBusy(true);
     setError("");
-    const response = await fetch("/api/v1/setup", {
+    const response = await apiFetch("/api/v1/setup", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -270,7 +358,7 @@ function Setup({
     const data = await response.json();
     setBusy(false);
     if (!response.ok) {
-      setError(data.message ?? "初始化失败，请检查输入");
+      setError(data.message ?? t("初始化失败，请检查输入"));
       return;
     }
     localStorage.setItem("family-erp-home-id", data.home.id);
@@ -284,25 +372,25 @@ function Setup({
           <img className="setup-mascot" src="/alice.gif" alt="Alice" />
           <div>
             <BrandWordmark />
-            <span>首次启动设置</span>
+            <span>{t("首次启动设置")}</span>
           </div>
         </div>
         <div className="setup-progress">
-          <span className={step >= 1 ? "active" : ""}>1 账号</span>
+          <span className={step >= 1 ? "active" : ""}>{t("1 账号")}</span>
           <i />
-          <span className={step >= 2 ? "active" : ""}>2 家庭</span>
+          <span className={step >= 2 ? "active" : ""}>{t("2 家庭")}</span>
           <i />
-          <span className={step >= 3 ? "active" : ""}>3 地点</span>
+          <span className={step >= 3 ? "active" : ""}>{t("3 地点")}</span>
         </div>
         {step === 1 && (
           <div className="setup-step">
-            <p className="eyebrow">建立本地管理员</p>
-            <h1>先创建你的账号</h1>
+            <p className="eyebrow">{t("建立本地管理员")}</p>
+            <h1>{t("先创建你的账号")}</h1>
             <p className="muted">
-              账号只保存在这台 AL1S ERP 中，用于管理成员和敏感操作。
+              {t("账号只保存在这台 AL1S ERP 中，用于管理成员和敏感操作。")}
             </p>
             <label>
-              用户名
+              {t("用户名")}
               <input
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
@@ -310,7 +398,7 @@ function Setup({
               />
             </label>
             <label>
-              密码
+              {t("密码")}
               <input
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -321,37 +409,39 @@ function Setup({
         )}
         {step === 2 && (
           <div className="setup-step">
-            <p className="eyebrow">建立你的 Home</p>
-            <h1>这个家庭怎么称呼？</h1>
-            <p className="muted">Home 是物资、成员、地点和预算的共同边界。</p>
+            <p className="eyebrow">{t("建立你的 Home")}</p>
+            <h1>{t("这个家庭怎么称呼？")}</h1>
+            <p className="muted">
+              {t("Home 是物资、成员、地点和预算的共同边界。")}
+            </p>
             <label>
-              家庭名称
+              {t("家庭名称")}
               <input
                 value={homeName}
                 onChange={(event) => setHomeName(event.target.value)}
-                placeholder="例如：我们家"
+                placeholder={t("例如：我们家")}
                 autoFocus
               />
             </label>
             <IconPicker home initial={homeEmoji} onChange={setHomeEmoji} />
             <label>
-              默认货币
+              {t("默认货币")}
               <select
                 value={currency}
                 onChange={(event) => setCurrency(event.target.value)}
               >
-                <option value="CNY">人民币（CNY）</option>
-                <option value="USD">美元（USD）</option>
+                <option value="CNY">{t("人民币（CNY）")}</option>
+                <option value="USD">{t("美元（USD）")}</option>
               </select>
             </label>
           </div>
         )}
         {step === 3 && (
           <div className="setup-step">
-            <p className="eyebrow">整理空间</p>
-            <h1>先添加几个存放地点</h1>
+            <p className="eyebrow">{t("整理空间")}</p>
+            <h1>{t("先添加几个存放地点")}</h1>
             <p className="muted">
-              之后可以继续增加。地点帮助你知道物资放在哪里。
+              {t("之后可以继续增加。地点帮助你知道物资放在哪里。")}
             </p>
             <div className="location-inputs">
               {locations.map((name, index) => (
@@ -365,14 +455,14 @@ function Setup({
                         ),
                       )
                     }
-                    placeholder="例如：储物间"
+                    placeholder={t("例如：储物间")}
                   />
                   <button
                     type="button"
                     onClick={() =>
                       setLocations(locations.filter((_, i) => i !== index))
                     }
-                    aria-label="删除地点"
+                    aria-label={t("删除地点")}
                   >
                     ×
                   </button>
@@ -384,7 +474,7 @@ function Setup({
               type="button"
               onClick={() => setLocations([...locations, ""])}
             >
-              ＋ 添加另一个地点
+              {t("＋ 添加另一个地点")}
             </button>
           </div>
         )}
@@ -392,7 +482,7 @@ function Setup({
         <div className="setup-footer">
           {step > 1 ? (
             <button className="secondary" onClick={() => setStep(step - 1)}>
-              上一步
+              {t("上一步")}
             </button>
           ) : (
             <span />
@@ -403,10 +493,10 @@ function Setup({
             onClick={submit}
           >
             {busy
-              ? "创建中…"
+              ? t("创建中…")
               : step === 3
-                ? "完成设置，进入 Dashboard"
-                : "继续"}
+                ? t("完成设置，进入 Dashboard")
+                : t("继续")}
           </button>
         </div>
       </div>
@@ -423,7 +513,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const response = await fetch("/api/v1/auth/login", {
+    const response = await apiFetch("/api/v1/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ username, password }),
@@ -431,7 +521,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
     const data = await response.json();
     setBusy(false);
     if (!response.ok) {
-      setError(data.message ?? "登录失败");
+      setError(data.message ?? t("登录失败"));
       return;
     }
     onLogin();
@@ -446,11 +536,11 @@ function Login({ onLogin }: { onLogin: () => void }) {
           </div>
         </div>
         <div className="setup-step">
-          <p className="eyebrow">欢迎回来</p>
-          <h1>登录</h1>
-          <p className="muted">使用初始化时创建的管理员账号继续。</p>
+          <p className="eyebrow">{t("欢迎回来")}</p>
+          <h1>{t("登录")}</h1>
+          <p className="muted">{t("使用初始化时创建的管理员账号继续。")}</p>
           <label>
-            用户名
+            {t("用户名")}
             <input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
@@ -458,7 +548,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
             />
           </label>
           <label>
-            密码
+            {t("密码")}
             <input
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -468,7 +558,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         </div>
         {error && <div className="setup-error">{error}</div>}
         <button className="primary full" disabled={busy}>
-          {busy ? "登录中…" : "登录"}
+          {busy ? t("登录中…") : t("登录")}
         </button>
       </form>
     </div>
@@ -476,21 +566,33 @@ function Login({ onLogin }: { onLogin: () => void }) {
 }
 
 export function App() {
+  const { i18n: activeI18n } = useTranslation();
   const [setup, setSetup] = useState<{
     complete: boolean;
     home?: { id: string; name: string; icon?: string };
   } | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
-  const [homes, setHomes] = useState<{ id: string; name: string; icon?: string }[]>([]);
+  const [homes, setHomes] = useState<
+    { id: string; name: string; icon?: string }[]
+  >([]);
   const [homeNotice, setHomeNotice] = useState("");
   const [passwordNotice, setPasswordNotice] = useState("");
-  const [editingHome, setEditingHome] = useState<{ id: string; name: string; icon?: string } | null>(null);
+  const [editingHome, setEditingHome] = useState<{
+    id: string;
+    name: string;
+    icon?: string;
+  } | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [stock, setStock] = useState<Stock[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<{ kind: "item" | "category" | "location"; id: string; name: string; message: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    kind: "item" | "category" | "location";
+    id: string;
+    name: string;
+    message: string;
+  } | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -509,13 +611,13 @@ export function App() {
   const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [prefillLocationId, setPrefillLocationId] = useState("");
   const [prefillCategory, setPrefillCategory] = useState("");
-  const [prefillName,setPrefillName]=useState("");
-  const [prefillUnit,setPrefillUnit]=useState("个");
-  const [barcodeInput,setBarcodeInput]=useState("");
-  const [barcodeBusy,setBarcodeBusy]=useState(false);
-  const [barcodeNotice,setBarcodeNotice]=useState("");
-  const [showBarcodeScanner,setShowBarcodeScanner]=useState(false);
-  const [itemFormRevision,setItemFormRevision]=useState(0);
+  const [prefillName, setPrefillName] = useState("");
+  const [prefillUnit, setPrefillUnit] = useState("个");
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
+  const [barcodeNotice, setBarcodeNotice] = useState("");
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [itemFormRevision, setItemFormRevision] = useState(0);
   const [categoryName, setCategoryName] = useState("");
   const [categoryParent, setCategoryParent] = useState("");
   const [locationName, setLocationName] = useState("");
@@ -527,9 +629,9 @@ export function App() {
     parentId: string | null;
   } | null>(null);
   const [transactionPage, setTransactionPage] = useState(1);
-  const [transactionTotal,setTransactionTotal]=useState(0);
-  const [transactionSnapshot,setTransactionSnapshot]=useState("");
-  const [batchItem,setBatchItem]=useState<Item|null>(null);
+  const [transactionTotal, setTransactionTotal] = useState(0);
+  const [transactionSnapshot, setTransactionSnapshot] = useState("");
+  const [batchItem, setBatchItem] = useState<Item | null>(null);
   const [activePage, setActivePage] = useState<Page>(pageFromUrl);
   const countView = activePage === "locations" || activePage === "categories";
   const treeMode = activePage === "categories" ? "category" : "location";
@@ -540,12 +642,17 @@ export function App() {
   >({});
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
-  const [shoppingChannels,setShoppingChannels]=useState<ShoppingChannel[]>([]);
-  const [shoppingMonth,setShoppingMonth]=useState(()=>new Date().toISOString().slice(0,7));
-  const [calendarItems,setCalendarItems]=useState<ShoppingItem[]>([]);
-  const [calendarIncludeCompleted,setCalendarIncludeCompleted]=useState(false);
-  const [selectedShoppingDate,setSelectedShoppingDate]=useState("");
-  const [newChannelName,setNewChannelName]=useState("");
+  const [shoppingChannels, setShoppingChannels] = useState<ShoppingChannel[]>(
+    [],
+  );
+  const [shoppingMonth, setShoppingMonth] = useState(() =>
+    new Date().toISOString().slice(0, 7),
+  );
+  const [calendarItems, setCalendarItems] = useState<ShoppingItem[]>([]);
+  const [calendarIncludeCompleted, setCalendarIncludeCompleted] =
+    useState(false);
+  const [selectedShoppingDate, setSelectedShoppingDate] = useState("");
+  const [newChannelName, setNewChannelName] = useState("");
   const [showShoppingForm, setShowShoppingForm] = useState(false);
   const [shoppingItemId, setShoppingItemId] = useState("");
   const [editShoppingItemId, setEditShoppingItemId] = useState("");
@@ -592,7 +699,9 @@ export function App() {
   const linkedEditShoppingItem = items.find(
     (item) => item.id === editShoppingItemId,
   );
-  const shoppingChannelName=(item:ShoppingItem)=>shoppingChannels.find(channel=>channel.id===item.channelId)?.name||"未指定";
+  const shoppingChannelName = (item: ShoppingItem) =>
+    shoppingChannels.find((channel) => channel.id === item.channelId)?.name ||
+    t("未指定");
   const transactionPageCount = Math.max(1, Math.ceil(transactionTotal / 10));
   const pagedTransactions = transactions;
   useEffect(() => {
@@ -601,17 +710,27 @@ export function App() {
   }, [transactionPage, transactionPageCount]);
   useEffect(() => {
     if (!authenticated) return;
-    getTransactions(transactionPage,transactionPage===1?"":transactionSnapshot).then(next=>{
-      setTransactions(next.items);setTransactionTotal(next.total);if(transactionPage===1)setTransactionSnapshot(next.snapshotAt);
-    }).catch(error=>setNotice(error.message));
-  },[transactionPage]);
+    getTransactions(
+      transactionPage,
+      transactionPage === 1 ? "" : transactionSnapshot,
+    )
+      .then((next) => {
+        setTransactions(next.items);
+        setTransactionTotal(next.total);
+        if (transactionPage === 1) setTransactionSnapshot(next.snapshotAt);
+      })
+      .catch((error) => setNotice(error.message));
+  }, [transactionPage]);
 
   const load = () =>
     Promise.all([
       getItems(),
       getStock(),
       getLocations(),
-      getTransactions(transactionPage,transactionPage===1?"":transactionSnapshot),
+      getTransactions(
+        transactionPage,
+        transactionPage === 1 ? "" : transactionSnapshot,
+      ),
       getShoppingList(),
       getCategories(),
       getShoppingChannels(),
@@ -631,24 +750,27 @@ export function App() {
           setLocations(nextLocations);
           setTransactions(nextTransactions.items);
           setTransactionTotal(nextTransactions.total);
-          if(transactionPage===1)setTransactionSnapshot(nextTransactions.snapshotAt);
+          if (transactionPage === 1)
+            setTransactionSnapshot(nextTransactions.snapshotAt);
           setShoppingList(nextShoppingList);
           setCategories(nextCategories);
           setShoppingChannels(nextShoppingChannels);
         },
       )
       .catch((error) => setNotice(error.message));
-  useEffect(()=>{
-    if(!authenticated)return;
-    getShoppingCalendar(shoppingMonth,calendarIncludeCompleted).then(setCalendarItems).catch(error=>setNotice(error.message));
-  },[authenticated,shoppingMonth,calendarIncludeCompleted,shoppingList]);
   useEffect(() => {
-    fetch("/api/v1/setup/status")
+    if (!authenticated) return;
+    getShoppingCalendar(shoppingMonth, calendarIncludeCompleted)
+      .then(setCalendarItems)
+      .catch((error) => setNotice(error.message));
+  }, [authenticated, shoppingMonth, calendarIncludeCompleted, shoppingList]);
+  useEffect(() => {
+    apiFetch("/api/v1/setup/status")
       .then((response) => response.json())
       .then((data) => {
         setSetup(data);
         if (data.complete)
-          fetch("/api/v1/auth/me").then((response) =>
+          apiFetch("/api/v1/auth/me").then((response) =>
             setAuthenticated(response.ok),
           );
       })
@@ -656,22 +778,34 @@ export function App() {
   }, []);
   useEffect(() => {
     if (!authenticated) return;
-    fetch("/api/v1/homes").then(async response => {
-      if (!response.ok) throw new Error("无法加载家庭列表");
-      const available = await response.json() as typeof homes;
-      const current = available.find(home => home.id === getHomeId()) ?? available[0];
-      setHomes(available);
-      if (current) {
-        localStorage.setItem("family-erp-home-id", current.id);
-        setSetup({ complete: true, home: current });
-        await load();
-      }
-    }).catch(error => setNotice(error.message));
+    apiFetch("/api/v1/homes")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(t("无法加载家庭列表"));
+        const available = (await response.json()) as typeof homes;
+        const current =
+          available.find((home) => home.id === getHomeId()) ?? available[0];
+        setHomes(available);
+        if (current) {
+          localStorage.setItem("family-erp-home-id", current.id);
+          setSetup({ complete: true, home: current });
+          await load();
+        }
+      })
+      .catch((error) => setNotice(error.message));
   }, [authenticated]);
   const balanceFor = (itemId: string) =>
     stock
       .filter((row) => row.itemId === itemId)
       .reduce((total, row) => total + row.quantity, 0);
+  const locationScopedItems=useMemo(()=>items.flatMap(item=>{
+    const balances=stock.filter(row=>row.itemId===item.id&&row.quantity>1e-9);
+    if(balances.length)return balances.map(row=>({
+      ...item,locationId:row.locationId,
+      locationName:locations.find(location=>location.id===row.locationId)?.name??"未指定",
+      treeQuantity:row.quantity,
+    }));
+    return [{...item,treeQuantity:0}];
+  }),[items,stock,locations]);
   const replenishmentFor = (item: Item) =>
     Math.max(item.reorderPoint - balanceFor(item.id), 0);
   const stockStatusFor = (item: Item) => {
@@ -680,32 +814,30 @@ export function App() {
     if (difference < 0)
       return {
         level: "low",
-        label: "不足",
+        label: t("不足"),
         priority: 0,
       };
     if (quantity === 0)
-      return { level: "empty", label: "缺货", priority: 2 };
+      return { level: "empty", label: t("缺货"), priority: 2 };
     if (difference === 0)
-      return { level: "warning", label: "临界", priority: 1 };
-    return { level: "normal", label: "正常", priority: 3 };
+      return { level: "warning", label: t("临界"), priority: 1 };
+    return { level: "normal", label: t("正常"), priority: 3 };
   };
   const expiryStatusFor = (item: Item) => {
-    if (!item.expiryDate) return { level: "none", label: "未设" };
+    if (!item.expiryDate) return { level: "none", label: t("未设") };
     const today = new Date().toISOString().slice(0, 10);
     const threshold = new Date(Date.now() + 30 * 86400000)
       .toISOString()
       .slice(0, 10);
-    if (item.expiryDate < today) return { level: "expired", label: "过期" };
+    if (item.expiryDate < today) return { level: "expired", label: t("过期") };
     if (item.expiryDate <= threshold)
-      return { level: "expiring", label: "临期" };
-    return { level: "valid", label: "有效" };
+      return { level: "expiring", label: t("临期") };
+    return { level: "valid", label: t("有效") };
   };
   const displayStatusFor = (item: Item) => {
     const expiry = expiryStatusFor(item);
-    if (expiry.level === "expired")
-      return { ...expiry, priority: -2 };
-    if (expiry.level === "expiring")
-      return { ...expiry, priority: -1 };
+    if (expiry.level === "expired") return { ...expiry, priority: -2 };
+    if (expiry.level === "expiring") return { ...expiry, priority: -1 };
     return stockStatusFor(item);
   };
   const locationScopeIds = useMemo(() => {
@@ -756,48 +888,52 @@ export function App() {
   }, [categories, categoryFilter]);
   const filtered = useMemo(
     () =>
-      items.filter((item) => {
-        if (
-          !`${item.name} ${item.sku}`
-            .toLowerCase()
-            .includes(query.toLowerCase())
-        )
-          return false;
-        if (
-          locationScopeIds &&
-          (!item.locationId || !locationScopeIds.has(item.locationId))
-        )
-          return false;
-        if (categoryScopeNames && !categoryScopeNames.has(item.category))
-          return false;
-        if (
-          stockStatusFilter === "replenishment" &&
-          replenishmentFor(item) <= 0
-        )
-          return false;
-        if (
-          stockStatusFilter &&
-          stockStatusFilter !== "replenishment" &&
-          stockStatusFor(item).level !== stockStatusFilter
-        )
-          return false;
-        if (expiryFilter && expiryStatusFor(item).level !== expiryFilter)
-          return false;
-        return true;
-      }).sort(
-        (left, right) =>
-          displayStatusFor(left).priority - displayStatusFor(right).priority ||
-          replenishmentFor(right) - replenishmentFor(left) ||
-          left.name.localeCompare(right.name, "zh-CN"),
-      ),
+      locationScopedItems
+        .filter((item) => {
+          if (
+            !`${item.name} ${item.sku}`
+              .toLowerCase()
+              .includes(query.toLowerCase())
+          )
+            return false;
+          if (
+            locationScopeIds &&
+            (!item.locationId || !locationScopeIds.has(item.locationId))
+          )
+            return false;
+          if (categoryScopeNames && !categoryScopeNames.has(item.category))
+            return false;
+          if (
+            stockStatusFilter === "replenishment" &&
+            replenishmentFor(item) <= 0
+          )
+            return false;
+          if (
+            stockStatusFilter &&
+            stockStatusFilter !== "replenishment" &&
+            stockStatusFor(item).level !== stockStatusFilter
+          )
+            return false;
+          if (expiryFilter && expiryStatusFor(item).level !== expiryFilter)
+            return false;
+          return true;
+        })
+        .sort(
+          (left, right) =>
+            displayStatusFor(left).priority -
+              displayStatusFor(right).priority ||
+            replenishmentFor(right) - replenishmentFor(left) ||
+            left.name.localeCompare(right.name, localeForDates()),
+        ),
     [
-      items,
+      locationScopedItems,
       query,
       locationScopeIds,
       categoryScopeNames,
       stockStatusFilter,
       expiryFilter,
       stock,
+      activeI18n.resolvedLanguage,
     ],
   );
   const pageCount = Math.max(1, Math.ceil(filtered.length / 10));
@@ -835,7 +971,7 @@ export function App() {
       (left, right) =>
         displayStatusFor(left).priority - displayStatusFor(right).priority ||
         replenishmentFor(right) - replenishmentFor(left) ||
-        left.name.localeCompare(right.name, "zh-CN"),
+        left.name.localeCompare(right.name, localeForDates()),
     )
     .slice(0, 8);
   const categorySummary = summarizeHierarchy(
@@ -848,21 +984,34 @@ export function App() {
     items,
     (item, location) => item.locationId === location.id,
   );
-  const currentDateLabel = new Intl.DateTimeFormat("zh-CN", {
+  const currentDateLabel = new Intl.DateTimeFormat(localeForDates(), {
     month: "long",
     day: "numeric",
     weekday: "short",
   }).format(new Date());
-  const [calendarYear,calendarMonthNumber]=shoppingMonth.split("-").map(Number);
-  const calendarOffset=(new Date(calendarYear,calendarMonthNumber-1,1).getDay()+6)%7;
-  const calendarDayCount=new Date(calendarYear,calendarMonthNumber,0).getDate();
-  const calendarCells:(string|null)[]=[
-    ...Array.from({length:calendarOffset},()=>null),
-    ...Array.from({length:calendarDayCount},(_,index)=>`${shoppingMonth}-${String(index+1).padStart(2,"0")}`),
+  const [calendarYear, calendarMonthNumber] = shoppingMonth
+    .split("-")
+    .map(Number);
+  const calendarOffset =
+    (new Date(calendarYear, calendarMonthNumber - 1, 1).getDay() + 6) % 7;
+  const calendarDayCount = new Date(
+    calendarYear,
+    calendarMonthNumber,
+    0,
+  ).getDate();
+  const calendarCells: (string | null)[] = [
+    ...Array.from({ length: calendarOffset }, () => null),
+    ...Array.from(
+      { length: calendarDayCount },
+      (_, index) => `${shoppingMonth}-${String(index + 1).padStart(2, "0")}`,
+    ),
   ];
-  while(calendarCells.length%7)calendarCells.push(null);
-  const visibleShoppingItems=selectedShoppingDate?shoppingList.filter(item=>item.plannedDate===selectedShoppingDate):shoppingList;
-  if (!setup) return <div className="loading-screen">正在检查家庭设置…</div>;
+  while (calendarCells.length % 7) calendarCells.push(null);
+  const visibleShoppingItems = selectedShoppingDate
+    ? shoppingList.filter((item) => item.plannedDate === selectedShoppingDate)
+    : shoppingList;
+  if (!setup)
+    return <div className="loading-screen">{t("正在检查家庭设置…")}</div>;
   if (!setup.complete)
     return (
       <Setup
@@ -879,7 +1028,7 @@ export function App() {
     setBusy(true);
     const form = event.currentTarget;
     const data = new FormData(form);
-    const response = await fetch(`/api/v1/homes/${getHomeId()}/items`, {
+    const response = await apiFetch(`/api/v1/homes/${getHomeId()}/items`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -899,7 +1048,7 @@ export function App() {
     setBusy(false);
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
-      setNotice(result.message || "保存失败，请检查填写内容");
+      setNotice(result.message || t("保存失败，请检查填写内容"));
       return;
     }
     form.reset();
@@ -917,7 +1066,7 @@ export function App() {
     );
     if (!quantity || quantity <= 0) return;
     setBusy(true);
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/v1/homes/${getHomeId()}/stock/${stockAction.type}`,
       {
         method: "POST",
@@ -941,14 +1090,14 @@ export function App() {
     if (response.ok) {
       setStockAction(null);
       load();
-    } else setNotice("操作失败，可能是库存不足");
+    } else setNotice(t("操作失败，可能是库存不足"));
   }
 
   async function updateItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!detailItem) return;
     const data = new FormData(event.currentTarget);
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/v1/homes/${getHomeId()}/items/${detailItem.id}`,
       {
         method: "PATCH",
@@ -965,7 +1114,7 @@ export function App() {
       },
     );
     if (!response.ok) {
-      setNotice("保存失败，请检查填写内容");
+      setNotice(t("保存失败，请检查填写内容"));
       return;
     }
     setDetailItem(null);
@@ -974,7 +1123,7 @@ export function App() {
 
   async function addCategory(event: FormEvent) {
     event.preventDefault();
-    const response = await fetch(`/api/v1/homes/${getHomeId()}/categories`, {
+    const response = await apiFetch(`/api/v1/homes/${getHomeId()}/categories`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -983,7 +1132,7 @@ export function App() {
       }),
     });
     if (!response.ok) {
-      setNotice("分类添加失败");
+      setNotice(t("分类添加失败"));
       return;
     }
     setCategoryName("");
@@ -992,7 +1141,7 @@ export function App() {
   }
   async function addLocation(event: FormEvent) {
     event.preventDefault();
-    const response = await fetch(`/api/v1/homes/${getHomeId()}/locations`, {
+    const response = await apiFetch(`/api/v1/homes/${getHomeId()}/locations`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -1001,7 +1150,7 @@ export function App() {
       }),
     });
     if (!response.ok) {
-      setNotice("地点添加失败");
+      setNotice(t("地点添加失败"));
       return;
     }
     setLocationName("");
@@ -1011,22 +1160,29 @@ export function App() {
   async function addShoppingItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const response = await fetch(`/api/v1/homes/${getHomeId()}/shopping-list`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        quantity: Number(data.get("quantity") || 1),
-        itemId: data.get("itemId") || undefined,
-        channelId: data.get("channelId") || null,
-        plannedDate: data.get("plannedDate") || null,
-        ...(!linkedShoppingItem?{
-          name:data.get("name"),unit:data.get("unit")||undefined,
-          category:data.get("category")||undefined,locationId:data.get("locationId")||undefined,
-        }:{}),
-      }),
-    });
+    const response = await apiFetch(
+      `/api/v1/homes/${getHomeId()}/shopping-list`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          quantity: Number(data.get("quantity") || 1),
+          itemId: data.get("itemId") || undefined,
+          channelId: data.get("channelId") || null,
+          plannedDate: data.get("plannedDate") || null,
+          ...(!linkedShoppingItem
+            ? {
+                name: data.get("name"),
+                unit: data.get("unit") || undefined,
+                category: data.get("category") || undefined,
+                locationId: data.get("locationId") || undefined,
+              }
+            : {}),
+        }),
+      },
+    );
     if (!response.ok) {
-      setNotice("采购项添加失败");
+      setNotice(t("采购项添加失败"));
       return;
     }
     setShowShoppingForm(false);
@@ -1041,7 +1197,7 @@ export function App() {
     const quantity = Number(data.get("quantity"));
     if (!Number.isFinite(quantity) || quantity <= 0) return;
     setBusy(true);
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/v1/homes/${getHomeId()}/shopping-list/${encodeURIComponent(receiveShoppingItem.id)}/receive`,
       {
         method: "POST",
@@ -1058,7 +1214,10 @@ export function App() {
     setBusy(false);
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
-      setNotice(result.message || `采购项处理失败（${response.status}）`);
+      setNotice(
+        result.message ||
+          t("采购项处理失败（{{status}}）", { status: response.status }),
+      );
       return;
     }
     setReceiveShoppingItem(null);
@@ -1077,7 +1236,7 @@ export function App() {
     event.preventDefault();
     if (!editShoppingItem) return;
     const data = new FormData(event.currentTarget);
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/v1/homes/${getHomeId()}/shopping-list/${editShoppingItem.id}`,
       {
         method: "PATCH",
@@ -1087,43 +1246,71 @@ export function App() {
           itemId: data.get("itemId") || null,
           channelId: data.get("channelId") || null,
           plannedDate: data.get("plannedDate") || null,
-          ...(!linkedEditShoppingItem?{
-            name:data.get("name"),unit:data.get("unit"),
-            category:data.get("category"),locationId:data.get("locationId")||null,
-          }:{}),
+          ...(!linkedEditShoppingItem
+            ? {
+                name: data.get("name"),
+                unit: data.get("unit"),
+                category: data.get("category"),
+                locationId: data.get("locationId") || null,
+              }
+            : {}),
         }),
       },
     );
     if (!response.ok) {
-      setNotice("采购项保存失败");
+      setNotice(t("采购项保存失败"));
       return;
     }
     setEditShoppingItem(null);
     setEditShoppingItemId("");
     load();
   }
-  async function addShoppingChannel(event:FormEvent<HTMLFormElement>) {
-    event.preventDefault();if(!newChannelName.trim())return;
-    const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-channels`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:newChannelName.trim()})});
-    const result=await response.json();
-    if(!response.ok){setNotice(result.message||"购买渠道添加失败");return;}
-    setNewChannelName("");load();
+  async function addShoppingChannel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!newChannelName.trim()) return;
+    const response = await apiFetch(
+      `/api/v1/homes/${getHomeId()}/shopping-channels`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newChannelName.trim() }),
+      },
+    );
+    const result = await response.json();
+    if (!response.ok) {
+      setNotice(result.message || t("购买渠道添加失败"));
+      return;
+    }
+    setNewChannelName("");
+    load();
   }
-  async function deleteShoppingChannel(channel:ShoppingChannel) {
-    if(!window.confirm(`删除购买渠道“${channel.name}”？`))return;
-    const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-channels/${channel.id}`,{method:"DELETE"});
-    if(!response.ok){const result=await response.json().catch(()=>({}));setNotice(result.message||"购买渠道删除失败");return;}load();
+  async function deleteShoppingChannel(channel: ShoppingChannel) {
+    if (!window.confirm(t("删除购买渠道“{{name}}”？", { name: channel.name })))
+      return;
+    const response = await apiFetch(
+      `/api/v1/homes/${getHomeId()}/shopping-channels/${channel.id}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      setNotice(result.message || t("购买渠道删除失败"));
+      return;
+    }
+    load();
   }
-  function moveShoppingMonth(offset:number) {
-    const [year,month]=shoppingMonth.split("-").map(Number),date=new Date(year,month-1+offset,1);
-    setShoppingMonth(`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`);
+  function moveShoppingMonth(offset: number) {
+    const [year, month] = shoppingMonth.split("-").map(Number),
+      date = new Date(year, month - 1 + offset, 1);
+    setShoppingMonth(
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+    );
     setSelectedShoppingDate("");
   }
   async function updateTreeNode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editTreeNode) return;
     const data = new FormData(event.currentTarget);
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/v1/homes/${getHomeId()}/${editTreeNode.kind === "location" ? "locations" : "categories"}/${editTreeNode.id}`,
       {
         method: "PATCH",
@@ -1137,30 +1324,56 @@ export function App() {
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
       const messages: Record<string, string> = {
-        CATEGORY_CYCLE: "不能移动到自己的子级下面",
-        LOCATION_CYCLE: "不能移动到自己的子级下面",
-        CATEGORY_EXISTS: "同级分类名称已存在",
-        LOCATION_EXISTS: "同级地点名称已存在",
-        PARENT_CATEGORY_NOT_FOUND: "父级分类不存在",
-        PARENT_LOCATION_NOT_FOUND: "父级地点不存在",
+        CATEGORY_CYCLE: t("不能移动到自己的子级下面"),
+        LOCATION_CYCLE: t("不能移动到自己的子级下面"),
+        CATEGORY_EXISTS: t("同级分类名称已存在"),
+        LOCATION_EXISTS: t("同级地点名称已存在"),
+        PARENT_CATEGORY_NOT_FOUND: t("父级分类不存在"),
+        PARENT_LOCATION_NOT_FOUND: t("父级地点不存在"),
       };
       setNotice(
         messages[result.code] ||
           result.message ||
-          `保存失败（${response.status}）`,
+          t("保存失败（{{status}}）", { status: response.status }),
       );
       return;
     }
     setEditTreeNode(null);
     load();
   }
-  function confirmDelete(kind: "item" | "category" | "location", node: { id: string; name: string; parentId?: string | null }) {
-    const parent = (kind === "category" ? categories : locations).find(candidate => candidate.id === node.parentId);
-    const fallback = kind === "category" ? (node.name === "未分类" ? "其他" : "未分类") : (node.name === "未指定" ? "待整理" : "未指定");
+  function confirmDelete(
+    kind: "item" | "category" | "location",
+    node: { id: string; name: string; parentId?: string | null },
+  ) {
+    const parent = (kind === "category" ? categories : locations).find(
+      (candidate) => candidate.id === node.parentId,
+    );
+    const fallback =
+      kind === "category"
+        ? node.name === "未分类"
+          ? "其他"
+          : "未分类"
+        : node.name === "未指定"
+          ? "待整理"
+          : "未指定";
     setDeleteError("");
-    setDeleteTarget({ kind, id: node.id, name: node.name, message: kind === "item"
-      ? "物资将从清单移除，剩余库存清零并记录删除流水。历史记录保留，关联采购项转为独立采购项。"
-      : `直属物资将归入“${parent?.name || fallback}”，子节点${parent ? "移到上一级" : "提升为一级节点"}。物资不会被删除，仅记录实际的物资归属变更。` });
+    setDeleteTarget({
+      kind,
+      id: node.id,
+      name: node.name,
+      message:
+        kind === "item"
+          ? t(
+              "物资将从清单移除，剩余库存清零并记录删除流水。历史记录保留，关联采购项转为独立采购项。",
+            )
+          : t(
+              "直属物资将归入“{{parent}}”，子节点{{action}}。物资不会被删除，仅记录实际的物资归属变更。",
+              {
+                parent: parent?.name || fallback,
+                action: parent ? t("移到上一级") : t("提升为一级节点"),
+              },
+            ),
+    });
   }
   async function deleteSelected(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1168,37 +1381,65 @@ export function App() {
     setDeleting(true);
     setDeleteError("");
     try {
-      const resource = { item: "items", category: "categories", location: "locations" }[deleteTarget.kind];
-      const response = await fetch(`/api/v1/homes/${getHomeId()}/${resource}/${deleteTarget.id}`, { method: "DELETE" });
+      const resource = {
+        item: "items",
+        category: "categories",
+        location: "locations",
+      }[deleteTarget.kind];
+      const response = await apiFetch(
+        `/api/v1/homes/${getHomeId()}/${resource}/${deleteTarget.id}`,
+        { method: "DELETE" },
+      );
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || "删除失败，请重试");
+      if (!response.ok)
+        throw new Error(result.message || t("删除失败，请重试"));
       setDeleteTarget(null);
       setTransactionPage(1);
       await load();
-    } catch (error) { setDeleteError(error instanceof Error ? error.message : "删除失败，请重试"); }
-    finally { setDeleting(false); }
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error ? error.message : t("删除失败，请重试"),
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
   async function loadApiTokens() {
-    const response = await fetch("/api/v1/auth/tokens");
+    const response = await apiFetch("/api/v1/auth/tokens");
     if (response.ok) setApiTokens(await response.json());
-    else setNotice("无法加载 MCP 令牌");
+    else setNotice(t("无法加载 MCP 令牌"));
   }
-  async function changePassword(event:FormEvent<HTMLFormElement>) {
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if(busy)return;
-    const form=event.currentTarget,data=new FormData(form);
-    const currentPassword=String(data.get("currentPassword")||"");
-    const newPassword=String(data.get("newPassword")||"");
-    const confirmation=String(data.get("confirmation")||"");
-    if(newPassword!==confirmation){setPasswordNotice("两次输入的新密码不一致");return;}
-    setBusy(true);setPasswordNotice("");
+    if (busy) return;
+    const form = event.currentTarget,
+      data = new FormData(form);
+    const currentPassword = String(data.get("currentPassword") || "");
+    const newPassword = String(data.get("newPassword") || "");
+    const confirmation = String(data.get("confirmation") || "");
+    if (newPassword !== confirmation) {
+      setPasswordNotice(t("两次输入的新密码不一致"));
+      return;
+    }
+    setBusy(true);
+    setPasswordNotice("");
     try {
-      const response=await fetch("/api/v1/auth/password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({currentPassword,newPassword})});
-      const result=await response.json();
-      if(!response.ok)throw new Error(result.message||"密码修改失败");
-      form.reset();setPasswordNotice("密码已修改");
-    } catch(error) {setPasswordNotice(error instanceof Error?error.message:"密码修改失败");}
-    finally {setBusy(false);}
+      const response = await apiFetch("/api/v1/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || t("密码修改失败"));
+      form.reset();
+      setPasswordNotice(t("密码已修改"));
+    } catch (error) {
+      setPasswordNotice(
+        error instanceof Error ? error.message : t("密码修改失败"),
+      );
+    } finally {
+      setBusy(false);
+    }
   }
   async function createApiToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1206,13 +1447,13 @@ export function App() {
     const data = new FormData(form);
     const name = String(data.get("name") || "").trim();
     const scope = String(data.get("homeId") || "");
-    const response = await fetch("/api/v1/auth/tokens", {
+    const response = await apiFetch("/api/v1/auth/tokens", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name, homeId: scope === "all" ? null : scope }),
     });
     if (!response.ok) {
-      setNotice("创建令牌失败");
+      setNotice(t("创建令牌失败"));
       return;
     }
     const result = await response.json();
@@ -1221,26 +1462,26 @@ export function App() {
     loadApiTokens();
   }
   async function revokeApiToken(tokenId: string) {
-    const response = await fetch(`/api/v1/auth/tokens/${tokenId}`, {
+    const response = await apiFetch(`/api/v1/auth/tokens/${tokenId}`, {
       method: "DELETE",
     });
     if (response.ok) loadApiTokens();
-    else setNotice("撤销令牌失败");
+    else setNotice(t("撤销令牌失败"));
   }
   function openItemForm(preset?: {
     locationId?: string;
     category?: string;
-    name?:string;
-    baseUnit?:string;
-    barcode?:string;
+    name?: string;
+    baseUnit?: string;
+    barcode?: string;
   }) {
     setPrefillLocationId(preset?.locationId || "");
     setPrefillCategory(preset?.category || "");
-    setPrefillName(preset?.name||"");
-    setPrefillUnit(preset?.baseUnit||"个");
-    setBarcodeInput(preset?.barcode||"");
+    setPrefillName(preset?.name || "");
+    setPrefillUnit(preset?.baseUnit || "个");
+    setBarcodeInput(preset?.barcode || "");
     setBarcodeNotice("");
-    setItemFormRevision(value=>value+1);
+    setItemFormRevision((value) => value + 1);
     setShowForm(true);
   }
   function closeItemForm() {
@@ -1253,29 +1494,42 @@ export function App() {
     setBarcodeInput("");
     setBarcodeNotice("");
   }
-  async function lookupItemBarcode(raw=barcodeInput) {
-    const barcode=raw.replace(/[\s-]/g,"");
-    if(!barcode)return;
-    setBarcodeBusy(true);setBarcodeNotice("");
+  async function lookupItemBarcode(raw = barcodeInput) {
+    const barcode = raw.replace(/[\s-]/g, "");
+    if (!barcode) return;
+    setBarcodeBusy(true);
+    setBarcodeNotice("");
     try {
-      const response=await fetch(`/api/v1/homes/${getHomeId()}/barcodes/${encodeURIComponent(barcode)}`);
-      const result=await response.json();
-      if(!response.ok)throw new Error(result.message||"条码查询失败");
+      const response = await apiFetch(
+        `/api/v1/homes/${getHomeId()}/barcodes/${encodeURIComponent(barcode)}`,
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || t("条码查询失败"));
       setBarcodeInput(result.barcode);
-      if(result.item) {
-        closeItemForm();setDetailItem(result.item);
-        setNotice(`条码已关联物资“${result.item.name}”`);
+      if (result.item) {
+        closeItemForm();
+        setDetailItem(result.item);
+        setNotice(t("条码已关联物资“{{name}}”", { name: result.item.name }));
         return;
       }
-      if(result.found&&result.product) {
-        setPrefillName(result.product.name||"");
-        setPrefillCategory(result.product.category||"其他");
-        setPrefillUnit(result.product.baseUnit||"个");
-        setItemFormRevision(value=>value+1);
-        setBarcodeNotice(result.source==="online"?"已从在线条码库补全商品信息":"已从本地条码缓存补全商品信息");
-      } else setBarcodeNotice("在线条码库暂无该商品，请手动填写信息");
-    } catch(error) {setBarcodeNotice(error instanceof Error?error.message:"条码查询失败");}
-    finally {setBarcodeBusy(false);}
+      if (result.found && result.product) {
+        setPrefillName(result.product.name || "");
+        setPrefillCategory(result.product.category || "其他");
+        setPrefillUnit(result.product.baseUnit || "个");
+        setItemFormRevision((value) => value + 1);
+        setBarcodeNotice(
+          result.source === "online"
+            ? t("已从在线条码库补全商品信息")
+            : t("已从本地条码缓存补全商品信息"),
+        );
+      } else setBarcodeNotice(t("在线条码库暂无该商品，请手动填写信息"));
+    } catch (error) {
+      setBarcodeNotice(
+        error instanceof Error ? error.message : t("条码查询失败"),
+      );
+    } finally {
+      setBarcodeBusy(false);
+    }
   }
   function navigate(page: Page) {
     if (window.location.pathname !== pagePaths[page])
@@ -1285,11 +1539,14 @@ export function App() {
   async function logout() {
     setBusy(true);
     try {
-      const response = await fetch("/api/v1/auth/logout", { method: "POST" });
-      if (!response.ok && response.status !== 401) throw new Error("退出失败，请重试");
+      const response = await apiFetch("/api/v1/auth/logout", {
+        method: "POST",
+      });
+      if (!response.ok && response.status !== 401)
+        throw new Error(t("退出失败，请重试"));
       window.location.reload();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "退出失败");
+      setNotice(error instanceof Error ? error.message : t("退出失败"));
       setBusy(false);
     }
   }
@@ -1298,7 +1555,7 @@ export function App() {
     id: string;
     name: string;
     parentId: string | null;
-    items: (Item & { treeQuantity?: number })[];
+    items: LocationScopedItem[];
   };
   const treeNodes: TreeNode[] =
     treeMode === "location"
@@ -1306,21 +1563,17 @@ export function App() {
           id: location.id,
           name: location.name,
           parentId: location.parentId,
-          items: items.flatMap((item) => {
-            const quantity=stock
-              .filter(row=>row.itemId===item.id&&row.locationId===location.id)
-              .reduce((sum,row)=>sum+row.quantity,0);
-            if(quantity>1e-9)return [{...item,treeQuantity:quantity}];
-            if(item.locationId===location.id&&balanceFor(item.id)<=1e-9)
-              return [{...item,treeQuantity:0}];
-            return [];
-          }),
+          items: locationScopedItems.filter(
+            (item) => item.locationId === location.id,
+          ),
         }))
       : categories.map((category) => ({
           id: category.id,
           name: category.name,
           parentId: category.parentId,
-          items: items.filter((item) => item.category === category.name),
+          items: locationScopedItems.filter(
+            (item) => item.category === category.name,
+          ),
         }));
   const categoryOptions = flattenHierarchy(categories);
   const locationOptions = flattenHierarchy(locations);
@@ -1346,12 +1599,13 @@ export function App() {
             type="button"
             className="tree-expander"
             disabled={!expandable}
-            aria-label={open ? "收起" : "展开"}
+            aria-label={open ? t("收起") : t("展开")}
             onClick={() =>
               setExpandedLocations({ ...expandedLocations, [node.id]: !open })
             }
           >
-            {expandable && (open ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+            {expandable &&
+              (open ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
           </button>
           <button
             type="button"
@@ -1360,13 +1614,15 @@ export function App() {
             onClick={() =>
               setExpandedLocations({ ...expandedLocations, [node.id]: !open })
             }
-          >{node.name}</button>
+          >
+            {node.name}
+          </button>
           <div className="tree-node-actions">
             <button
               type="button"
               className="tree-icon-button"
-              title="增加物资"
-              aria-label={`在${node.name}增加物资`}
+              title={t("增加物资")}
+              aria-label={t("在{{name}}增加物资", { name: node.name })}
               onClick={() =>
                 openItemForm(
                   treeMode === "location"
@@ -1380,8 +1636,10 @@ export function App() {
             <button
               type="button"
               className="tree-icon-button"
-              title={`编辑${treeMode === "location" ? "地点" : "分类"}`}
-              aria-label={`编辑${node.name}`}
+              title={t("编辑{{type}}", {
+                type: treeMode === "location" ? t("地点") : t("分类"),
+              })}
+              aria-label={t("编辑{{name}}", { name: node.name })}
               onClick={() =>
                 setEditTreeNode({
                   kind: treeMode,
@@ -1393,7 +1651,17 @@ export function App() {
             >
               <Pencil size={14} />
             </button>
-            <button type="button" className="tree-icon-button danger-action" title={`删除${treeMode === "location" ? "地点" : "分类"}`} aria-label={`删除${node.name}`} onClick={() => confirmDelete(treeMode, node)}><Trash2 size={14} /></button>
+            <button
+              type="button"
+              className="tree-icon-button danger-action"
+              title={t("删除{{type}}", {
+                type: treeMode === "location" ? t("地点") : t("分类"),
+              })}
+              aria-label={t("删除{{name}}", { name: node.name })}
+              onClick={() => confirmDelete(treeMode, node)}
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
         </div>
         {open && (
@@ -1403,10 +1671,13 @@ export function App() {
               return (
                 <div
                   className="tree-item-row"
-                  key={item.id}
+                  key={`${item.id}:${item.locationId??"none"}`}
                   style={{ "--tree-depth": depth } as CSSProperties}
                 >
-                  <strong className="tree-item-name"><MaterialIcon value={itemIconFor(item)} />{item.name}</strong>
+                  <strong className="tree-item-name">
+                    <MaterialIcon value={itemIconFor(item)} />
+                    {item.name}
+                  </strong>
                   <span className="tree-item-stock">
                     {item.treeQuantity ?? balanceFor(item.id)} {item.baseUnit}
                   </span>
@@ -1415,15 +1686,21 @@ export function App() {
                   </span>
                   <span className="tree-item-meta">
                     {treeMode === "location"
-                      ? item.category || "未分类"
-                      : item.locationName || "未指定地点"}
-                    {item.expiryDate ? ` · 到期 ${item.expiryDate}` : ""}
+                      ? item.category || t("未分类")
+                      : item.locationName || t("未指定地点")}
+                    {item.expiryDate
+                      ? t(" · 到期 {{date}}", { date: item.expiryDate })
+                      : ""}
                   </span>
                   <button
                     className="text-button"
-                    onClick={() => setDetailItem(item)}
+                    onClick={() =>
+                      setDetailItem(
+                        items.find((current) => current.id === item.id) ?? item,
+                      )
+                    }
                   >
-                    编辑
+                    {t("编辑")}
                   </button>
                 </div>
               );
@@ -1444,44 +1721,62 @@ export function App() {
             <BrandWordmark />
           </div>
         </div>
-        <nav className="main-nav" aria-label="主导航">
+        <nav className="main-nav" aria-label={t("主导航")}>
           <button
             className={activePage === "home" ? "active" : ""}
             onClick={() => navigate("home")}
           >
-            首页
+            {t("首页")}
           </button>
           <button
             className={activePage === "count" ? "active" : ""}
             onClick={() => navigate("count")}
           >
-            盘点
+            {t("盘点")}
           </button>
           <button
             className={activePage === "shopping" ? "active" : ""}
             onClick={() => navigate("shopping")}
           >
-            采购
+            {t("采购")}
           </button>
-          <button className={activePage === "locations" ? "active" : ""} onClick={() => navigate("locations")}>地点</button>
-          <button className={activePage === "categories" ? "active" : ""} onClick={() => navigate("categories")}>分类</button>
+          <button
+            className={activePage === "locations" ? "active" : ""}
+            onClick={() => navigate("locations")}
+          >
+            {t("地点")}
+          </button>
+          <button
+            className={activePage === "categories" ? "active" : ""}
+            onClick={() => navigate("categories")}
+          >
+            {t("分类")}
+          </button>
         </nav>
         <div className="top-actions">
           <div className="home-switch">
             <MaterialIcon value={setup.home?.icon} home size={18} />
-            <select aria-label="切换家庭" value={setup.home?.id ?? ""} onChange={event => {
-              localStorage.setItem("family-erp-home-id", event.target.value);
-              window.location.reload();
-            }}>
-              {homes.map(home => <option key={home.id} value={home.id}>{home.name}</option>)}
+            <select
+              aria-label={t("切换家庭")}
+              value={setup.home?.id ?? ""}
+              onChange={(event) => {
+                localStorage.setItem("family-erp-home-id", event.target.value);
+                window.location.reload();
+              }}
+            >
+              {homes.map((home) => (
+                <option key={home.id} value={home.id}>
+                  {home.name}
+                </option>
+              ))}
             </select>
           </div>
           <button
             className={`avatar ${activePage === "profile" ? "active" : ""}`}
             onClick={() => navigate("profile")}
-            aria-label="账号与 MCP 令牌"
+            aria-label={t("账号与 MCP 令牌")}
           >
-            我
+            {t("我")}
           </button>
         </div>
       </header>
@@ -1491,45 +1786,53 @@ export function App() {
             <p className="eyebrow">{currentDateLabel}</p>
             <h1>
               {activePage === "home"
-                ? "总览"
+                ? t("总览")
                 : activePage === "count"
-                  ? "物资盘点"
+                  ? t("物资盘点")
                   : activePage === "locations"
-                    ? "地点"
+                    ? t("地点")
                     : activePage === "categories"
-                      ? "分类"
+                      ? t("分类")
                       : activePage === "shopping"
-                        ? "采购清单"
-                        : "我的设置"}
+                        ? t("采购清单")
+                        : t("我的设置")}
             </h1>
             <p className="muted">
               {activePage === "home"
-                ? "掌握家里有什么，及时补充需要的东西。"
+                ? t("掌握家里有什么，及时补充需要的东西。")
                 : activePage === "count"
-                  ? "添加物资、调整库存并查看变动记录。"
+                  ? t("添加物资、调整库存并查看变动记录。")
                   : activePage === "locations"
-                    ? "按存放空间查看家里的物资。"
+                    ? t("按存放空间查看家里的物资。")
                     : activePage === "categories"
-                      ? "维护物资分类和分类树。"
+                      ? t("维护物资分类和分类树。")
                       : activePage === "shopping"
-                        ? "管理自动建议和手动采购项。"
-                        : "管理家庭、Agent 访问令牌与登录会话。"}
+                        ? t("管理自动建议和手动采购项。")
+                        : t("管理家庭、Agent 访问令牌与登录会话。")}
             </p>
           </div>
-          {activePage === "profile" && <button className="secondary profile-logout" disabled={busy} onClick={logout}>退出登录</button>}
+          {activePage === "profile" && (
+            <button
+              className="secondary profile-logout"
+              disabled={busy}
+              onClick={logout}
+            >
+              {t("退出登录")}
+            </button>
+          )}
           {activePage === "home" && (
-            <div className="dashboard-actions" aria-label="快捷操作">
+            <div className="dashboard-actions" aria-label={t("快捷操作")}>
               <button type="button" onClick={() => openItemForm()}>
                 <Plus size={16} />
-                添加物资
+                {t("添加物资")}
               </button>
               <button type="button" onClick={() => navigate("count")}>
                 <Check size={16} />
-                开始盘点
+                {t("开始盘点")}
               </button>
               <button type="button" onClick={() => navigate("shopping")}>
                 <ClipboardList size={16} />
-                采购清单
+                {t("采购清单")}
               </button>
             </div>
           )}
@@ -1538,92 +1841,302 @@ export function App() {
               className="primary"
               onClick={() => setShowShoppingForm(true)}
             >
-              ＋ 添加采购项
+              {t("＋ 添加采购项")}
             </button>
           )}
-          {activePage==="count"&&<div className="welcome-actions count-actions"><button className="primary" onClick={()=>openItemForm()}>＋ 添加物资</button><button className="secondary" onClick={()=>{openItemForm();setShowBarcodeScanner(true);}}>扫描条码</button></div>}
+          {activePage === "count" && (
+            <div className="welcome-actions count-actions">
+              <button className="primary" onClick={() => openItemForm()}>
+                {t("＋ 添加物资")}
+              </button>
+              <button
+                className="secondary"
+                onClick={() => {
+                  openItemForm();
+                  setShowBarcodeScanner(true);
+                }}
+              >
+                {t("扫描条码")}
+              </button>
+            </div>
+          )}
         </section>
         {notice && (
           <div className="notice" role="status">
             {notice}
-            <button onClick={() => setNotice("")} aria-label="关闭">
+            <button onClick={() => setNotice("")} aria-label={t("关闭")}>
               ×
             </button>
           </div>
         )}
         {activePage === "profile" && (
+          <section className="panel language-panel">
+            <div className="panel-head">
+              <div>
+                <h2>{t("语言")}</h2>
+                <p className="muted">{t("选择界面显示语言")}</p>
+              </div>
+            </div>
+            <div className="language-control">
+              <label htmlFor="interface-language">
+                <span>{t("界面语言")}</span>
+                <span className="language-select-wrap">
+                  <select
+                    id="interface-language"
+                    value={activeI18n.resolvedLanguage ?? activeI18n.language}
+                    onChange={(event) =>
+                      void setLocale(event.target.value as Locale)
+                    }
+                  >
+                    <option value="zh-CN">{t("简体中文")}</option>
+                    <option value="en-US">{t("English")}</option>
+                  </select>
+                  <ChevronDown size={16} aria-hidden="true" />
+                </span>
+              </label>
+            </div>
+          </section>
+        )}
+        {activePage === "profile" && (
           <section className="panel password-panel">
-            <div className="panel-head"><div><h2>修改密码</h2><p className="muted">验证当前密码后设置新密码</p></div></div>
+            <div className="panel-head">
+              <div>
+                <h2>{t("修改密码")}</h2>
+                <p className="muted">{t("验证当前密码后设置新密码")}</p>
+              </div>
+            </div>
             <form className="password-form" onSubmit={changePassword}>
-              <label>当前密码<input name="currentPassword" type="password" autoComplete="current-password" required /></label>
-              <label>新密码<input name="newPassword" type="password" autoComplete="new-password" minLength={8} required /></label>
-              <label>确认新密码<input name="confirmation" type="password" autoComplete="new-password" minLength={8} required /></label>
-              <button className="primary" disabled={busy}>{busy?"修改中…":"修改密码"}</button>
+              <label>
+                {t("当前密码")}
+                <input
+                  name="currentPassword"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <label>
+                {t("新密码")}
+                <input
+                  name="newPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </label>
+              <label>
+                {t("确认新密码")}
+                <input
+                  name="confirmation"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </label>
+              <button className="primary" disabled={busy}>
+                {busy ? t("修改中…") : t("修改密码")}
+              </button>
             </form>
-            {passwordNotice&&<p className="password-feedback" role="status">{passwordNotice}</p>}
+            {passwordNotice && (
+              <p className="password-feedback" role="status">
+                {passwordNotice}
+              </p>
+            )}
           </section>
         )}
         {activePage === "profile" && (
           <section className="panel home-settings">
-            <div className="panel-head"><div><h2>家庭管理</h2><p className="muted">共 {homes.length} 个家庭 · 各家庭物资独立管理</p></div><button className="primary" disabled={busy} onClick={() => { setEditingHome({ id: "", name: "", icon: "house" }); setHomeNotice(""); }}>新增家庭</button></div>
-            <div className="home-list">{homes.map(home => <div className={`home-card ${home.id === setup.home?.id ? "current" : ""}`} key={home.id}>
-              <span className="home-card-icon"><MaterialIcon value={home.icon} home size={24} /></span>
-              <div className="home-card-name"><strong>{home.name}</strong><small>{home.id === setup.home?.id ? "当前使用" : "可切换"}</small></div>
-              <div className="home-card-actions"><button className="secondary" disabled={busy} onClick={() => { setEditingHome(home); setHomeNotice(""); }}>编辑</button>{home.id !== setup.home?.id && <button className="text-button" disabled={busy} onClick={() => { localStorage.setItem("family-erp-home-id", home.id); window.location.reload(); }}>切换</button>}</div>
-            </div>)}</div>
-            {editingHome && <form className="home-editor" key={editingHome.id} onSubmit={async event => {
-              event.preventDefault();
-              const data = new FormData(event.currentTarget);
-              setBusy(true); setHomeNotice("");
-              try {
-                const response = await fetch(editingHome.id ? `/api/v1/homes/${editingHome.id}` : "/api/v1/homes", { method: editingHome.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: data.get("name"), icon: data.get("icon") }) });
-                const home = await response.json();
-                if (!response.ok) throw new Error(home.message || "保存失败");
-                setHomes(previous => editingHome.id ? previous.map(value => value.id === home.id ? home : value) : [...previous, home]);
-                if (home.id === setup.home?.id) {
-                  setSetup({ complete: true, home });
-                  localStorage.setItem("family-erp-home-emoji", home.icon);
-                }
-                setEditingHome(null);
-                setHomeNotice(editingHome.id ? "家庭已保存" : "家庭已创建，可切换后在地点页面添加房间");
-              } catch (error) { setHomeNotice(error instanceof Error ? error.message : "保存失败"); }
-              finally { setBusy(false); }
-            }}>
-              <h3>{editingHome.id ? "编辑家庭" : "新增家庭"}</h3>
-              <label>家庭名称<input name="name" required maxLength={80} defaultValue={editingHome.name} /></label>
-              <IconPicker home initial={editingHome.icon} />
-              <div className="home-editor-actions"><button className="primary" disabled={busy}>{busy ? "保存中…" : "保存家庭"}</button><button type="button" className="secondary" disabled={busy} onClick={() => setEditingHome(null)}>取消</button></div>
-            </form>}
-            {homeNotice && <p className="home-feedback" role="status">{homeNotice}</p>}
+            <div className="panel-head">
+              <div>
+                <h2>{t("家庭管理")}</h2>
+                <p className="muted">
+                  {t("共")}
+                  {homes.length} {t("个家庭 · 各家庭物资独立管理")}
+                </p>
+              </div>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() => {
+                  setEditingHome({ id: "", name: "", icon: "house" });
+                  setHomeNotice("");
+                }}
+              >
+                {t("新增家庭")}
+              </button>
+            </div>
+            <div className="home-list">
+              {homes.map((home) => (
+                <div
+                  className={`home-card ${home.id === setup.home?.id ? "current" : ""}`}
+                  key={home.id}
+                >
+                  <span className="home-card-icon">
+                    <MaterialIcon value={home.icon} home size={24} />
+                  </span>
+                  <div className="home-card-name">
+                    <strong>{home.name}</strong>
+                    <small>
+                      {home.id === setup.home?.id ? t("当前使用") : t("可切换")}
+                    </small>
+                  </div>
+                  <div className="home-card-actions">
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => {
+                        setEditingHome(home);
+                        setHomeNotice("");
+                      }}
+                    >
+                      {t("编辑")}
+                    </button>
+                    {home.id !== setup.home?.id && (
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => {
+                          localStorage.setItem("family-erp-home-id", home.id);
+                          window.location.reload();
+                        }}
+                      >
+                        {t("切换")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {editingHome && (
+              <form
+                className="home-editor"
+                key={editingHome.id}
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  const data = new FormData(event.currentTarget);
+                  setBusy(true);
+                  setHomeNotice("");
+                  try {
+                    const response = await apiFetch(
+                      editingHome.id
+                        ? `/api/v1/homes/${editingHome.id}`
+                        : "/api/v1/homes",
+                      {
+                        method: editingHome.id ? "PATCH" : "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          name: data.get("name"),
+                          icon: data.get("icon"),
+                        }),
+                      },
+                    );
+                    const home = await response.json();
+                    if (!response.ok)
+                      throw new Error(home.message || t("保存失败"));
+                    setHomes((previous) =>
+                      editingHome.id
+                        ? previous.map((value) =>
+                            value.id === home.id ? home : value,
+                          )
+                        : [...previous, home],
+                    );
+                    if (home.id === setup.home?.id) {
+                      setSetup({ complete: true, home });
+                      localStorage.setItem("family-erp-home-emoji", home.icon);
+                    }
+                    setEditingHome(null);
+                    setHomeNotice(
+                      editingHome.id
+                        ? t("家庭已保存")
+                        : t("家庭已创建，可切换后在地点页面添加房间"),
+                    );
+                  } catch (error) {
+                    setHomeNotice(
+                      error instanceof Error ? error.message : t("保存失败"),
+                    );
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                <h3>{editingHome.id ? t("编辑家庭") : t("新增家庭")}</h3>
+                <label>
+                  {t("家庭名称")}
+                  <input
+                    name="name"
+                    required
+                    maxLength={80}
+                    defaultValue={editingHome.name}
+                  />
+                </label>
+                <IconPicker home initial={editingHome.icon} />
+                <div className="home-editor-actions">
+                  <button className="primary" disabled={busy}>
+                    {busy ? t("保存中…") : t("保存家庭")}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => setEditingHome(null)}
+                  >
+                    {t("取消")}
+                  </button>
+                </div>
+              </form>
+            )}
+            {homeNotice && (
+              <p className="home-feedback" role="status">
+                {homeNotice}
+              </p>
+            )}
           </section>
         )}
         {activePage === "profile" && (
           <section className="panel token-panel">
             <div className="panel-head">
               <div>
-                <h2>MCP 访问令牌</h2>
+                <h2>{t("MCP 访问令牌")}</h2>
                 <p className="muted">
-                  连接地址为当前站点的 /mcp，认证方式为 Bearer Token。默认仅管理所选家庭。
+                  {t(
+                    "连接地址为当前站点的 /mcp，认证方式为 Bearer Token。默认仅管理所选家庭。",
+                  )}
                 </p>
               </div>
-              {barcodeNotice&&<p className="barcode-feedback" role="status">{barcodeNotice}</p>}
+              {barcodeNotice && (
+                <p className="barcode-feedback" role="status">
+                  {barcodeNotice}
+                </p>
+              )}
             </div>
             <form className="token-create" onSubmit={createApiToken}>
               <input
                 name="name"
                 required
                 maxLength={80}
-                placeholder="令牌名称，例如：Claude Desktop"
+                placeholder={t("令牌名称，例如：Claude Desktop")}
               />
-              <select name="homeId" defaultValue={getHomeId()} aria-label="令牌家庭范围">
-                {homes.map(home => <option key={home.id} value={home.id}>{home.name}</option>)}
-                <option value="all">全部家庭（高级）</option>
+              <select
+                name="homeId"
+                defaultValue={getHomeId()}
+                aria-label={t("令牌家庭范围")}
+              >
+                {homes.map((home) => (
+                  <option key={home.id} value={home.id}>
+                    {home.name}
+                  </option>
+                ))}
+                <option value="all">{t("全部家庭（高级）")}</option>
               </select>
-              <button type="submit" className="primary">创建令牌</button>
+              <button type="submit" className="primary">
+                {t("创建令牌")}
+              </button>
             </form>
             {newApiToken && (
               <div className="token-secret" role="status">
-                <strong>请立即复制，关闭后无法再次查看</strong>
+                <strong>{t("请立即复制，关闭后无法再次查看")}</strong>
                 <code>{newApiToken}</code>
                 <div>
                   <button
@@ -1631,45 +2144,57 @@ export function App() {
                     className="secondary"
                     onClick={() => navigator.clipboard.writeText(newApiToken)}
                   >
-                    复制
+                    {t("复制")}
                   </button>
                   <button
                     type="button"
                     className="text-button"
                     onClick={() => setNewApiToken("")}
                   >
-                    已保存
+                    {t("已保存")}
                   </button>
                 </div>
               </div>
             )}
             <div className="token-list">
               {apiTokens.length === 0 ? (
-                <p className="empty">尚未创建 MCP 令牌</p>
+                <p className="empty">{t("尚未创建 MCP 令牌")}</p>
               ) : (
                 apiTokens.map((token) => (
                   <div className="token-row" key={token.id}>
                     <div>
                       <strong>{token.name}</strong>
                       <span>
-                        {token.tokenPrefix} · {token.homeId ? `家庭：${token.homeName || "已删除"}` : "全部家庭（高级）"} · 创建于{" "}
-                        {new Date(token.createdAt).toLocaleString()}
+                        {token.tokenPrefix} ·{" "}
+                        {token.homeId
+                          ? t("家庭：{{name}}", {
+                              name: token.homeName || t("已删除"),
+                            })
+                          : t("全部家庭（高级）")}{" "}
+                        {t("· 创建于")}
+                        {new Date(token.createdAt).toLocaleString(
+                          localeForDates(),
+                        )}
                       </span>
                       <span>
                         {token.lastUsedAt
-                          ? `最近使用 ${new Date(token.lastUsedAt).toLocaleString()}`
-                          : "尚未使用"}
+                          ? t("最近使用 {{date}}", {
+                              date: new Date(token.lastUsedAt).toLocaleString(
+                                localeForDates(),
+                              ),
+                            })
+                          : t("尚未使用")}
                       </span>
                     </div>
                     {token.revokedAt ? (
-                      <span className="revoked">已撤销</span>
+                      <span className="revoked">{t("已撤销")}</span>
                     ) : (
                       <button
                         type="button"
                         className="danger-text"
                         onClick={() => revokeApiToken(token.id)}
                       >
-                        撤销
+                        {t("撤销")}
                       </button>
                     )}
                   </div>
@@ -1682,22 +2207,22 @@ export function App() {
           <section className="panel category-manager">
             <div className="panel-head">
               <div>
-                <h2>地点管理</h2>
-                <p className="muted">新增一级地点或子地点</p>
+                <h2>{t("地点管理")}</h2>
+                <p className="muted">{t("新增一级地点或子地点")}</p>
               </div>
             </div>
             <form className="category-form" onSubmit={addLocation}>
               <input
                 value={locationName}
                 onChange={(event) => setLocationName(event.target.value)}
-                placeholder="地点名称"
+                placeholder={t("地点名称")}
                 required
               />
               <select
                 value={locationParent}
                 onChange={(event) => setLocationParent(event.target.value)}
               >
-                <option value="">一级地点</option>
+                <option value="">{t("一级地点")}</option>
                 {locationOptions.map((location) => (
                   <option key={location.id} value={location.id}>
                     {"　".repeat(location.depth)}
@@ -1705,7 +2230,7 @@ export function App() {
                   </option>
                 ))}
               </select>
-              <button className="primary">添加地点</button>
+              <button className="primary">{t("添加地点")}</button>
             </form>
           </section>
         )}
@@ -1713,22 +2238,22 @@ export function App() {
           <section className="panel category-manager">
             <div className="panel-head">
               <div>
-                <h2>分类管理</h2>
-                <p className="muted">新增一级分类或子分类</p>
+                <h2>{t("分类管理")}</h2>
+                <p className="muted">{t("新增一级分类或子分类")}</p>
               </div>
             </div>
             <form className="category-form" onSubmit={addCategory}>
               <input
                 value={categoryName}
                 onChange={(event) => setCategoryName(event.target.value)}
-                placeholder="分类名称"
+                placeholder={t("分类名称")}
                 required
               />
               <select
                 value={categoryParent}
                 onChange={(event) => setCategoryParent(event.target.value)}
               >
-                <option value="">一级分类</option>
+                <option value="">{t("一级分类")}</option>
                 {categoryOptions.map((category) => (
                   <option key={category.id} value={category.id}>
                     {"　".repeat(category.depth)}
@@ -1736,149 +2261,316 @@ export function App() {
                   </option>
                 ))}
               </select>
-              <button className="primary">添加分类</button>
+              <button className="primary">{t("添加分类")}</button>
             </form>
           </section>
         )}
         {activePage === "shopping" && (
           <section className="shopping-workspace">
-          <section className="panel shopping-list">
-            <div className="panel-head">
-              <div>
-                <h2>采购清单</h2>
-                <p className="muted">{selectedShoppingDate?`${selectedShoppingDate} 的采购项 · 再次点击日期恢复全部`:"自动建议与手动采购项"}</p>
+            <section className="panel shopping-list">
+              <div className="panel-head">
+                <div>
+                  <h2>{t("采购清单")}</h2>
+                  <p className="muted">
+                    {selectedShoppingDate
+                      ? t("{{date}} 的采购项 · 再次点击日期恢复全部", {
+                          date: selectedShoppingDate,
+                        })
+                      : t("自动建议与手动采购项")}
+                  </p>
+                </div>
               </div>
-            </div>
-            {visibleShoppingItems.length === 0 ? (
-              <p className="empty">{selectedShoppingDate?`${selectedShoppingDate} 暂无采购项`:"暂无采购项"}</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>采购项</th>
-                      <th>数量</th>
-                      <th>采购计划</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleShoppingItems.map((item) => (
-                      <tr key={item.id}>
-                        <td>
-                          <div className="item-name">
-                            <span className="item-icon">
-                              <MaterialIcon value={itemIconFor(items.find(existing => existing.id === item.itemId) || item)} />
-                            </span>
-                            <span><strong>{item.name}</strong><small>{item.category||"未分类"} · {locations.find(location=>location.id===item.locationId)?.name||"未指定存放地点"} · {item.source==="automatic"?"低库存建议":"手动添加"}</small></span>
-                          </div>
-                        </td>
-                        <td>
-                          {item.quantity} {item.unit || "件"}
-                        </td>
-                        <td><span className="shopping-plan"><b>{shoppingChannelName(item)}</b><small>{item.plannedDate||"未安排日期"}</small></span></td>
-                        <td>
-                          <div className="row-actions">
-                            {!item.completed && (
-                              <button
-                                onClick={() => {
-                                  setEditShoppingItem(item);
-                                  setEditShoppingItemId(item.itemId || "");
-                                }}
-                              >
-                                {item.source==="automatic"?"安排":"编辑"}
-                              </button>
-                            )}
-                            {!item.completed && (
-                              <button
-                                onClick={() => openShoppingReceipt(item)}
-                              >
-                                入库
-                              </button>
-                            )}
-                            {item.source==="manual"&&<button
-                              className="danger-action"
-                              onClick={() =>
-                                fetch(
-                                  `/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,
-                                  { method: "DELETE" },
-                                ).then(load)
-                              }
-                            >
-                              删除
-                            </button>}
-                          </div>
-                        </td>
+              {visibleShoppingItems.length === 0 ? (
+                <p className="empty">
+                  {selectedShoppingDate
+                    ? t("{{date}} 暂无采购项", {
+                        date: selectedShoppingDate,
+                      })
+                    : t("暂无采购项")}
+                </p>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{t("采购项")}</th>
+                        <th>{t("数量")}</th>
+                        <th>{t("采购计划")}</th>
+                        <th>{t("操作")}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {visibleShoppingItems.map((item) => (
+                        <tr key={item.id}>
+                          <td>
+                            <div className="item-name">
+                              <span className="item-icon">
+                                <MaterialIcon
+                                  value={itemIconFor(
+                                    items.find(
+                                      (existing) => existing.id === item.itemId,
+                                    ) || item,
+                                  )}
+                                />
+                              </span>
+                              <span>
+                                <strong>{item.name}</strong>
+                                <small>
+                                  {item.category || t("未分类")} ·{" "}
+                                  {locations.find(
+                                    (location) =>
+                                      location.id === item.locationId,
+                                  )?.name || t("未指定存放地点")}{" "}
+                                  ·{" "}
+                                  {item.source === "automatic"
+                                    ? t("低库存建议")
+                                    : t("手动添加")}
+                                </small>
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            {item.quantity} {item.unit || t("件")}
+                          </td>
+                          <td>
+                            <span className="shopping-plan">
+                              <b>{shoppingChannelName(item)}</b>
+                              <small>
+                                {item.plannedDate || t("未安排日期")}
+                              </small>
+                            </span>
+                          </td>
+                          <td>
+                            <div className="row-actions">
+                              {!item.completed && (
+                                <button
+                                  onClick={() => {
+                                    setEditShoppingItem(item);
+                                    setEditShoppingItemId(item.itemId || "");
+                                  }}
+                                >
+                                  {item.source === "automatic"
+                                    ? t("安排")
+                                    : t("编辑")}
+                                </button>
+                              )}
+                              {!item.completed && (
+                                <button
+                                  onClick={() => openShoppingReceipt(item)}
+                                >
+                                  {t("入库")}
+                                </button>
+                              )}
+                              {item.source === "manual" && (
+                                <button
+                                  className="danger-action"
+                                  onClick={() =>
+                                    apiFetch(
+                                      `/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,
+                                      { method: "DELETE" },
+                                    ).then(load)
+                                  }
+                                >
+                                  {t("删除")}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <details className="channel-manager">
+                <summary>
+                  {t("购买渠道管理")}
+                  <span>
+                    {shoppingChannels.length} {t("个渠道")}
+                  </span>
+                </summary>
+                <form onSubmit={addShoppingChannel}>
+                  <input
+                    value={newChannelName}
+                    onChange={(event) => setNewChannelName(event.target.value)}
+                    maxLength={80}
+                    placeholder={t("新增购买渠道")}
+                    required
+                  />
+                  <button className="secondary">{t("添加")}</button>
+                </form>
+                <div>
+                  {shoppingChannels.map((channel) => (
+                    <span key={channel.id}>
+                      <b>{channel.name}</b>
+                      <button
+                        type="button"
+                        className="channel-remove"
+                        title={t("删除渠道")}
+                        aria-label={t("删除{{name}}", { name: channel.name })}
+                        onClick={() => deleteShoppingChannel(channel)}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </details>
+            </section>
+            <section className="panel shopping-calendar">
+              <div className="panel-head">
+                <div>
+                  <h2>{t("采购日历")}</h2>
+                  <p className="muted">{t("按计划采购日查看物品和购买渠道")}</p>
+                </div>
+                <div className="calendar-controls">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => moveShoppingMonth(-1)}
+                  >
+                    <ArrowLeft size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      setShoppingMonth(new Date().toISOString().slice(0, 7));
+                      setSelectedShoppingDate("");
+                    }}
+                  >
+                    {t("今天")}
+                  </button>
+                  <strong>
+                    {t("{{year}} 年 {{month}} 月", {
+                      year: calendarYear,
+                      month: calendarMonthNumber,
+                    })}
+                  </strong>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => moveShoppingMonth(1)}
+                  >
+                    <ArrowRight size={15} />
+                  </button>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={calendarIncludeCompleted}
+                      onChange={(event) =>
+                        setCalendarIncludeCompleted(event.target.checked)
+                      }
+                    />
+                    {t("显示已完成")}
+                  </label>
+                </div>
               </div>
-            )}
-            <details className="channel-manager">
-              <summary>购买渠道管理 <span>{shoppingChannels.length} 个渠道</span></summary>
-              <form onSubmit={addShoppingChannel}><input value={newChannelName} onChange={event=>setNewChannelName(event.target.value)} maxLength={80} placeholder="新增购买渠道" required/><button className="secondary">添加</button></form>
-              <div>{shoppingChannels.map(channel=><span key={channel.id}><b>{channel.name}</b><button type="button" className="channel-remove" title="删除渠道" aria-label={`删除${channel.name}`} onClick={()=>deleteShoppingChannel(channel)}><X size={12}/></button></span>)}</div>
-            </details>
-          </section>
-          <section className="panel shopping-calendar">
-            <div className="panel-head">
-              <div><h2>采购日历</h2><p className="muted">按计划采购日查看物品和购买渠道</p></div>
-              <div className="calendar-controls">
-                <button type="button" className="secondary" onClick={()=>moveShoppingMonth(-1)}><ArrowLeft size={15}/></button>
-                <button type="button" className="text-button" onClick={()=>{setShoppingMonth(new Date().toISOString().slice(0,7));setSelectedShoppingDate("");}}>今天</button>
-                <strong>{calendarYear} 年 {calendarMonthNumber} 月</strong>
-                <button type="button" className="secondary" onClick={()=>moveShoppingMonth(1)}><ArrowRight size={15}/></button>
-                <label><input type="checkbox" checked={calendarIncludeCompleted} onChange={event=>setCalendarIncludeCompleted(event.target.checked)}/>显示已完成</label>
+              <div className="calendar-wrap">
+                <div className="calendar-weekdays">
+                  {[
+                    t("一"),
+                    t("二"),
+                    t("三"),
+                    t("四"),
+                    t("五"),
+                    t("六"),
+                    t("日"),
+                  ].map((day) => (
+                    <span key={day}>
+                      {t("周")}
+                      {day}
+                    </span>
+                  ))}
+                </div>
+                <div className="calendar-grid">
+                  {calendarCells.map((date, index) => {
+                    if (!date)
+                      return (
+                        <span
+                          className="calendar-day empty-day"
+                          key={`empty-${index}`}
+                        />
+                      );
+                    const entries = calendarItems.filter(
+                        (item) => item.plannedDate === date,
+                      ),
+                      today = date === new Date().toISOString().slice(0, 10);
+                    return (
+                      <button
+                        type="button"
+                        className={`calendar-day ${today ? "today" : ""} ${selectedShoppingDate === date ? "selected" : ""}`}
+                        key={date}
+                        onClick={() =>
+                          setSelectedShoppingDate((current) =>
+                            current === date ? "" : date,
+                          )
+                        }
+                      >
+                        <time>{Number(date.slice(-2))}</time>
+                        <span className="calendar-mobile-count">
+                          {entries.length || ""}
+                        </span>
+                        <div>
+                          {entries.slice(0, 2).map((item) => (
+                            <span
+                              className={item.completed ? "completed" : ""}
+                              key={item.id}
+                            >
+                              <b>{item.name}</b>
+                              <small>{shoppingChannelName(item)}</small>
+                            </span>
+                          ))}
+                          {entries.length > 2 && <em>+{entries.length - 2}</em>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-            <div className="calendar-wrap">
-              <div className="calendar-weekdays">{["一","二","三","四","五","六","日"].map(day=><span key={day}>周{day}</span>)}</div>
-              <div className="calendar-grid">{calendarCells.map((date,index)=>{
-                if(!date)return <span className="calendar-day empty-day" key={`empty-${index}`}/>;
-                const entries=calendarItems.filter(item=>item.plannedDate===date),today=date===new Date().toISOString().slice(0,10);
-                return <button type="button" className={`calendar-day ${today?"today":""} ${selectedShoppingDate===date?"selected":""}`} key={date} onClick={()=>setSelectedShoppingDate(current=>current===date?"":date)}>
-                  <time>{Number(date.slice(-2))}</time>
-                  <span className="calendar-mobile-count">{entries.length||""}</span>
-                  <div>{entries.slice(0,2).map(item=><span className={item.completed?"completed":""} key={item.id}><b>{item.name}</b><small>{shoppingChannelName(item)}</small></span>)}{entries.length>2&&<em>+{entries.length-2}</em>}</div>
-                </button>;
-              })}</div>
-            </div>
-          </section>
+            </section>
           </section>
         )}
         {activePage === "home" && (
           <section className="summary-grid">
             <div className="summary-card">
-              <span className="summary-icon"><Package size={18} /></span>
+              <span className="summary-icon">
+                <Package size={18} />
+              </span>
               <div>
-                <span className="summary-label">物资种类</span>
+                <span className="summary-label">{t("物资种类")}</span>
                 <strong>{items.length}</strong>
-                <span className="summary-foot">当前在管物资</span>
+                <span className="summary-foot">{t("当前在管物资")}</span>
               </div>
             </div>
             <div className="summary-card warning">
-              <span className="summary-icon"><TriangleAlert size={18} /></span>
+              <span className="summary-icon">
+                <TriangleAlert size={18} />
+              </span>
               <div>
-                <span className="summary-label">需要补充</span>
+                <span className="summary-label">{t("需要补充")}</span>
                 <strong>{lowStock}</strong>
-                <span className="summary-foot">低于最低库存</span>
+                <span className="summary-foot">{t("低于最低库存")}</span>
               </div>
             </div>
             <div className="summary-card">
-              <span className="summary-icon"><CalendarClock size={18} /></span>
+              <span className="summary-icon">
+                <CalendarClock size={18} />
+              </span>
               <div>
-                <span className="summary-label">即将到期</span>
+                <span className="summary-label">{t("即将到期")}</span>
                 <strong>{expiringItems.length}</strong>
-                <span className="summary-foot">未来 30 天</span>
+                <span className="summary-foot">{t("未来 30 天")}</span>
               </div>
             </div>
             <div className="summary-card shopping">
-              <span className="summary-icon"><ShoppingCart size={18} /></span>
+              <span className="summary-icon">
+                <ShoppingCart size={18} />
+              </span>
               <div>
-                <span className="summary-label">待采购</span>
+                <span className="summary-label">{t("待采购")}</span>
                 <strong>{pendingShoppingCount}</strong>
-                <span className="summary-foot">未完成采购项</span>
+                <span className="summary-foot">{t("未完成采购项")}</span>
               </div>
             </div>
           </section>
@@ -1888,51 +2580,113 @@ export function App() {
             <section className="dashboard-grid">
               <div className="dashboard-main">
                 <div className="panel dashboard-inventory">
-                <div className="panel-head">
-                  <div>
-                    <h2>库存概览</h2>
-                    <p className="muted">优先显示需要补充的物资</p>
+                  <div className="panel-head">
+                    <div>
+                      <h2>{t("库存概览")}</h2>
+                      <p className="muted">{t("优先显示需要补充的物资")}</p>
+                    </div>
+                    <button
+                      className="text-button"
+                      onClick={() => navigate("count")}
+                    >
+                      {t("查看全部")}
+                    </button>
                   </div>
-                  <button className="text-button" onClick={() => navigate("count")}>查看全部</button>
-                </div>
-                <div className="table-wrap">
-                  <table>
-                    <thead><tr><th>物资</th><th>库存</th><th className="dashboard-minimum">最低库存</th><th>状态</th><th className="dashboard-location">位置</th></tr></thead>
-                    <tbody>
-                      {dashboardItems.map((item) => {
-                        const status = displayStatusFor(item);
-                        return (
-                          <tr key={item.id}>
-                            <td><div className="item-name"><span className="item-icon"><MaterialIcon value={itemIconFor(item)} /></span><strong>{item.name}</strong></div></td>
-                            <td>{balanceFor(item.id)} {item.baseUnit}</td>
-                            <td className="dashboard-minimum">{item.reorderPoint} {item.baseUnit}</td>
-                            <td><span className={`stock-status ${status.level}`}>{status.label}</span></td>
-                            <td className="dashboard-location">{item.locationName || "未指定"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {dashboardItems.length === 0 && <p className="empty">暂无物资</p>}
-                </div>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>{t("物资")}</th>
+                          <th>{t("库存")}</th>
+                          <th className="dashboard-minimum">{t("最低库存")}</th>
+                          <th>{t("状态")}</th>
+                          <th className="dashboard-location">{t("位置")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dashboardItems.map((item) => {
+                          const status = displayStatusFor(item);
+                          return (
+                            <tr key={item.id}>
+                              <td>
+                                <div className="item-name">
+                                  <span className="item-icon">
+                                    <MaterialIcon value={itemIconFor(item)} />
+                                  </span>
+                                  <strong>{item.name}</strong>
+                                </div>
+                              </td>
+                              <td>
+                                {balanceFor(item.id)} {item.baseUnit}
+                              </td>
+                              <td className="dashboard-minimum">
+                                {item.reorderPoint} {item.baseUnit}
+                              </td>
+                              <td>
+                                <span
+                                  className={`stock-status ${status.level}`}
+                                >
+                                  {status.label}
+                                </span>
+                              </td>
+                              <td className="dashboard-location">
+                                {item.locationName || t("未指定")}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {dashboardItems.length === 0 && (
+                      <p className="empty">{t("暂无物资")}</p>
+                    )}
+                  </div>
                 </div>
                 <section className="panel recent-log dashboard-log">
                   <div className="panel-head">
-                    <div><h2>最近变动</h2><p className="muted">按时间倒序的库存流水</p></div>
+                    <div>
+                      <h2>{t("最近变动")}</h2>
+                      <p className="muted">{t("按时间倒序的库存流水")}</p>
+                    </div>
                   </div>
-                  {pagedTransactions.length === 0 ? <p className="empty">暂无库存变动</p> : (
+                  {pagedTransactions.length === 0 ? (
+                    <p className="empty">{t("暂无库存变动")}</p>
+                  ) : (
                     <div className="log-list">
                       {pagedTransactions.map((transaction) => (
-                        <TransactionRow key={transaction.id} transaction={transaction} />
+                        <TransactionRow
+                          key={transaction.id}
+                          transaction={transaction}
+                        />
                       ))}
                     </div>
                   )}
                   {transactionPageCount > 1 && (
                     <div className="pagination">
-                      <span>{(transactionPage - 1) * 10 + 1}–{Math.min(transactionPage * 10, transactionTotal)} / 共 {transactionTotal} 条</span>
-                      <button type="button" aria-label="上一页" disabled={transactionPage === 1} onClick={() => setTransactionPage(transactionPage - 1)}><ArrowLeft size={15} /></button>
-                      <span>{transactionPage} / {transactionPageCount}</span>
-                      <button type="button" aria-label="下一页" disabled={transactionPage === transactionPageCount} onClick={() => setTransactionPage(transactionPage + 1)}><ArrowRight size={15} /></button>
+                      <span>
+                        {(transactionPage - 1) * 10 + 1}–
+                        {Math.min(transactionPage * 10, transactionTotal)}{" "}
+                        {t("/ 共")} {transactionTotal} {t("条")}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={t("上一页")}
+                        disabled={transactionPage === 1}
+                        onClick={() => setTransactionPage(transactionPage - 1)}
+                      >
+                        <ArrowLeft size={15} />
+                      </button>
+                      <span>
+                        {transactionPage} / {transactionPageCount}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={t("下一页")}
+                        disabled={transactionPage === transactionPageCount}
+                        onClick={() => setTransactionPage(transactionPage + 1)}
+                      >
+                        <ArrowRight size={15} />
+                      </button>
                     </div>
                   )}
                 </section>
@@ -1940,146 +2694,430 @@ export function App() {
               <aside className="dashboard-side">
                 <section className="panel dashboard-shopping">
                   <div className="panel-head">
-                    <div><h2>待采购</h2><p className="muted">自动建议与手动采购项</p></div>
-                    <button className="text-button" onClick={() => navigate("shopping")}>查看全部</button>
+                    <div>
+                      <h2>{t("待采购")}</h2>
+                      <p className="muted">{t("自动建议与手动采购项")}</p>
+                    </div>
+                    <button
+                      className="text-button"
+                      onClick={() => navigate("shopping")}
+                    >
+                      {t("查看全部")}
+                    </button>
                   </div>
                   <div className="dashboard-list">
-                    {shoppingItems.length === 0 ? <p className="empty compact">暂无待采购项</p> : shoppingItems.map((item) => (
-                      <button type="button" className="dashboard-list-row" key={item.id} onClick={() => navigate("shopping")}>
-                        <span><strong>{item.name}</strong><small>{item.category || "未分类"}</small></span>
-                        <b>{item.quantity} {item.unit || "件"}</b>
-                      </button>
-                    ))}
+                    {shoppingItems.length === 0 ? (
+                      <p className="empty compact">{t("暂无待采购项")}</p>
+                    ) : (
+                      shoppingItems.map((item) => (
+                        <button
+                          type="button"
+                          className="dashboard-list-row"
+                          key={item.id}
+                          onClick={() => navigate("shopping")}
+                        >
+                          <span>
+                            <strong>{item.name}</strong>
+                            <small>{item.category || t("未分类")}</small>
+                          </span>
+                          <b>
+                            {item.quantity} {item.unit || t("件")}
+                          </b>
+                        </button>
+                      ))
+                    )}
                   </div>
                 </section>
                 <section className="panel dashboard-categories">
                   <div className="panel-head">
-                    <div><h2>分类结构</h2><p className="muted">包含子分类的物资种类</p></div>
-                    <button className="text-button" onClick={() => navigate("categories")}>管理</button>
+                    <div>
+                      <h2>{t("分类结构")}</h2>
+                      <p className="muted">{t("包含子分类的物资种类")}</p>
+                    </div>
+                    <button
+                      className="text-button"
+                      onClick={() => navigate("categories")}
+                    >
+                      {t("管理")}
+                    </button>
                   </div>
                   <div className="category-summary">
                     {categorySummary.map((category) => (
                       <div key={category.id}>
-                        <span style={{ paddingLeft: category.depth * 14 }}>{category.name}</span>
+                        <span style={{ paddingLeft: category.depth * 14 }}>
+                          {category.name}
+                        </span>
                         <strong>{category.count}</strong>
                       </div>
                     ))}
-                    {categorySummary.length === 0 && <p className="empty compact">暂无分类数据</p>}
+                    {categorySummary.length === 0 && (
+                      <p className="empty compact">{t("暂无分类数据")}</p>
+                    )}
                   </div>
                 </section>
                 <section className="panel dashboard-locations">
                   <div className="panel-head">
-                    <div><h2>地点结构</h2><p className="muted">包含子地点的物资种类</p></div>
-                    <button className="text-button" onClick={() => navigate("locations")}>管理</button>
+                    <div>
+                      <h2>{t("地点结构")}</h2>
+                      <p className="muted">{t("包含子地点的物资种类")}</p>
+                    </div>
+                    <button
+                      className="text-button"
+                      onClick={() => navigate("locations")}
+                    >
+                      {t("管理")}
+                    </button>
                   </div>
                   <div className="location-summary">
                     {locationSummary.map((location) => (
                       <div key={location.id}>
-                        <span style={{ paddingLeft: location.depth * 14 }}>{location.name}</span>
+                        <span style={{ paddingLeft: location.depth * 14 }}>
+                          {location.name}
+                        </span>
                         <strong>{location.count}</strong>
                       </div>
                     ))}
-                    {locationSummary.length === 0 && <p className="empty compact">暂无地点数据</p>}
+                    {locationSummary.length === 0 && (
+                      <p className="empty compact">{t("暂无地点数据")}</p>
+                    )}
                   </div>
                 </section>
               </aside>
             </section>
           </>
         )}
-        {!countView &&
-          !logView &&
-          activePage === "count" && (
-            <section className="count-workspace">
-              <div className="count-summary" aria-label="库存状态概览">
-                <button className={!stockStatusFilter && !expiryFilter ? "active" : ""} onClick={() => { setStockStatusFilter(""); setExpiryFilter(""); }}>
-                  <span className="count-summary-copy"><b>全部物资</b><small>当前在管物资</small></span><strong>{items.length}</strong>
-                </button>
-                <button className={stockStatusFilter === "empty" ? "active danger" : ""} onClick={() => { setStockStatusFilter("empty"); setExpiryFilter(""); }}>
-                  <span className="count-summary-copy"><b>缺货</b><small>库存为 0，无补货要求</small></span><strong>{emptyStockCount}</strong>
-                </button>
-                <button className={stockStatusFilter === "replenishment" ? "active warning" : ""} onClick={() => { setStockStatusFilter("replenishment"); setExpiryFilter(""); }}>
-                  <span className="count-summary-copy"><b>不足</b><small>低于最低库存</small></span><strong>{belowStockCount}</strong>
-                </button>
-                <button className={stockStatusFilter === "warning" ? "active warning" : ""} onClick={() => { setStockStatusFilter("warning"); setExpiryFilter(""); }}>
-                  <span className="count-summary-copy"><b>临界</b><small>等于最低库存</small></span><strong>{criticalStockCount}</strong>
-                </button>
-                <button className={expiryFilter === "expiring" ? "active" : ""} onClick={() => { setStockStatusFilter(""); setExpiryFilter("expiring"); }}>
-                  <span className="count-summary-copy"><b>临期</b><small>未来 30 天到期</small></span><strong>{expiringItems.length}</strong>
-                </button>
+        {!countView && !logView && activePage === "count" && (
+          <section className="count-workspace">
+            <div className="count-summary" aria-label={t("库存状态概览")}>
+              <button
+                className={!stockStatusFilter && !expiryFilter ? "active" : ""}
+                onClick={() => {
+                  setStockStatusFilter("");
+                  setExpiryFilter("");
+                }}
+              >
+                <span className="count-summary-copy">
+                  <b>{t("全部物资")}</b>
+                  <small>{t("当前在管物资")}</small>
+                </span>
+                <strong>{items.length}</strong>
+              </button>
+              <button
+                className={stockStatusFilter === "empty" ? "active danger" : ""}
+                onClick={() => {
+                  setStockStatusFilter("empty");
+                  setExpiryFilter("");
+                }}
+              >
+                <span className="count-summary-copy">
+                  <b>{t("缺货")}</b>
+                  <small>{t("库存为 0，无补货要求")}</small>
+                </span>
+                <strong>{emptyStockCount}</strong>
+              </button>
+              <button
+                className={
+                  stockStatusFilter === "replenishment" ? "active warning" : ""
+                }
+                onClick={() => {
+                  setStockStatusFilter("replenishment");
+                  setExpiryFilter("");
+                }}
+              >
+                <span className="count-summary-copy">
+                  <b>{t("不足")}</b>
+                  <small>{t("低于最低库存")}</small>
+                </span>
+                <strong>{belowStockCount}</strong>
+              </button>
+              <button
+                className={
+                  stockStatusFilter === "warning" ? "active warning" : ""
+                }
+                onClick={() => {
+                  setStockStatusFilter("warning");
+                  setExpiryFilter("");
+                }}
+              >
+                <span className="count-summary-copy">
+                  <b>{t("临界")}</b>
+                  <small>{t("等于最低库存")}</small>
+                </span>
+                <strong>{criticalStockCount}</strong>
+              </button>
+              <button
+                className={expiryFilter === "expiring" ? "active" : ""}
+                onClick={() => {
+                  setStockStatusFilter("");
+                  setExpiryFilter("expiring");
+                }}
+              >
+                <span className="count-summary-copy">
+                  <b>{t("临期")}</b>
+                  <small>{t("未来 30 天到期")}</small>
+                </span>
+                <strong>{expiringItems.length}</strong>
+              </button>
+            </div>
+            <div className="panel inventory-panel count-inventory">
+              <div className="panel-head">
+                <div>
+                  <h2>{t("库存明细")}</h2>
+                  <p className="muted">
+                    {t("按紧急程度排序，共")}
+                    {filtered.length} {t("项")}
+                  </p>
+                </div>
+                <label className="search count-search">
+                  <Search size={16} strokeWidth={1.8} />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={t("搜索物资")}
+                  />
+                </label>
               </div>
-              <div className="panel inventory-panel count-inventory">
-                <div className="panel-head">
-                  <div>
-                    <h2>库存明细</h2>
-                    <p className="muted">按紧急程度排序，共 {filtered.length} 项</p>
-                  </div>
-                  <label className="search count-search">
-                    <Search size={16} strokeWidth={1.8} />
-                    <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物资" />
-                  </label>
-                </div>
-                <div className="count-filters">
-                  <SlidersHorizontal size={15} strokeWidth={1.8} />
-                  <label>分类<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">全部分类</option>{categoryOptions.map((category) => <option key={category.id} value={category.name}>{"　".repeat(category.depth)}{category.name}</option>)}</select></label>
-                  <label>地点<select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}><option value="">全部地点</option>{locationOptions.map((location) => <option key={location.id} value={location.id}>{"　".repeat(location.depth)}{location.name}</option>)}</select></label>
-                  <label>库存状态<select value={stockStatusFilter} onChange={(event) => setStockStatusFilter(event.target.value)}><option value="">全部状态</option><option value="empty">缺货</option><option value="replenishment">不足</option><option value="warning">临界</option><option value="normal">正常</option></select></label>
-                  <label>到期状态<select value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value)}><option value="">全部</option><option value="expired">过期</option><option value="expiring">临期</option><option value="valid">有效</option><option value="none">未设</option></select></label>
-                  {(query || categoryFilter || locationFilter || stockStatusFilter || expiryFilter) && (
-                    <button type="button" className="text-button" onClick={() => { setQuery(""); setCategoryFilter(""); setLocationFilter(""); setStockStatusFilter(""); setExpiryFilter(""); }}>重置</button>
-                  )}
-                </div>
-                <div className="table-wrap count-table-wrap">
-                  <table className="count-table">
-                    <thead>
-                      <tr><th>物资</th><th>当前库存</th><th>最低库存</th><th>补充建议</th><th>状态</th><th>存放地点</th><th>日期</th><th>操作</th></tr>
-                    </thead>
-                    <tbody>
-                      {filtered.length === 0 ? (
-                        <tr><td colSpan={8} className="empty">没有符合当前条件的物资。</td></tr>
-                      ) : pagedItems.map((item) => {
+              <div className="count-filters">
+                <SlidersHorizontal size={15} strokeWidth={1.8} />
+                <label>
+                  {t("分类")}
+                  <select
+                    value={categoryFilter}
+                    onChange={(event) => setCategoryFilter(event.target.value)}
+                  >
+                    <option value="">{t("全部分类")}</option>
+                    {categoryOptions.map((category) => (
+                      <option key={category.id} value={category.name}>
+                        {"　".repeat(category.depth)}
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {t("地点")}
+                  <select
+                    value={locationFilter}
+                    onChange={(event) => setLocationFilter(event.target.value)}
+                  >
+                    <option value="">{t("全部地点")}</option>
+                    {locationOptions.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {"　".repeat(location.depth)}
+                        {location.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {t("库存状态")}
+                  <select
+                    value={stockStatusFilter}
+                    onChange={(event) =>
+                      setStockStatusFilter(event.target.value)
+                    }
+                  >
+                    <option value="">{t("全部状态")}</option>
+                    <option value="empty">{t("缺货")}</option>
+                    <option value="replenishment">{t("不足")}</option>
+                    <option value="warning">{t("临界")}</option>
+                    <option value="normal">{t("正常")}</option>
+                  </select>
+                </label>
+                <label>
+                  {t("到期状态")}
+                  <select
+                    value={expiryFilter}
+                    onChange={(event) => setExpiryFilter(event.target.value)}
+                  >
+                    <option value="">{t("全部")}</option>
+                    <option value="expired">{t("过期")}</option>
+                    <option value="expiring">{t("临期")}</option>
+                    <option value="valid">{t("有效")}</option>
+                    <option value="none">{t("未设")}</option>
+                  </select>
+                </label>
+                {(query ||
+                  categoryFilter ||
+                  locationFilter ||
+                  stockStatusFilter ||
+                  expiryFilter) && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      setQuery("");
+                      setCategoryFilter("");
+                      setLocationFilter("");
+                      setStockStatusFilter("");
+                      setExpiryFilter("");
+                    }}
+                  >
+                    {t("重置")}
+                  </button>
+                )}
+              </div>
+              <div className="table-wrap count-table-wrap">
+                <table className="count-table">
+                  <thead>
+                    <tr>
+                      <th>{t("物资")}</th>
+                      <th>{t("当前库存")}</th>
+                      <th>{t("最低库存")}</th>
+                      <th>{t("补充建议")}</th>
+                      <th>{t("状态")}</th>
+                      <th>{t("存放地点")}</th>
+                      <th>{t("日期")}</th>
+                      <th>{t("操作")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="empty">
+                          {t("没有符合当前条件的物资。")}
+                        </td>
+                      </tr>
+                    ) : (
+                      pagedItems.map((item) => {
                         const stockStatus = displayStatusFor(item);
                         const replenishment = replenishmentFor(item);
                         return (
                           <tr key={item.id}>
-                            <td><div className="item-name"><span className="item-icon"><MaterialIcon value={itemIconFor(item)} /></span><div><strong>{item.name}</strong><span>{item.category || "未分类"}</span></div></div></td>
-                            <td><strong>{balanceFor(item.id)} {item.baseUnit}</strong></td>
-                            <td>{item.reorderPoint} {item.baseUnit}</td>
-                            <td className={replenishment > 0 ? "replenishment" : "muted-cell"}>{replenishment > 0 ? `${replenishment} ${item.baseUnit}` : "—"}</td>
-                            <td><span className={`stock-status ${stockStatus.level}`}>{stockStatus.label}</span></td>
-                            <td>{item.locationName || "未指定"}</td>
-                            <td><div className="date-cell"><span>生产 {item.manufacturedDate || "—"}</span><span>到期 {item.expiryDate || "—"}</span></div></td>
-                            <td><div className="row-actions"><button onClick={() => openStockAction("receipt", item)}>入库</button><button onClick={() => openStockAction("issue", item)}>领用</button><button onClick={() => setBatchItem(item)}>批次</button><button onClick={() => setDetailItem(item)}>编辑</button><button className="danger-action" onClick={() => confirmDelete("item", item)}>删除</button></div></td>
+                            <td>
+                              <div className="item-name">
+                                <span className="item-icon">
+                                  <MaterialIcon value={itemIconFor(item)} />
+                                </span>
+                                <div>
+                                  <strong>{item.name}</strong>
+                                  <span>{item.category || t("未分类")}</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <strong>
+                                {balanceFor(item.id)} {item.baseUnit}
+                              </strong>
+                            </td>
+                            <td>
+                              {item.reorderPoint} {item.baseUnit}
+                            </td>
+                            <td
+                              className={
+                                replenishment > 0
+                                  ? "replenishment"
+                                  : "muted-cell"
+                              }
+                            >
+                              {replenishment > 0
+                                ? `${replenishment} ${item.baseUnit}`
+                                : "—"}
+                            </td>
+                            <td>
+                              <span
+                                className={`stock-status ${stockStatus.level}`}
+                              >
+                                {stockStatus.label}
+                              </span>
+                            </td>
+                            <td>{item.locationName || t("未指定")}</td>
+                            <td>
+                              <div className="date-cell">
+                                <span>
+                                  {t("生产")}
+                                  {item.manufacturedDate || "—"}
+                                </span>
+                                <span>
+                                  {t("到期")}
+                                  {item.expiryDate || "—"}
+                                </span>
+                              </div>
+                            </td>
+                            <td>
+                              <div className="row-actions">
+                                <button
+                                  onClick={() =>
+                                    openStockAction("receipt", item)
+                                  }
+                                >
+                                  {t("入库")}
+                                </button>
+                                <button
+                                  onClick={() => openStockAction("issue", item)}
+                                >
+                                  {t("领用")}
+                                </button>
+                                <button onClick={() => setBatchItem(item)}>
+                                  {t("批次")}
+                                </button>
+                                <button onClick={() => setDetailItem(item)}>
+                                  {t("编辑")}
+                                </button>
+                                <button
+                                  className="danger-action"
+                                  onClick={() => confirmDelete("item", item)}
+                                >
+                                  {t("删除")}
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {filtered.length > 0 && (
-                  <div className="pagination">
-                    <span>{pageStart}–{pageEnd} / 共 {filtered.length} 项</span>
-                    <button type="button" aria-label="上一页" title="上一页" disabled={page === 1} onClick={() => setPage(page - 1)}><ArrowLeft size={15} /></button>
-                    <span>{page} / {pageCount}</span>
-                    <button type="button" aria-label="下一页" title="下一页" disabled={page === pageCount} onClick={() => setPage(page + 1)}><ArrowRight size={15} /></button>
-                  </div>
-                )}
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
-            </section>
-          )}
+              {filtered.length > 0 && (
+                <div className="pagination">
+                  <span>
+                    {pageStart}–{pageEnd} {t("/ 共")}
+                    {filtered.length} {t("项")}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={t("上一页")}
+                    title={t("上一页")}
+                    disabled={page === 1}
+                    onClick={() => setPage(page - 1)}
+                  >
+                    <ArrowLeft size={15} />
+                  </button>
+                  <span>
+                    {page} / {pageCount}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={t("下一页")}
+                    title={t("下一页")}
+                    disabled={page === pageCount}
+                    onClick={() => setPage(page + 1)}
+                  >
+                    <ArrowRight size={15} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
         {activePage === "count" && !logView && (
           <section className="panel recent-log">
             <div className="panel-head">
               <div>
-                <h2>最近变动</h2>
-                <p className="muted">按时间倒序的库存流水</p>
+                <h2>{t("最近变动")}</h2>
+                <p className="muted">{t("按时间倒序的库存流水")}</p>
               </div>
             </div>
             {pagedTransactions.length === 0 ? (
-              <p className="empty">暂无库存变动</p>
+              <p className="empty">{t("暂无库存变动")}</p>
             ) : (
               <div className="log-list">
                 {pagedTransactions.map((transaction) => (
-                  <TransactionRow key={transaction.id} transaction={transaction} />
+                  <TransactionRow
+                    key={transaction.id}
+                    transaction={transaction}
+                  />
                 ))}
               </div>
             )}
@@ -2087,12 +3125,12 @@ export function App() {
               <div className="pagination">
                 <span>
                   {(transactionPage - 1) * 10 + 1}–
-                  {Math.min(transactionPage * 10, transactionTotal)} / 共{" "}
-                  {transactionTotal} 条
+                  {Math.min(transactionPage * 10, transactionTotal)} {t("/ 共")}{" "}
+                  {transactionTotal} {t("条")}
                 </span>
                 <button
                   type="button"
-                  aria-label="上一页"
+                  aria-label={t("上一页")}
                   disabled={transactionPage === 1}
                   onClick={() => setTransactionPage(transactionPage - 1)}
                 >
@@ -2103,7 +3141,7 @@ export function App() {
                 </span>
                 <button
                   type="button"
-                  aria-label="下一页"
+                  aria-label={t("下一页")}
                   disabled={transactionPage === transactionPageCount}
                   onClick={() => setTransactionPage(transactionPage + 1)}
                 >
@@ -2117,55 +3155,107 @@ export function App() {
           <section className="panel count-panel inventory-tree">
             <div className="panel-head">
               <div>
-                <h2>{treeMode === "location" ? "地点" : "分类"}</h2>
-                <p className="muted">展开节点查看库存与状态</p>
+                <h2>{treeMode === "location" ? t("地点") : t("分类")}</h2>
+                <p className="muted">{t("展开节点查看库存与状态")}</p>
               </div>
               <div className="panel-tools">
                 <button
                   className="text-button"
                   onClick={() => navigate("count")}
                 >
-                  返回盘点
+                  {t("返回盘点")}
                 </button>
               </div>
             </div>
             {treeNodes
               .filter((node) => !node.parentId)
               .map((node) => renderTreeNode(node))}
-            {treeNodes.length === 0 && <p className="empty">暂无节点</p>}
+            {treeNodes.length === 0 && <p className="empty">{t("暂无节点")}</p>}
           </section>
         )}
         {logView && (
           <section className="panel full-log">
             <div className="panel-head">
               <div>
-                <h2>完整变动日志</h2>
-                <p className="muted">按时间倒序记录库存变动</p>
+                <h2>{t("完整变动日志")}</h2>
+                <p className="muted">{t("按时间倒序记录库存变动")}</p>
               </div>
               <button className="text-button" onClick={() => setLogView(false)}>
-                返回总览
+                {t("返回总览")}
               </button>
             </div>
             <div className="log-list">
               {transactions.length === 0 ? (
-                <p className="empty">暂无库存变动</p>
+                <p className="empty">{t("暂无库存变动")}</p>
               ) : (
                 transactions.map((transaction) => (
-                  <TransactionRow key={transaction.id} transaction={transaction} />
+                  <TransactionRow
+                    key={transaction.id}
+                    transaction={transaction}
+                  />
                 ))
               )}
             </div>
           </section>
         )}
       </main>
-      {deleteTarget && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !deleting) setDeleteTarget(null); }}>
-        <form className="modal delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title" onSubmit={deleteSelected}>
-          <div className="modal-head"><h2 id="delete-title">删除{deleteTarget.kind === "item" ? "物资" : deleteTarget.kind === "category" ? "分类" : "地点"}</h2><button type="button" className="close" disabled={deleting} aria-label="关闭" onClick={() => setDeleteTarget(null)}><X size={18} /></button></div>
-          <strong>{deleteTarget.name}</strong><p>{deleteTarget.message}</p>
-          {deleteError && <p className="setup-error" role="alert">{deleteError}</p>}
-          <div className="delete-dialog-actions"><button type="button" className="secondary" autoFocus disabled={deleting} onClick={() => setDeleteTarget(null)}>取消</button><button className="primary danger-button" disabled={deleting}>{deleting ? "删除中…" : "确认删除"}</button></div>
-        </form>
-      </div>}
+      {deleteTarget && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deleting)
+              setDeleteTarget(null);
+          }}
+        >
+          <form
+            className="modal delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-title"
+            onSubmit={deleteSelected}
+          >
+            <div className="modal-head">
+              <h2 id="delete-title">
+                {deleteTarget.kind === "item"
+                  ? t("删除物资")
+                  : deleteTarget.kind === "category"
+                    ? t("删除分类")
+                    : t("删除地点")}
+              </h2>
+              <button
+                type="button"
+                className="close"
+                disabled={deleting}
+                aria-label={t("关闭")}
+                onClick={() => setDeleteTarget(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <strong>{deleteTarget.name}</strong>
+            <p>{deleteTarget.message}</p>
+            {deleteError && (
+              <p className="setup-error" role="alert">
+                {deleteError}
+              </p>
+            )}
+            <div className="delete-dialog-actions">
+              <button
+                type="button"
+                className="secondary"
+                autoFocus
+                disabled={deleting}
+                onClick={() => setDeleteTarget(null)}
+              >
+                {t("取消")}
+              </button>
+              <button className="primary danger-button" disabled={deleting}>
+                {deleting ? t("删除中…") : t("确认删除")}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       {detailItem && (
         <div
           className="modal-backdrop"
@@ -2176,28 +3266,33 @@ export function App() {
           <form className="modal" onSubmit={updateItem}>
             <div className="modal-head">
               <div>
-                <h2>编辑物资</h2>
+                <h2>{t("编辑物资")}</h2>
                 <p className="muted">{detailItem.name}</p>
               </div>
               <button
                 type="button"
                 className="close"
                 onClick={() => setDetailItem(null)}
-                aria-label="关闭"
+                aria-label={t("关闭")}
               >
                 <X size={18} strokeWidth={1.8} />
               </button>
             </div>
             <label>
-              物资名称
+              {t("物资名称")}
               <input name="name" required defaultValue={detailItem.name} />
             </label>
             <label>
-              商品条码（可选）
-              <input name="barcode" inputMode="numeric" pattern="[0-9]{8,14}" defaultValue={detailItem.barcode||""} />
+              {t("商品条码（可选）")}
+              <input
+                name="barcode"
+                inputMode="numeric"
+                pattern="[0-9]{8,14}"
+                defaultValue={detailItem.barcode || ""}
+              />
             </label>
             <label>
-              类型
+              {t("类型")}
               <select name="category" defaultValue={detailItem.category}>
                 {selectCategoryOptions.map((category) => (
                   <option key={category.id} value={category.name}>
@@ -2209,35 +3304,36 @@ export function App() {
             </label>
             <div className="form-row">
               <label>
-                当前库存（只读）
-                <input
-                  value={balanceFor(detailItem.id)}
-                  readOnly
-                />
-                <small className="form-hint">请通过入库、领用或盘点调整库存</small>
+                {t("当前库存（只读）")}
+                <input value={balanceFor(detailItem.id)} readOnly />
+                <small className="form-hint">
+                  {t("请通过入库、领用或盘点调整库存")}
+                </small>
               </label>
               <label>
-                单位
+                {t("单位")}
                 <select
                   name="baseUnit"
                   required
                   defaultValue={detailItem.baseUnit}
                 >
-                  <option>个</option>
-                  <option>瓶</option>
-                  <option>盒</option>
-                  <option>包</option>
-                  <option>箱</option>
-                  <option>袋</option>
-                  <option>千克</option>
-                  <option>升</option>
-                  <option>米</option>
-                  <option>其他</option>
+                  <option value="个">{t("个")}</option>
+                  <option value="瓶">{t("瓶")}</option>
+                  <option value="盒">{t("盒")}</option>
+                  <option value="包">{t("包")}</option>
+                  <option value="箱">{t("箱")}</option>
+                  <option value="袋">{t("袋")}</option>
+                  <option value="千克">{t("千克")}</option>
+                  <option value="升">{t("升")}</option>
+                  <option value="米">{t("米")}</option>
+                  <option value="其他">{t("其他")}</option>
                 </select>
-                <small className="form-hint">已有库存流水后不可更改单位</small>
+                <small className="form-hint">
+                  {t("已有库存流水后不可更改单位")}
+                </small>
               </label>
               <label>
-                最低库存
+                {t("最低库存")}
                 <input
                   name="reorderPoint"
                   type="number"
@@ -2248,12 +3344,12 @@ export function App() {
               </label>
             </div>
             <label>
-              存放地点
+              {t("存放地点")}
               <select
                 name="locationId"
                 defaultValue={detailItem.locationId || ""}
               >
-                <option value="">暂不指定</option>
+                <option value="">{t("暂不指定")}</option>
                 {locationOptions.map((location) => (
                   <option key={location.id} value={location.id}>
                     {"　".repeat(location.depth)}
@@ -2272,9 +3368,9 @@ export function App() {
                   setDetailItem(null);
                 }}
               >
-                管理库存批次
+                {t("管理库存批次")}
               </button>
-              <button className="primary">保存修改</button>
+              <button className="primary">{t("保存修改")}</button>
             </div>
           </form>
         </div>
@@ -2290,31 +3386,33 @@ export function App() {
             <div className="modal-head">
               <div>
                 <h2>
-                  编辑{editTreeNode.kind === "location" ? "地点" : "分类"}
+                  {t("编辑")}
+                  {editTreeNode.kind === "location" ? t("地点") : t("分类")}
                 </h2>
-                <p className="muted">调整名称或父级</p>
+                <p className="muted">{t("调整名称或父级")}</p>
               </div>
               <button
                 type="button"
                 className="close"
                 onClick={() => setEditTreeNode(null)}
-                aria-label="关闭"
+                aria-label={t("关闭")}
               >
                 <X size={18} strokeWidth={1.8} />
               </button>
             </div>
             <label>
-              名称
+              {t("名称")}
               <input name="name" required defaultValue={editTreeNode.name} />
             </label>
             <label>
-              父级
+              {t("父级")}
               <select
                 name="parentId"
                 defaultValue={editTreeNode.parentId || ""}
               >
                 <option value="">
-                  一级{editTreeNode.kind === "location" ? "地点" : "分类"}
+                  {t("一级")}
+                  {editTreeNode.kind === "location" ? t("地点") : t("分类")}
                 </option>
                 {(editTreeNode.kind === "location"
                   ? locationOptions
@@ -2329,7 +3427,7 @@ export function App() {
                   ))}
               </select>
             </label>
-            <button className="primary full">保存修改</button>
+            <button className="primary full">{t("保存修改")}</button>
           </form>
         </div>
       )}
@@ -2352,7 +3450,9 @@ export function App() {
             <div className="modal-head">
               <div>
                 <h2>
-                  {stockAction.type === "receipt" ? "入库物资" : "领用物资"}
+                  {stockAction.type === "receipt"
+                    ? t("入库物资")
+                    : t("领用物资")}
                 </h2>
                 <p className="muted">{stockAction.item.name}</p>
               </div>
@@ -2360,13 +3460,13 @@ export function App() {
                 type="button"
                 className="close"
                 onClick={() => setStockAction(null)}
-                aria-label="关闭"
+                aria-label={t("关闭")}
               >
                 <X size={18} strokeWidth={1.8} />
               </button>
             </div>
             <label>
-              存放地点
+              {t("存放地点")}
               <select
                 name="locationId"
                 value={stockLocationId}
@@ -2381,7 +3481,7 @@ export function App() {
               </select>
             </label>
             {stockAction.type === "receipt" ? (
-              <BatchFields title="新入库批次（可选）" />
+              <BatchFields title={t("新入库批次（可选）")} />
             ) : stockLocationId ? (
               <BatchSelect
                 homeId={getHomeId()}
@@ -2390,7 +3490,7 @@ export function App() {
               />
             ) : null}
             <label>
-              数量
+              {t("数量")}
               <input
                 name="quantity"
                 type="number"
@@ -2402,11 +3502,16 @@ export function App() {
               />
             </label>
             <label>
-              备注（可选）
-              <input name="reason" placeholder="例如：本周采购" />
+              {t("备注（可选）")}
+              <input name="reason" placeholder={t("例如：本周采购")} />
             </label>
             <button className="primary full" disabled={busy}>
-              {busy ? "处理中…" : `确认${stockAction.type === "receipt" ? "入库" : "领用"}`}
+              {busy
+                ? t("处理中…")
+                : t("确认{{action}}", {
+                    action:
+                      stockAction.type === "receipt" ? t("入库") : t("领用"),
+                  })}
             </button>
           </form>
         </div>
@@ -2422,8 +3527,8 @@ export function App() {
           <form className="modal" onSubmit={addShoppingItem}>
             <div className="modal-head">
               <div>
-                <h2>添加采购项</h2>
-                <p className="muted">手动加入采购清单</p>
+                <h2>{t("添加采购项")}</h2>
+                <p className="muted">{t("手动加入采购清单")}</p>
               </div>
               <button
                 type="button"
@@ -2432,26 +3537,30 @@ export function App() {
                   setShowShoppingForm(false);
                   setShoppingItemId("");
                 }}
-                aria-label="关闭"
+                aria-label={t("关闭")}
               >
                 <X size={18} strokeWidth={1.8} />
               </button>
             </div>
             <label>
-              名称
+              {t("名称")}
               <input
                 key={`shopping-name-${shoppingItemId}`}
                 name="name"
                 required
                 defaultValue={linkedShoppingItem?.name || ""}
-                placeholder="例如：纸巾"
+                placeholder={t("例如：纸巾")}
                 disabled={Boolean(linkedShoppingItem)}
               />
             </label>
-            <ItemCombobox items={items} value={shoppingItemId} onChange={setShoppingItemId}/>
+            <ItemCombobox
+              items={items}
+              value={shoppingItemId}
+              onChange={setShoppingItemId}
+            />
             <div className="form-row">
               <label>
-                数量
+                {t("数量")}
                 <input
                   name="quantity"
                   type="number"
@@ -2461,28 +3570,28 @@ export function App() {
                 />
               </label>
               <label>
-                单位
+                {t("单位")}
                 <select
                   key={`shopping-unit-${shoppingItemId}`}
                   name="unit"
                   defaultValue={linkedShoppingItem?.baseUnit || "个"}
                   disabled={Boolean(linkedShoppingItem)}
                 >
-                  <option>个</option>
-                  <option>瓶</option>
-                  <option>盒</option>
-                  <option>包</option>
-                  <option>箱</option>
-                  <option>袋</option>
-                  <option>千克</option>
-                  <option>升</option>
-                  <option>米</option>
-                  <option>其他</option>
+                  <option value="个">{t("个")}</option>
+                  <option value="瓶">{t("瓶")}</option>
+                  <option value="盒">{t("盒")}</option>
+                  <option value="包">{t("包")}</option>
+                  <option value="箱">{t("箱")}</option>
+                  <option value="袋">{t("袋")}</option>
+                  <option value="千克">{t("千克")}</option>
+                  <option value="升">{t("升")}</option>
+                  <option value="米">{t("米")}</option>
+                  <option value="其他">{t("其他")}</option>
                 </select>
               </label>
             </div>
             <label>
-              种类
+              {t("种类")}
               <select
                 key={`shopping-category-${shoppingItemId}`}
                 name="category"
@@ -2498,7 +3607,7 @@ export function App() {
               </select>
             </label>
             <label>
-              存放地点
+              {t("存放地点")}
               <select
                 key={`shopping-location-${shoppingItemId}`}
                 name="locationId"
@@ -2507,7 +3616,7 @@ export function App() {
                 }
                 disabled={Boolean(linkedShoppingItem)}
               >
-                <option value="">暂不指定</option>
+                <option value="">{t("暂不指定")}</option>
                 {locationOptions.map((location) => (
                   <option key={location.id} value={location.id}>
                     {"　".repeat(location.depth)}
@@ -2517,10 +3626,23 @@ export function App() {
               </select>
             </label>
             <div className="form-row">
-              <label>购买渠道<select name="channelId" defaultValue=""><option value="">未安排</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label>
-              <label>计划采购日<input name="plannedDate" type="date"/></label>
+              <label>
+                {t("购买渠道")}
+                <select name="channelId" defaultValue="">
+                  <option value="">{t("未安排")}</option>
+                  {shoppingChannels.map((channel) => (
+                    <option key={channel.id} value={channel.id}>
+                      {channel.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("计划采购日")}
+                <input name="plannedDate" type="date" />
+              </label>
             </div>
-            <button className="primary full">加入采购清单</button>
+            <button className="primary full">{t("加入采购清单")}</button>
           </form>
         </div>
       )}
@@ -2535,8 +3657,8 @@ export function App() {
           <form className="modal" onSubmit={updateShoppingItem}>
             <div className="modal-head">
               <div>
-                <h2>编辑采购项</h2>
-                <p className="muted">修改采购数量和入库信息</p>
+                <h2>{t("编辑采购项")}</h2>
+                <p className="muted">{t("修改采购数量和入库信息")}</p>
               </div>
               <button
                 type="button"
@@ -2545,13 +3667,13 @@ export function App() {
                   setEditShoppingItem(null);
                   setEditShoppingItemId("");
                 }}
-                aria-label="关闭"
+                aria-label={t("关闭")}
               >
                 <X size={18} />
               </button>
             </div>
             <label>
-              名称
+              {t("名称")}
               <input
                 key={`edit-shopping-name-${editShoppingItemId}`}
                 name="name"
@@ -2562,10 +3684,14 @@ export function App() {
                 disabled={Boolean(linkedEditShoppingItem)}
               />
             </label>
-            <ItemCombobox items={items} value={editShoppingItemId} onChange={setEditShoppingItemId}/>
+            <ItemCombobox
+              items={items}
+              value={editShoppingItemId}
+              onChange={setEditShoppingItemId}
+            />
             <div className="form-row">
               <label>
-                数量
+                {t("数量")}
                 <input
                   name="quantity"
                   type="number"
@@ -2575,7 +3701,7 @@ export function App() {
                 />
               </label>
               <label>
-                单位
+                {t("单位")}
                 <select
                   key={`edit-shopping-unit-${editShoppingItemId}`}
                   name="unit"
@@ -2586,21 +3712,21 @@ export function App() {
                   }
                   disabled={Boolean(linkedEditShoppingItem)}
                 >
-                  <option>个</option>
-                  <option>瓶</option>
-                  <option>盒</option>
-                  <option>包</option>
-                  <option>箱</option>
-                  <option>袋</option>
-                  <option>千克</option>
-                  <option>升</option>
-                  <option>米</option>
-                  <option>其他</option>
+                  <option value="个">{t("个")}</option>
+                  <option value="瓶">{t("瓶")}</option>
+                  <option value="盒">{t("盒")}</option>
+                  <option value="包">{t("包")}</option>
+                  <option value="箱">{t("箱")}</option>
+                  <option value="袋">{t("袋")}</option>
+                  <option value="千克">{t("千克")}</option>
+                  <option value="升">{t("升")}</option>
+                  <option value="米">{t("米")}</option>
+                  <option value="其他">{t("其他")}</option>
                 </select>
               </label>
             </div>
             <label>
-              种类
+              {t("种类")}
               <select
                 key={`edit-shopping-category-${editShoppingItemId}`}
                 name="category"
@@ -2620,7 +3746,7 @@ export function App() {
               </select>
             </label>
             <label>
-              存放地点
+              {t("存放地点")}
               <select
                 key={`edit-shopping-location-${editShoppingItemId}`}
                 name="locationId"
@@ -2631,7 +3757,7 @@ export function App() {
                 }
                 disabled={Boolean(linkedEditShoppingItem)}
               >
-                <option value="">暂不指定</option>
+                <option value="">{t("暂不指定")}</option>
                 {locationOptions.map((location) => (
                   <option key={location.id} value={location.id}>
                     {"　".repeat(location.depth)}
@@ -2641,10 +3767,30 @@ export function App() {
               </select>
             </label>
             <div className="form-row">
-              <label>购买渠道<select name="channelId" defaultValue={editShoppingItem.channelId||""}><option value="">未安排</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label>
-              <label>计划采购日<input name="plannedDate" type="date" defaultValue={editShoppingItem.plannedDate||""}/></label>
+              <label>
+                {t("购买渠道")}
+                <select
+                  name="channelId"
+                  defaultValue={editShoppingItem.channelId || ""}
+                >
+                  <option value="">{t("未安排")}</option>
+                  {shoppingChannels.map((channel) => (
+                    <option key={channel.id} value={channel.id}>
+                      {channel.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("计划采购日")}
+                <input
+                  name="plannedDate"
+                  type="date"
+                  defaultValue={editShoppingItem.plannedDate || ""}
+                />
+              </label>
             </div>
-            <button className="primary full">保存修改</button>
+            <button className="primary full">{t("保存修改")}</button>
           </form>
         </div>
       )}
@@ -2658,24 +3804,24 @@ export function App() {
           <form className="modal" onSubmit={receiveShopping}>
             <div className="modal-head">
               <div>
-                <h2>采购入库</h2>
+                <h2>{t("采购入库")}</h2>
                 <p className="muted">
-                  {receiveShoppingItem.name} · 建议{" "}
+                  {receiveShoppingItem.name} {t("· 建议")}{" "}
                   {receiveShoppingItem.quantity}{" "}
-                  {receiveShoppingItem.unit || "件"}
+                  {receiveShoppingItem.unit || t("件")}
                 </p>
               </div>
               <button
                 type="button"
                 className="close"
                 onClick={() => setReceiveShoppingItem(null)}
-                aria-label="关闭"
+                aria-label={t("关闭")}
               >
                 <X size={18} />
               </button>
             </div>
             <label>
-              实际入库数量
+              {t("实际入库数量")}
               <input
                 name="quantity"
                 type="number"
@@ -2687,7 +3833,7 @@ export function App() {
               />
             </label>
             <label>
-              入库地点
+              {t("入库地点")}
               <select
                 name="locationId"
                 defaultValue={
@@ -2707,9 +3853,9 @@ export function App() {
                 ))}
               </select>
             </label>
-            <BatchFields title="采购入库批次（可选）" />
+            <BatchFields title={t("采购入库批次（可选）")} />
             <button className="primary full" disabled={busy}>
-              {busy ? "入库中…" : "确认入库"}
+              {busy ? t("入库中…") : t("确认入库")}
             </button>
           </form>
         </div>
@@ -2721,38 +3867,70 @@ export function App() {
             event.target === event.currentTarget && closeItemForm()
           }
         >
-          <form className="modal item-form-modal" key={itemFormRevision} onSubmit={addItem}>
+          <form
+            className="modal item-form-modal"
+            key={itemFormRevision}
+            onSubmit={addItem}
+          >
             <div className="modal-head">
               <div>
-                <h2>添加物资</h2>
-                <p className="muted">登记名称、当前库存和补充规则</p>
+                <h2>{t("添加物资")}</h2>
+                <p className="muted">{t("登记名称、当前库存和补充规则")}</p>
               </div>
               <button
                 type="button"
                 className="close"
                 onClick={closeItemForm}
-                aria-label="关闭"
+                aria-label={t("关闭")}
               >
                 <X size={18} strokeWidth={1.8} />
               </button>
             </div>
             <div className="barcode-lookup">
               <label>
-                商品条码（可选）
-                <input name="barcode" inputMode="numeric" pattern="[0-9]{8,14}" value={barcodeInput} onChange={event=>setBarcodeInput(event.target.value)} placeholder="输入 EAN / UPC / GTIN" />
+                {t("商品条码（可选）")}
+                <input
+                  name="barcode"
+                  inputMode="numeric"
+                  pattern="[0-9]{8,14}"
+                  value={barcodeInput}
+                  onChange={(event) => setBarcodeInput(event.target.value)}
+                  placeholder={t("输入 EAN / UPC / GTIN")}
+                />
               </label>
               <div>
-                <button type="button" className="secondary" disabled={barcodeBusy||!barcodeInput} onClick={()=>lookupItemBarcode()}>{barcodeBusy?"查询中…":"查询"}</button>
-                <button type="button" className="secondary" onClick={()=>setShowBarcodeScanner(true)}>摄像头扫描</button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={barcodeBusy || !barcodeInput}
+                  onClick={() => lookupItemBarcode()}
+                >
+                  {barcodeBusy ? t("查询中…") : t("查询")}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => setShowBarcodeScanner(true)}
+                >
+                  {t("摄像头扫描")}
+                </button>
               </div>
             </div>
             <label>
-              物资名称
-              <input name="name" required defaultValue={prefillName} placeholder="例如：洗衣液" />
+              {t("物资名称")}
+              <input
+                name="name"
+                required
+                defaultValue={prefillName}
+                placeholder={t("例如：洗衣液")}
+              />
             </label>
             <label>
-              类型
-              <select name="category" defaultValue={prefillCategory || "其他"}>
+              {t("类型")}
+              <select
+                name="category"
+                defaultValue={prefillCategory || "其他"}
+              >
                 {selectCategoryOptions.map((category) => (
                   <option key={category.id} value={category.name}>
                     {"　".repeat(category.depth)}
@@ -2763,22 +3941,22 @@ export function App() {
             </label>
             <div className="form-row">
               <label>
-                单位
+                {t("单位")}
                 <select name="baseUnit" defaultValue={prefillUnit}>
-                  <option>个</option>
-                  <option>瓶</option>
-                  <option>盒</option>
-                  <option>包</option>
-                  <option>箱</option>
-                  <option>袋</option>
-                  <option>千克</option>
-                  <option>升</option>
-                  <option>米</option>
-                  <option>其他</option>
+                  <option value="个">{t("个")}</option>
+                  <option value="瓶">{t("瓶")}</option>
+                  <option value="盒">{t("盒")}</option>
+                  <option value="包">{t("包")}</option>
+                  <option value="箱">{t("箱")}</option>
+                  <option value="袋">{t("袋")}</option>
+                  <option value="千克">{t("千克")}</option>
+                  <option value="升">{t("升")}</option>
+                  <option value="米">{t("米")}</option>
+                  <option value="其他">{t("其他")}</option>
                 </select>
               </label>
               <label>
-                库存
+                {t("库存")}
                 <input
                   name="initialStock"
                   type="number"
@@ -2789,7 +3967,7 @@ export function App() {
               </label>
             </div>
             <label>
-              最低库存
+              {t("最低库存")}
               <input
                 name="reorderPoint"
                 type="number"
@@ -2798,14 +3976,14 @@ export function App() {
                 defaultValue="0"
               />
             </label>
-            <BatchFields title="初始库存批次（可选）" />
+            <BatchFields title={t("初始库存批次（可选）")} />
             <label>
-              存放地点
+              {t("存放地点")}
               <select
                 name="locationId"
                 defaultValue={prefillLocationId || locations[0]?.id || ""}
               >
-                <option value="">暂不指定</option>
+                <option value="">{t("暂不指定")}</option>
                 {locationOptions.map((location) => (
                   <option key={location.id} value={location.id}>
                     {"　".repeat(location.depth)}
@@ -2816,12 +3994,21 @@ export function App() {
             </label>
             <IconPicker />
             <button className="primary full" disabled={busy}>
-              {busy ? "保存中…" : "保存物资"}
+              {busy ? t("保存中…") : t("保存物资")}
             </button>
           </form>
         </div>
       )}
-      {showBarcodeScanner&&<BarcodeScanner onClose={()=>setShowBarcodeScanner(false)} onScan={barcode=>{setShowBarcodeScanner(false);setBarcodeInput(barcode);void lookupItemBarcode(barcode);}}/>}
+      {showBarcodeScanner && (
+        <BarcodeScanner
+          onClose={() => setShowBarcodeScanner(false)}
+          onScan={(barcode) => {
+            setShowBarcodeScanner(false);
+            setBarcodeInput(barcode);
+            void lookupItemBarcode(barcode);
+          }}
+        />
+      )}
     </div>
   );
 }

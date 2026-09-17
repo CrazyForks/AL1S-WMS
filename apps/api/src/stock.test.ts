@@ -88,6 +88,7 @@ test("overview returns actionable stock, expiry, and shopping state", () => {
   assert.equal(overview.expired.total,1);
   assert.equal(overview.shopping.total,1,"a persisted purchase suppresses its duplicate automatic recommendation");
   assert.equal(overview.recommendedActions[0].type,"handle_expired");
+  assert.equal(overview.recommendedActions[0].message,"牛奶 批次已于 2020-01-01 过期");
   assert.equal(overview.recommendedActions.some(action=>action.type==="buy_pending"),true);
   db.close();
 });

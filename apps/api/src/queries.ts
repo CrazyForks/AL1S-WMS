@@ -3,6 +3,7 @@ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { transactionQuery } from "./inventory-delete.js";
 import { batchBalanceQuery } from "./stock.js";
 import { InventoryError } from "./stock.js";
+import { translate, type Locale } from "./i18n/index.js";
 
 const bool = z.enum(["true","false"]).transform(value=>value==="true");
 const paging = { limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).default(0) };
@@ -61,10 +62,10 @@ export function listBatches(db:DatabaseSync,homeId:string,raw:unknown) {
   return pageQuery(db,`SELECT * FROM (${batchBalanceQuery}) WHERE ${where.join(" AND ")}`,params,filters.limit,filters.offset,"expiryDate IS NULL,expiryDate,receivedAt,batchId,locationId");
 }
 
-export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown) {
+export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown,locale:Locale="zh-CN") {
   const filters=overviewFilters.parse(raw);
   const home=db.prepare("SELECT id,name,icon,timezone FROM homes WHERE id=? AND active=1").get(homeId) as {id:string;name:string;icon:string;timezone:string}|undefined;
-  if(!home)throw new InventoryError(404,"HOME_NOT_FOUND","家庭不存在");
+  if(!home)throw new InventoryError(404,"HOME_NOT_FOUND","error.homeNotFound");
   const today=new Date().toISOString().slice(0,10);
   const threshold=new Date(Date.now()+filters.expiryDays*86400000).toISOString().slice(0,10);
   const balance="(SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) FROM stock_transactions WHERE home_id=i.home_id AND item_id=i.id)";
@@ -85,10 +86,10 @@ export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown) {
   const pendingCount=(db.prepare("SELECT COUNT(*) AS n FROM shopping_list WHERE home_id=? AND completed=0").get(homeId) as {n:number}).n+automaticCount;
   const pending=[...manual,...automatic].slice(0,filters.limit);
   const actions=[
-    ...(expired as Record<string,unknown>[]).map(row=>({type:"handle_expired",priority:"urgent",itemId:row.itemId,batchId:row.batchId,message:`${row.itemName} 批次已于 ${row.expiryDate} 过期`})),
-    ...(expiring as Record<string,unknown>[]).map(row=>({type:"use_expiring",priority:"high",itemId:row.itemId,batchId:row.batchId,message:`${row.itemName} 批次将于 ${row.expiryDate} 到期`})),
-    ...pending.filter(row=>row.source==="manual").map(row=>({type:"buy_pending",priority:"normal",shoppingItemId:row.id,itemId:row.itemId,message:`待采购 ${row.name} ${row.quantity} ${row.unit??""}`.trim()})),
-    ...(needsReplenishment as Record<string,unknown>[]).map(row=>({type:"replenish",priority:"normal",itemId:row.itemId,message:`${row.name} 建议补充 ${row.suggestedQuantity} ${row.unit}`})),
+    ...(expired as Record<string,unknown>[]).map(row=>({type:"handle_expired",priority:"urgent",itemId:row.itemId,batchId:row.batchId,message:translate(locale,"action.expired",{itemName:row.itemName,expiryDate:row.expiryDate})})),
+    ...(expiring as Record<string,unknown>[]).map(row=>({type:"use_expiring",priority:"high",itemId:row.itemId,batchId:row.batchId,message:translate(locale,"action.expiring",{itemName:row.itemName,expiryDate:row.expiryDate})})),
+    ...pending.filter(row=>row.source==="manual").map(row=>({type:"buy_pending",priority:"normal",shoppingItemId:row.id,itemId:row.itemId,message:translate(locale,"action.buyPending",{name:row.name,quantity:row.quantity,unit:row.unit??""}).trim()})),
+    ...(needsReplenishment as Record<string,unknown>[]).map(row=>({type:"replenish",priority:"normal",itemId:row.itemId,message:translate(locale,"action.replenish",{name:row.name,quantity:row.suggestedQuantity,unit:row.unit})})),
   ].slice(0,filters.limit);
   return {
     home,

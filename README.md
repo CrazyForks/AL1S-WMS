@@ -46,6 +46,28 @@ docker run -d \
   al1s-erp
 ```
 
+## Internationalization
+
+The web interface and user-facing API errors support Simplified Chinese
+(`zh-CN`) and English (`en-US`). A saved choice in Settings takes precedence;
+otherwise the browser language is used, with `zh-CN` as the fallback.
+
+Web requests send the selected locale in `Accept-Language`. API clients can send
+the same header explicitly. Response status codes, error `code` values, and
+validation details do not vary by language.
+
+Names and historical business data are not translated. This includes user data,
+system category and location names, shopping channels, stock movement reasons,
+and audit records.
+
+For local verification, run:
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
 ## MCP
 
 AL1S ERP exposes a Streamable HTTP MCP endpoint at:
