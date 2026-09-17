@@ -1,9 +1,10 @@
 import Fastify from "fastify";
 import { z } from "zod";
 import { listItems, listTransactions, listBatches, getHomeOverview } from "./queries.js";
-import { atomic, batchDates, batchBalanceQuery, InventoryError, reconcileStock, recordItemEvent, recordStock, refreshItemDates, requireStockTarget, transferStock, validateDates } from "./stock.js";
+import { atomic, batchDates, batchBalanceQuery, InventoryError, moneySchema, reconcileStock, recordItemEvent, recordStock, refreshItemDates, requireStockTarget, transferStock, validateDates } from "./stock.js";
 import { saveShopping, receiveShopping } from "./shopping.js";
 import { lookupBarcode, normalizeBarcode } from "./barcodes.js";
+import { financialSummary, itemPriceHistory } from "./pricing.js";
 import fastifyStatic from "@fastify/static";
 import {
   createHash,
@@ -369,6 +370,8 @@ app.post("/api/v1/auth/logout", async (request, reply) => {
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async request => listItems(db,request.params.homeId,request.query));
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/overview", async request => getHomeOverview(db,request.params.homeId,request.query,localeOf(request)));
+app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/financial-summary",async request=>financialSummary(db,request.params.homeId,request.query));
+app.get<{Params:{homeId:string;itemId:string}}>("/api/v1/homes/:homeId/items/:itemId/price-history",async request=>itemPriceHistory(db,request.params.homeId,request.params.itemId));
 app.get<{Params:{homeId:string;barcode:string}}>("/api/v1/homes/:homeId/barcodes/:barcode",async request=>lookupBarcode(db,request.params.homeId,request.params.barcode));
 
 app.get<{ Params: { homeId: string; itemId: string } }>(
@@ -656,21 +659,26 @@ app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/rec
 
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/batches",async request => listBatches(db,request.params.homeId,request.query));
 app.patch<{Params:{homeId:string;batchId:string};Body:unknown}>("/api/v1/homes/:homeId/batches/:batchId",async request => {
-  const input=z.object({label:z.string().trim().min(1).max(100).nullable().optional(),...batchDates}).strict().refine(value=>Object.keys(value).length>0).parse(request.body);
+  const input=z.object({label:z.string().trim().min(1).max(100).nullable().optional(),totalPrice:moneySchema.nullable().optional(),purchaseDate:z.string().date().nullable().optional(),channelId:z.string().uuid().nullable().optional(),...batchDates}).strict().refine(value=>Object.keys(value).length>0).parse(request.body);
   const {homeId,batchId}=request.params;
-  const current=db.prepare("SELECT * FROM stock_batches WHERE id=? AND home_id=?").get(batchId,homeId) as {item_id:string;label:string|null;manufactured_date:string|null;expiry_date:string|null}|undefined;
+  const current=db.prepare("SELECT * FROM stock_batches WHERE id=? AND home_id=?").get(batchId,homeId) as {item_id:string;label:string|null;manufactured_date:string|null;expiry_date:string|null;purchase_total_minor:number|null;purchase_currency:string|null;purchased_date:string|null;channel_id:string|null}|undefined;
   if(!current)throw new InventoryError(404,"BATCH_NOT_FOUND","error.batchNotFound");
   requireStockTarget(db,homeId,current.item_id);
   const manufactured=input.manufacturedDate===undefined?current.manufactured_date:input.manufacturedDate;
   const expiry=input.expiryDate===undefined?current.expiry_date:input.expiryDate;
   const label=input.label===undefined?current.label:input.label;
+  const totalMinor=input.totalPrice===undefined?current.purchase_total_minor:input.totalPrice===null?null:Math.round(input.totalPrice*100);
+  const purchaseDate=input.purchaseDate===undefined?current.purchased_date:input.purchaseDate;
+  const channelId=input.channelId===undefined?current.channel_id:input.channelId;
+  if(channelId&&channelId!==current.channel_id&&!db.prepare("SELECT 1 FROM shopping_channels WHERE id=? AND home_id=? AND active=1").get(channelId,homeId))throw new InventoryError(400,"SHOPPING_CHANNEL_NOT_FOUND","error.shoppingChannelNotFound");
+  const currency=totalMinor===null?null:current.purchase_currency??(db.prepare("SELECT default_currency AS currency FROM homes WHERE id=?").get(homeId) as {currency:string}).currency;
   validateDates(manufactured,expiry);
   return atomic(db,()=>{
-    db.prepare("UPDATE stock_batches SET label=?,manufactured_date=?,expiry_date=? WHERE id=? AND home_id=?").run(label,manufactured,expiry,batchId,homeId);
+    db.prepare("UPDATE stock_batches SET label=?,manufactured_date=?,expiry_date=?,purchase_total_minor=?,purchase_currency=?,purchased_date=?,channel_id=? WHERE id=? AND home_id=?").run(label,manufactured,expiry,totalMinor,currency,purchaseDate,channelId,batchId,homeId);
     if(label!==current.label || manufactured!==current.manufactured_date || expiry!==current.expiry_date)
       recordItemEvent(db,homeId,current.item_id,"update",`批次 ${label??batchId.slice(0,8)}：生产日期 ${current.manufactured_date??"未设置"} → ${manufactured??"未设置"}；到期日期 ${current.expiry_date??"未设置"} → ${expiry??"未设置"}`,null,null,batchId);
     refreshItemDates(db,homeId,current.item_id);
-    return {batchId,label,manufacturedDate:manufactured,expiryDate:expiry};
+    return {batchId,label,manufacturedDate:manufactured,expiryDate:expiry,totalPrice:totalMinor===null?null:totalMinor/100,purchaseDate,channelId};
   });
 });
 
@@ -752,12 +760,12 @@ app.get<{ Params: { homeId: string } }>(
   async (request) => {
     const manual = db
       .prepare(
-        "SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.category,s.location_id AS locationId,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.source,s.completed,s.created_at AS createdAt FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? ORDER BY s.completed,s.planned_date IS NULL,s.planned_date,s.created_at DESC",
+        "SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.category,s.location_id AS locationId,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.estimated_total_minor/100.0 AS estimatedTotal,s.source,s.completed,s.created_at AS createdAt FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? ORDER BY s.completed,s.planned_date IS NULL,s.planned_date,s.created_at DESC",
       )
       .all(request.params.homeId);
     const automatic = db
       .prepare(
-        "SELECT 'auto:' || items.id AS id, items.id AS itemId, items.name, MAX(items.reorder_point - (SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id), 0) AS quantity, items.base_unit AS unit, items.category, items.default_location_id AS locationId,NULL AS channelId,NULL AS channelName,NULL AS plannedDate,'automatic' AS source,0 AS completed,NULL AS createdAt FROM items WHERE items.home_id=? AND items.active=1 AND (SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) FROM stock_transactions WHERE item_id=items.id)<items.reorder_point AND NOT EXISTS (SELECT 1 FROM shopping_list s WHERE s.home_id=items.home_id AND s.item_id=items.id AND s.completed=0) GROUP BY items.id ORDER BY items.name",
+        "SELECT 'auto:' || items.id AS id, items.id AS itemId, items.name, MAX(items.reorder_point - (SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id), 0) AS quantity, items.base_unit AS unit, items.category, items.default_location_id AS locationId,NULL AS channelId,NULL AS channelName,NULL AS plannedDate,NULL AS estimatedTotal,'automatic' AS source,0 AS completed,NULL AS createdAt FROM items WHERE items.home_id=? AND items.active=1 AND (SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) FROM stock_transactions WHERE item_id=items.id)<items.reorder_point AND NOT EXISTS (SELECT 1 FROM shopping_list s WHERE s.home_id=items.home_id AND s.item_id=items.id AND s.completed=0) GROUP BY items.id ORDER BY items.name",
       )
       .all(request.params.homeId);
     return [...manual, ...automatic];
@@ -784,7 +792,7 @@ app.delete<{Params:{homeId:string;channelId:string}}>("/api/v1/homes/:homeId/sho
 });
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/shopping-calendar",async request=>{
   const input=z.object({month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),includeCompleted:z.enum(["true","false"]).default("false")}).strict().parse(request.query);
-  return db.prepare("SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.completed FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? AND substr(s.planned_date,1,7)=? AND (?='true' OR s.completed=0) ORDER BY s.planned_date,c.sort_order,s.name").all(request.params.homeId,input.month,input.includeCompleted);
+  return db.prepare("SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.estimated_total_minor/100.0 AS estimatedTotal,s.completed FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? AND substr(s.planned_date,1,7)=? AND (?='true' OR s.completed=0) ORDER BY s.planned_date,c.sort_order,s.name").all(request.params.homeId,input.month,input.includeCompleted);
 });
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-list",async(request,reply)=>reply.code(201).send(saveShopping(db,request.params.homeId,request.body)));
 app.patch<{Params:{homeId:string;shoppingId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-list/:shoppingId",async request=>saveShopping(db,request.params.homeId,request.body,request.params.shoppingId));

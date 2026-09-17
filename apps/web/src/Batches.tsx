@@ -16,6 +16,12 @@ export type Batch = {
   expiryDate: string | null;
   receivedAt: string;
   legacy: number;
+  totalPrice:number|null;
+  unitPrice:number|null;
+  purchaseCurrency:string|null;
+  purchasedDate:string|null;
+  channelId:string|null;
+  channelName:string|null;
 };
 export function Batches({
   homeId,
@@ -35,7 +41,9 @@ export function Batches({
     [edit, setEdit] = useState<Batch | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [revision, setRevision] = useState(0);
+    [revision, setRevision] = useState(0),
+    [channels,setChannels]=useState<{id:string;name:string}[]>([]);
+  useEffect(()=>{void apiFetch(`/api/v1/homes/${homeId}/shopping-channels`).then(response=>response.ok?response.json():[]).then(setChannels);},[homeId]);
   useEffect(() => {
     const controller = new AbortController();
     setError("");
@@ -72,6 +80,9 @@ export function Batches({
             label: data.get("label") || null,
             manufacturedDate: data.get("manufacturedDate") || null,
             expiryDate: data.get("expiryDate") || null,
+            totalPrice:data.get("totalPrice")===""?null:Number(data.get("totalPrice")),
+            purchaseDate:data.get("purchaseDate")||null,
+            channelId:data.get("channelId")||null,
           }),
         },
       );
@@ -126,6 +137,7 @@ export function Batches({
               manufacturedDate={edit.manufacturedDate || ""}
               expiryDate={edit.expiryDate || ""}
             />
+            <fieldset className="purchase-cost"><legend>{t("采购成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" defaultValue={edit.totalPrice??""}/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={edit.purchasedDate??""}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue={edit.channelId??""}><option value="">{t("未指定")}</option>{edit.channelId&&!channels.some(channel=>channel.id===edit.channelId)&&<option value={edit.channelId}>{edit.channelName||t("未指定")}</option>}{channels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label></div></fieldset>
             <div className="delete-dialog-actions">
               <button
                 className="secondary"
@@ -171,6 +183,7 @@ export function Batches({
                     <th>{t("地点")}</th>
                     <th>{t("剩余")}</th>
                     <th>{t("生产 / 到期")}</th>
+                    <th>{t("采购成本")}</th>
                     <th>{t("操作")}</th>
                   </tr>
                 </thead>
@@ -196,6 +209,7 @@ export function Batches({
                           <span>{row.expiryDate || t("未设置")}</span>
                         </div>
                       </td>
+                      <td>{row.totalPrice==null?t("未知"):<div className="date-cell"><span>{new Intl.NumberFormat(localeForDates(),{style:"currency",currency:row.purchaseCurrency??"CNY"}).format(row.totalPrice)}</span><span>{row.unitPrice==null?"":t("{{price}} / {{unit}}",{price:new Intl.NumberFormat(localeForDates(),{style:"currency",currency:row.purchaseCurrency??"CNY"}).format(row.unitPrice),unit:displayUnit(item.baseUnit)})}</span><span>{row.channelName||t("未指定")}</span></div>}</td>
                       <td>
                         <button
                           className="text-button"

@@ -12,6 +12,7 @@ AL1S ERP is a self-hosted household ERP for managing inventory, purchases, stora
 - Maintain shopping lists with automatic replenishment suggestions.
 - Receive purchased items directly into inventory.
 - Reconcile physical counts and record gains or losses automatically.
+- Track planned budgets, actual batch costs, channel price history, monthly spending, and inventory value.
 - Look up products by barcode using household data, a local cache, and Open Facts databases.
 - Give AI agents controlled access through MCP.
 

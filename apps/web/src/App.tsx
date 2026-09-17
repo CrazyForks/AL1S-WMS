@@ -27,6 +27,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Coins,
   Package,
   Pencil,
   Plus,
@@ -35,6 +36,7 @@ import {
   SlidersHorizontal,
   TriangleAlert,
   Trash2,
+  Wallet,
   X,
 } from "lucide-react";
 
@@ -175,6 +177,7 @@ type ShoppingItem = {
   channelId?: string | null;
   channelName?: string | null;
   plannedDate?: string | null;
+  estimatedTotal?: number | null;
   source: "manual" | "automatic";
   completed: number;
 };
@@ -184,6 +187,7 @@ type ShoppingChannel = {
   isSystem: boolean;
   sortOrder: number;
 };
+type FinancialSummary={month:string;currency:string;spendingTotal:number;estimatedTotal:number;variance:number;inventoryValue:number;pricedBatchCount:number;unknownBatchCount:number;byChannel:{channelId:string|null;channelName:string|null;total:number}[]};
 type ApiToken = {
   id: string;
   name: string;
@@ -262,6 +266,7 @@ const itemCategories = [
 const newIdempotencyKey = () =>
   globalThis.crypto?.randomUUID?.() ??
   `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const formatMoney=(value:number,currency="CNY")=>new Intl.NumberFormat(localeForDates(),{style:"currency",currency,minimumFractionDigits:2}).format(value);
 function BrandWordmark() {
   return (
     <strong className="brand-wordmark">
@@ -312,6 +317,11 @@ async function getShoppingCalendar(month: string, includeCompleted = false) {
   );
   if (!response.ok) throw new Error(t("无法加载采购日历"));
   return response.json() as Promise<ShoppingItem[]>;
+}
+async function getFinancialSummary(month:string) {
+  const response=await apiFetch(`/api/v1/homes/${getHomeId()}/financial-summary?month=${month}`);
+  if(!response.ok)throw new Error(t("无法加载价格统计"));
+  return response.json() as Promise<FinancialSummary>;
 }
 async function getCategories() {
   const response = await apiFetch(`/api/v1/homes/${getHomeId()}/categories`);
@@ -658,6 +668,8 @@ export function App() {
     useState(false);
   const [selectedShoppingDate, setSelectedShoppingDate] = useState("");
   const [newChannelName, setNewChannelName] = useState("");
+  const [financialSummary,setFinancialSummary]=useState<FinancialSummary|null>(null);
+  const [calendarFinancial,setCalendarFinancial]=useState<FinancialSummary|null>(null);
   const [showShoppingForm, setShowShoppingForm] = useState(false);
   const [shoppingItemId, setShoppingItemId] = useState("");
   const [editShoppingItemId, setEditShoppingItemId] = useState("");
@@ -739,6 +751,7 @@ export function App() {
       getShoppingList(),
       getCategories(),
       getShoppingChannels(),
+      getFinancialSummary(new Date().toISOString().slice(0,7)),
     ])
       .then(
         ([
@@ -749,6 +762,7 @@ export function App() {
           nextShoppingList,
           nextCategories,
           nextShoppingChannels,
+          nextFinancialSummary,
         ]) => {
           setItems(nextItems);
           setStock(nextStock);
@@ -760,6 +774,7 @@ export function App() {
           setShoppingList(nextShoppingList);
           setCategories(nextCategories);
           setShoppingChannels(nextShoppingChannels);
+          setFinancialSummary(nextFinancialSummary);
         },
       )
       .catch((error) => setNotice(error.message));
@@ -768,6 +783,7 @@ export function App() {
     getShoppingCalendar(shoppingMonth, calendarIncludeCompleted)
       .then(setCalendarItems)
       .catch((error) => setNotice(error.message));
+    getFinancialSummary(shoppingMonth).then(setCalendarFinancial).catch(error=>setNotice(error.message));
   }, [authenticated, shoppingMonth, calendarIncludeCompleted, shoppingList]);
   useEffect(() => {
     apiFetch("/api/v1/setup/status")
@@ -1086,6 +1102,9 @@ export function App() {
             ? {
                 manufacturedDate: data.get("manufacturedDate") || null,
                 expiryDate: data.get("expiryDate") || null,
+                totalPrice:data.get("totalPrice")===""?undefined:Number(data.get("totalPrice")),
+                purchaseDate:data.get("purchaseDate")||null,
+                channelId:data.get("channelId")||null,
               }
             : { batchId: data.get("batchId") || undefined }),
         }),
@@ -1175,6 +1194,7 @@ export function App() {
           itemId: data.get("itemId") || undefined,
           channelId: data.get("channelId") || null,
           plannedDate: data.get("plannedDate") || null,
+          estimatedTotal:data.get("estimatedTotal")===""?null:Number(data.get("estimatedTotal")),
           ...(!linkedShoppingItem
             ? {
                 name: data.get("name"),
@@ -1213,6 +1233,8 @@ export function App() {
           locationId: data.get("locationId") || undefined,
           manufacturedDate: data.get("manufacturedDate") || null,
           expiryDate: data.get("expiryDate") || null,
+          totalPrice:data.get("totalPrice")===""?undefined:Number(data.get("totalPrice")),
+          purchaseDate:data.get("purchaseDate")||null,
         }),
       },
     );
@@ -1251,6 +1273,7 @@ export function App() {
           itemId: data.get("itemId") || null,
           channelId: data.get("channelId") || null,
           plannedDate: data.get("plannedDate") || null,
+          estimatedTotal:data.get("estimatedTotal")===""?null:Number(data.get("estimatedTotal")),
           ...(!linkedEditShoppingItem
             ? {
                 name: data.get("name"),
@@ -2348,6 +2371,7 @@ export function App() {
                               <small>
                                 {item.plannedDate || t("未安排日期")}
                               </small>
+                              {item.estimatedTotal!=null&&<small>{t("预计 {{amount}}",{amount:formatMoney(item.estimatedTotal,financialSummary?.currency)})}</small>}
                             </span>
                           </td>
                           <td>
@@ -2476,6 +2500,7 @@ export function App() {
                   </label>
                 </div>
               </div>
+              <div className="finance-strip"><span><small>{t("预计支出")}</small><b>{formatMoney(calendarFinancial?.estimatedTotal??0,calendarFinancial?.currency)}</b></span><span><small>{t("实际支出")}</small><b>{formatMoney(calendarFinancial?.spendingTotal??0,calendarFinancial?.currency)}</b></span><span><small>{t("预算差额")}</small><b>{formatMoney(calendarFinancial?.variance??0,calendarFinancial?.currency)}</b></span></div>
               <div className="calendar-wrap">
                 <div className="calendar-weekdays">
                   {[
@@ -2582,6 +2607,14 @@ export function App() {
                 <strong>{pendingShoppingCount}</strong>
                 <span className="summary-foot">{t("未完成采购项")}</span>
               </div>
+            </div>
+            <div className="summary-card">
+              <span className="summary-icon"><Wallet size={18}/></span>
+              <div><span className="summary-label">{t("本月支出")}</span><strong className="money-value">{formatMoney(financialSummary?.spendingTotal??0,financialSummary?.currency)}</strong><span className="summary-foot">{t("实际采购成本")}</span></div>
+            </div>
+            <div className="summary-card">
+              <span className="summary-icon"><Coins size={18}/></span>
+              <div><span className="summary-label">{t("库存价值")}</span><strong className="money-value">{formatMoney(financialSummary?.inventoryValue??0,financialSummary?.currency)}</strong><span className="summary-foot">{financialSummary?.unknownBatchCount?t("{{count}} 个批次成本未知",{count:financialSummary.unknownBatchCount}):t("已计价库存")}</span></div>
             </div>
           </section>
         )}
@@ -3509,6 +3542,7 @@ export function App() {
                 locationId={stockLocationId}
               />
             ) : null}
+            {stockAction.type==="receipt"&&<fieldset className="purchase-cost"><legend>{t("采购成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue=""><option value="">{t("未指定")}</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label></div></fieldset>}
             <label>
               {t("数量")}
               <input
@@ -3661,6 +3695,7 @@ export function App() {
                 {t("计划采购日")}
                 <input name="plannedDate" type="date" />
               </label>
+              <label>{t("预计总价")}<input name="estimatedTotal" type="number" min="0" step="0.01" placeholder="0.00"/></label>
             </div>
             <button className="primary full">{t("加入采购清单")}</button>
           </form>
@@ -3809,6 +3844,7 @@ export function App() {
                   defaultValue={editShoppingItem.plannedDate || ""}
                 />
               </label>
+              <label>{t("预计总价")}<input name="estimatedTotal" type="number" min="0" step="0.01" defaultValue={editShoppingItem.estimatedTotal??""} placeholder="0.00"/></label>
             </div>
             <button className="primary full">{t("保存修改")}</button>
           </form>
@@ -3873,6 +3909,7 @@ export function App() {
                 ))}
               </select>
             </label>
+            <div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" defaultValue={receiveShoppingItem.estimatedTotal??""} placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label></div>
             <BatchFields title={t("采购入库批次（可选）")} />
             <button className="primary full" disabled={busy}>
               {busy ? t("入库中…") : t("确认入库")}

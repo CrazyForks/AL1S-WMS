@@ -127,6 +127,7 @@ export function openDatabase(
       unit TEXT,
       channel_id TEXT REFERENCES shopping_channels(id),
       planned_date TEXT,
+      estimated_total_minor INTEGER,
       source TEXT NOT NULL DEFAULT 'manual',
       completed INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -141,6 +142,7 @@ export function openDatabase(
   const shoppingColumns = db.prepare("PRAGMA table_info(shopping_list)").all() as {name:string}[];
   if(!shoppingColumns.some(column=>column.name==="channel_id"))db.exec("ALTER TABLE shopping_list ADD COLUMN channel_id TEXT REFERENCES shopping_channels(id)");
   if(!shoppingColumns.some(column=>column.name==="planned_date"))db.exec("ALTER TABLE shopping_list ADD COLUMN planned_date TEXT");
+  if(!shoppingColumns.some(column=>column.name==="estimated_total_minor"))db.exec("ALTER TABLE shopping_list ADD COLUMN estimated_total_minor INTEGER");
   for(const home of db.prepare("SELECT id FROM homes WHERE active=1").all() as {id:string}[])seedShoppingChannels(db,home.id);
   try {
     db.exec("ALTER TABLE shopping_list ADD COLUMN category TEXT");
@@ -199,7 +201,8 @@ export function openDatabase(
   }
   db.exec(`CREATE TABLE IF NOT EXISTS stock_batches (
     id TEXT PRIMARY KEY, home_id TEXT NOT NULL REFERENCES homes(id), item_id TEXT NOT NULL REFERENCES items(id),
-    label TEXT, manufactured_date TEXT, expiry_date TEXT, received_at TEXT NOT NULL, legacy INTEGER NOT NULL DEFAULT 0
+    label TEXT, manufactured_date TEXT, expiry_date TEXT, received_at TEXT NOT NULL, legacy INTEGER NOT NULL DEFAULT 0,
+    purchase_total_minor INTEGER, purchase_currency TEXT, purchased_date TEXT, channel_id TEXT REFERENCES shopping_channels(id)
   );
   CREATE TABLE IF NOT EXISTS stock_operations (
     home_id TEXT NOT NULL REFERENCES homes(id), idempotency_key TEXT NOT NULL, payload TEXT NOT NULL, response TEXT NOT NULL,
@@ -216,6 +219,11 @@ export function openDatabase(
     provider TEXT,
     fetched_at TEXT NOT NULL
   );`);
+  const batchColumns=db.prepare("PRAGMA table_info(stock_batches)").all() as {name:string}[];
+  if(!batchColumns.some(column=>column.name==="purchase_total_minor"))db.exec("ALTER TABLE stock_batches ADD COLUMN purchase_total_minor INTEGER");
+  if(!batchColumns.some(column=>column.name==="purchase_currency"))db.exec("ALTER TABLE stock_batches ADD COLUMN purchase_currency TEXT");
+  if(!batchColumns.some(column=>column.name==="purchased_date"))db.exec("ALTER TABLE stock_batches ADD COLUMN purchased_date TEXT");
+  if(!batchColumns.some(column=>column.name==="channel_id"))db.exec("ALTER TABLE stock_batches ADD COLUMN channel_id TEXT REFERENCES shopping_channels(id)");
   const stockColumns = db.prepare("PRAGMA table_info(stock_transactions)").all() as {name:string}[];
   if (!stockColumns.some(column => column.name === "batch_id")) db.exec("ALTER TABLE stock_transactions ADD COLUMN batch_id TEXT REFERENCES stock_batches(id)");
   if (!stockColumns.some(column => column.name === "issue_reason")) db.exec("ALTER TABLE stock_transactions ADD COLUMN issue_reason TEXT");

@@ -65,6 +65,7 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   const receipt=tools.tools.find(tool=>tool.name==="record_receipt")!;
   assert.equal("homeId" in (receipt.inputSchema.properties??{}),false);
   assert.equal("reason" in (receipt.inputSchema.properties??{}),false);
+  assert.equal("totalPrice" in (receipt.inputSchema.properties??{}),true);
   const issue=tools.tools.find(tool=>tool.name==="record_issue")!;
   assert.equal("issueReason" in (issue.inputSchema.properties??{}),true);
   assert.equal((issue.inputSchema.required??[]).includes("issueReason"),true);
@@ -82,6 +83,8 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal(received.afterQuantity,2);
   const overview=parseTool(await client.callTool({name:"get_home_overview",arguments:{}}));
   assert.equal(overview.needsReplenishment.total,1);
+  const finance=parseTool(await client.callTool({name:"get_financial_summary",arguments:{month:"2026-09"}}));
+  assert.equal(finance.currency,"CNY");
   const mcpCalendar=parseTool(await client.callTool({name:"get_shopping_calendar",arguments:{month:"2026-10"}}));
   assert.equal(mcpCalendar[0].channelName,channels[0].name);
   await client.close();await server.close();

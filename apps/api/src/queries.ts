@@ -59,7 +59,11 @@ export function listBatches(db:DatabaseSync,homeId:string,raw:unknown) {
   const filters=batchFilters.parse(raw),where=["homeId=?"],params:SQLInputValue[]=[homeId];
   for(const key of ["itemId","locationId"] as const)if(filters[key]){where.push(`${key}=?`);params.push(filters[key]!);}
   if(!filters.includeEmpty)where.push("quantity>0");
-  return pageQuery(db,`SELECT * FROM (${batchBalanceQuery}) WHERE ${where.join(" AND ")}`,params,filters.limit,filters.offset,"expiryDate IS NULL,expiryDate,receivedAt,batchId,locationId");
+  const page=pageQuery(db,`SELECT * FROM (${batchBalanceQuery}) WHERE ${where.join(" AND ")}`,params,filters.limit,filters.offset,"expiryDate IS NULL,expiryDate,receivedAt,batchId,locationId");
+  return {...page,items:(page.items as Record<string,unknown>[]).map(row=>({
+    ...row,totalPrice:row.purchaseTotalMinor==null?null:Number(row.purchaseTotalMinor)/100,
+    unitPrice:row.purchaseTotalMinor==null||!Number(row.initialQuantity)?null:Math.round(Number(row.purchaseTotalMinor)/Number(row.initialQuantity))/100,
+  }))};
 }
 
 export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown,locale:Locale="zh-CN") {
@@ -77,11 +81,11 @@ export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown,locale
   const expired=db.prepare(`SELECT * FROM (${batchBase}) WHERE expiryDate<? ORDER BY expiryDate,receivedAt LIMIT ?`).all(homeId,today,filters.limit);
   const expiringCount=(db.prepare(`SELECT COUNT(*) AS n FROM (${batchBase}) WHERE expiryDate>=? AND expiryDate<=?`).get(homeId,today,threshold) as {n:number}).n;
   const expiring=db.prepare(`SELECT * FROM (${batchBase}) WHERE expiryDate>=? AND expiryDate<=? ORDER BY expiryDate,receivedAt LIMIT ?`).all(homeId,today,threshold,filters.limit);
-  const manualSql="SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.category,s.location_id AS locationId,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,'manual' AS source FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? AND s.completed=0";
+  const manualSql="SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.category,s.location_id AS locationId,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.estimated_total_minor/100.0 AS estimatedTotal,'manual' AS source FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? AND s.completed=0";
   const manual=db.prepare(`${manualSql} ORDER BY s.planned_date IS NULL,s.planned_date,s.created_at LIMIT ?`).all(homeId,filters.limit) as Record<string,unknown>[];
   const automaticSql=`SELECT * FROM (${lowSql}) low WHERE NOT EXISTS (SELECT 1 FROM shopping_list s WHERE s.home_id=? AND s.item_id=low.itemId AND s.completed=0)`;
   const automaticRows=db.prepare(`${automaticSql} ORDER BY suggestedQuantity DESC,name LIMIT ?`).all(homeId,homeId,filters.limit) as Record<string,unknown>[];
-  const automatic=automaticRows.map(row=>({id:`auto:${row.itemId}`,itemId:row.itemId,name:row.name,quantity:row.suggestedQuantity,unit:row.unit,locationId:row.locationId,channelId:null,channelName:null,plannedDate:null,source:"automatic"}));
+  const automatic=automaticRows.map(row=>({id:`auto:${row.itemId}`,itemId:row.itemId,name:row.name,quantity:row.suggestedQuantity,unit:row.unit,locationId:row.locationId,channelId:null,channelName:null,plannedDate:null,estimatedTotal:null,source:"automatic"}));
   const automaticCount=(db.prepare(`SELECT COUNT(*) AS n FROM (${automaticSql})`).get(homeId,homeId) as {n:number}).n;
   const pendingCount=(db.prepare("SELECT COUNT(*) AS n FROM shopping_list WHERE home_id=? AND completed=0").get(homeId) as {n:number}).n+automaticCount;
   const pending=[...manual,...automatic].slice(0,filters.limit);

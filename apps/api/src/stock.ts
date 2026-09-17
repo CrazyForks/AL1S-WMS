@@ -19,14 +19,16 @@ export class InventoryError extends Error {
 export const batchDates = { manufacturedDate: z.string().date().nullable().optional(), expiryDate: z.string().date().nullable().optional() };
 export const issueReasonSchema=z.enum(["used","expired","damaged","adjustment"]);
 export type IssueReason=z.infer<typeof issueReasonSchema>;
-export const stockInput = z.object({ itemId:z.string().uuid(),locationId:z.string().uuid(),quantity:z.number().positive().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),issueReason:issueReasonSchema.optional(),batchId:z.string().uuid().optional(),...batchDates }).strict();
-export const transferInput = stockInput.omit({locationId:true,manufacturedDate:true,expiryDate:true,issueReason:true}).extend({sourceLocationId:z.string().uuid(),targetLocationId:z.string().uuid()});
+export const moneySchema=z.number().nonnegative().finite().max(1_000_000_000);
+export const stockInput = z.object({ itemId:z.string().uuid(),locationId:z.string().uuid(),quantity:z.number().positive().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),issueReason:issueReasonSchema.optional(),batchId:z.string().uuid().optional(),totalPrice:moneySchema.optional(),purchaseDate:z.string().date().nullable().optional(),channelId:z.string().uuid().nullable().optional(),...batchDates }).strict();
+export const transferInput = stockInput.omit({locationId:true,manufacturedDate:true,expiryDate:true,issueReason:true,totalPrice:true,purchaseDate:true,channelId:true}).extend({sourceLocationId:z.string().uuid(),targetLocationId:z.string().uuid()});
 export const reconcileInput = z.object({itemId:z.string().uuid(),locationId:z.string().uuid(),countedQuantity:z.number().nonnegative().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),batchId:z.string().uuid().optional(),...batchDates}).strict();
-export const batchBalanceQuery = `SELECT b.id AS batchId,b.home_id AS homeId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS baseUnit,b.label,b.manufactured_date AS manufacturedDate,b.expiry_date AS expiryDate,b.received_at AS receivedAt,b.legacy,t.location_id AS locationId,l.name AS locationName,
+export const batchBalanceQuery = `SELECT b.id AS batchId,b.home_id AS homeId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS baseUnit,b.label,b.manufactured_date AS manufacturedDate,b.expiry_date AS expiryDate,b.received_at AS receivedAt,b.legacy,b.purchase_total_minor AS purchaseTotalMinor,b.purchase_currency AS purchaseCurrency,b.purchased_date AS purchasedDate,b.channel_id AS channelId,c.name AS channelName,
+  COALESCE((SELECT SUM(origin.quantity) FROM stock_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity,t.location_id AS locationId,l.name AS locationName,
   COALESCE(SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END),0) AS quantity
   FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN stock_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
-  LEFT JOIN locations l ON l.id=t.location_id GROUP BY b.id,t.location_id`;
-export type BatchBalance = {batchId:string;itemId:string;locationId:string;quantity:number;expiryDate:string|null;manufacturedDate:string|null};
+  LEFT JOIN locations l ON l.id=t.location_id LEFT JOIN shopping_channels c ON c.id=b.channel_id GROUP BY b.id,t.location_id`;
+export type BatchBalance = {batchId:string;itemId:string;locationId:string;quantity:number;expiryDate:string|null;manufacturedDate:string|null;purchaseTotalMinor:number|null;purchaseCurrency:string|null;purchasedDate:string|null;channelId:string|null;channelName:string|null;initialQuantity:number};
 export function atomic<T>(db:DatabaseSync, fn:()=>T):T {
   const key = `sp_${randomUUID().replaceAll("-","")}`;
   db.exec(`SAVEPOINT ${key}`);
@@ -89,9 +91,13 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
     if(type==="receipt" && input.batchId) throw new InventoryError(400,"NEW_BATCH_REQUIRED","error.receiptExistingBatch");
     if(type==="issue" && (input.manufacturedDate!==undefined||input.expiryDate!==undefined)) throw new InventoryError(400,"INVALID_FIELDS","error.issueBatchDates");
     let parts:{batchId:string;quantity:number}[];
+    let recordedPurchaseDate=input.purchaseDate??null;
     if(type==="receipt") {
       const batchId=randomUUID();
-      db.prepare("INSERT INTO stock_batches(id,home_id,item_id,manufactured_date,expiry_date,received_at) VALUES (?,?,?,?,?,?)").run(batchId,homeId,itemId,input.manufacturedDate??null,input.expiryDate??null,new Date().toISOString());
+      if(input.channelId&&!db.prepare("SELECT 1 FROM shopping_channels WHERE id=? AND home_id=? AND active=1").get(input.channelId,homeId))throw new InventoryError(400,"SHOPPING_CHANNEL_NOT_FOUND","error.shoppingChannelNotFound");
+      const currency=(db.prepare("SELECT default_currency AS currency FROM homes WHERE id=?").get(homeId) as {currency:string}).currency;
+      recordedPurchaseDate??=input.totalPrice!==undefined||input.channelId?new Date().toISOString().slice(0,10):null;
+      db.prepare("INSERT INTO stock_batches(id,home_id,item_id,manufactured_date,expiry_date,received_at,purchase_total_minor,purchase_currency,purchased_date,channel_id) VALUES (?,?,?,?,?,?,?,?,?,?)").run(batchId,homeId,itemId,input.manufacturedDate??null,input.expiryDate??null,new Date().toISOString(),input.totalPrice===undefined?null:Math.round(input.totalPrice*100),input.totalPrice===undefined?null:currency,recordedPurchaseDate,input.channelId??null);
       parts=[{batchId,quantity}];
     } else parts=allocate(db,homeId,itemId,locationId,quantity,input.batchId);
     const defaultReason = type === "receipt"
@@ -100,7 +106,7 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
     const transactions=parts.map((part,index)=>({id:ledgerEntry(db,homeId,itemId,locationId,part.batchId,type,part.quantity,`${idempotencyKey}:${index}`,reason||defaultReason,issueReason),issueReason,...part}));
     refreshItemDates(db,homeId,itemId);
     const afterQuantity=stockAt(db,homeId,itemId,locationId);
-    return {homeId,itemId,locationId,type,quantity,issueReason,beforeQuantity,afterQuantity,difference:afterQuantity-beforeQuantity,transactions};
+    return {homeId,itemId,locationId,type,quantity,issueReason,totalPrice:input.totalPrice??null,purchaseDate:recordedPurchaseDate,channelId:input.channelId??null,beforeQuantity,afterQuantity,difference:afterQuantity-beforeQuantity,transactions};
   });
 }
 export function transferStock(db:DatabaseSync,homeId:string,raw:unknown) {
