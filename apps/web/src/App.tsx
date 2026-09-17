@@ -840,7 +840,7 @@ export function App() {
           locationId: selectedLocation,
           quantity,
           idempotencyKey: stockOperationKey,
-          reason: data.get("reason") || "Dashboard 操作",
+          reason: data.get("reason") || undefined,
           ...(stockAction.type === "receipt"
             ? {
                 manufacturedDate: data.get("manufacturedDate") || null,

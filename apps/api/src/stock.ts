@@ -75,7 +75,10 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
       db.prepare("INSERT INTO stock_batches(id,home_id,item_id,manufactured_date,expiry_date,received_at) VALUES (?,?,?,?,?,?)").run(batchId,homeId,itemId,input.manufacturedDate??null,input.expiryDate??null,new Date().toISOString());
       parts=[{batchId,quantity}];
     } else parts=allocate(db,homeId,itemId,locationId,quantity,input.batchId);
-    const transactions=parts.map((part,index)=>({id:ledgerEntry(db,homeId,itemId,locationId,part.batchId,type,part.quantity,`${idempotencyKey}:${index}`,reason||(type==="receipt"?"入库":"领用")),...part}));
+    const defaultReason = type === "receipt"
+      ? ["入库新批次", input.manufacturedDate&&`生产 ${input.manufacturedDate}`, input.expiryDate&&`到期 ${input.expiryDate}`].filter(Boolean).join(" · ")
+      : input.batchId ? "领用指定批次" : "按到期顺序领用";
+    const transactions=parts.map((part,index)=>({id:ledgerEntry(db,homeId,itemId,locationId,part.batchId,type,part.quantity,`${idempotencyKey}:${index}`,reason||defaultReason),...part}));
     refreshItemDates(db,homeId,itemId);
     return {homeId,itemId,locationId,type,quantity,transactions};
   });

@@ -10,9 +10,24 @@ export function Batches({homeId,item,onClose,onChange}:{homeId:string;item:{id:s
     event.preventDefault();if(!edit||busy)return;setBusy(true);setError("");const data=new FormData(event.currentTarget);
     try {const response=await fetch(`/api/v1/homes/${homeId}/batches/${edit.batchId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:data.get("label")||null,manufacturedDate:data.get("manufacturedDate")||null,expiryDate:data.get("expiryDate")||null})});const result=await response.json();if(!response.ok)throw new Error(result.message||"保存失败");setEdit(null);setRevision(value=>value+1);onChange();}catch(error){setError(error instanceof Error?error.message:"保存失败");}finally{setBusy(false);}
   }
-  return <div className="modal-backdrop"><section className="modal batches-modal" role="dialog" aria-modal="true" aria-labelledby="batches-title"><div className="modal-head"><div><h2 id="batches-title">{item.name} · 库存批次</h2><p className="muted">同一批次可分布在多个地点；日期独立管理。</p></div><button className="close" aria-label="关闭" onClick={onClose}><X size={18}/></button></div>
+  return <div className="modal-backdrop"><section className="modal batches-modal" role="dialog" aria-modal="true" aria-labelledby="batches-title">
+    <div className="modal-head"><div><h2 id="batches-title">{item.name} · 库存批次</h2><p className="muted">同一批次可分布在多个地点；日期独立管理。</p></div><button className="close" aria-label="关闭" onClick={onClose}><X size={18}/></button></div>
     {error&&<p className="setup-error" role="alert">{error}</p>}
-    {edit?<form onSubmit={save}><label>批次备注<input name="label" maxLength={100} defaultValue={edit.label||""}/></label><BatchFields manufacturedDate={edit.manufacturedDate||""} expiryDate={edit.expiryDate||""}/><div className="delete-dialog-actions"><button className="secondary" type="button" onClick={()=>setEdit(null)}>返回批次</button><button className="primary" disabled={busy}>保存批次</button></div></form>:<><button className="secondary" onClick={()=>{setIncludeEmpty(!includeEmpty);setPage(1);}}>{includeEmpty?"仅看剩余库存":"包括已用完批次"}</button><div className="table-wrap"><table><thead><tr><th>批次</th><th>地点</th><th>剩余</th><th>生产 / 到期</th><th>操作</th></tr></thead><tbody>{rows.map(row=><tr key={`${row.batchId}:${row.locationId}`}><td>{row.label||new Date(row.receivedAt).toLocaleString("zh-CN")}{row.legacy?<small className="muted">（历史库存）</small>:null}</td><td>{row.locationName||"未指定"}</td><td>{row.quantity} {item.baseUnit}</td><td><div className="date-cell"><span>{row.manufacturedDate||"未设置"}</span><span>{row.expiryDate||"未设置"}</span></div></td><td><button className="text-button" onClick={()=>setEdit(row)}>编辑</button></td></tr>)}</tbody></table>{!rows.length&&<p className="empty">暂无批次</p>}</div><div className="pagination"><span>共 {total} 条</span><button disabled={page===1} onClick={()=>setPage(page-1)}>上一页</button><span>{page} / {Math.max(1,Math.ceil(total/10))}</span><button disabled={page*10>=total} onClick={()=>setPage(page+1)}>下一页</button></div></>}
+    {edit ? <form onSubmit={save}>
+      <label>批次备注<input name="label" maxLength={100} defaultValue={edit.label||""}/></label>
+      <BatchFields manufacturedDate={edit.manufacturedDate||""} expiryDate={edit.expiryDate||""}/>
+      <div className="delete-dialog-actions"><button className="secondary" type="button" onClick={()=>setEdit(null)}>返回批次</button><button className="primary" disabled={busy}>保存批次</button></div>
+    </form> : <>
+      <div className="batch-toolbar">
+        <div><strong>显示范围</strong><small>{includeEmpty ? "全部批次，包括库存为 0" : "仅显示当前有库存的批次"}</small></div>
+        <label className="batch-toggle">
+          <input type="checkbox" checked={includeEmpty} onChange={event=>{setIncludeEmpty(event.target.checked);setPage(1);}}/>
+          <span aria-hidden="true"/><b>显示已用完</b>
+        </label>
+      </div>
+      <div className="table-wrap"><table><thead><tr><th>批次</th><th>地点</th><th>剩余</th><th>生产 / 到期</th><th>操作</th></tr></thead><tbody>{rows.map(row=><tr key={`${row.batchId}:${row.locationId}`}><td>{row.label||new Date(row.receivedAt).toLocaleString("zh-CN")}{row.legacy?<small className="muted">（历史库存）</small>:null}</td><td>{row.locationName||"未指定"}</td><td>{row.quantity} {item.baseUnit}</td><td><div className="date-cell"><span>{row.manufacturedDate||"未设置"}</span><span>{row.expiryDate||"未设置"}</span></div></td><td><button className="text-button" onClick={()=>setEdit(row)}>编辑</button></td></tr>)}</tbody></table>{!rows.length&&<p className="empty">暂无批次</p>}</div>
+      <div className="pagination"><span>共 {total} 条</span><button disabled={page===1} onClick={()=>setPage(page-1)}>上一页</button><span>{page} / {Math.max(1,Math.ceil(total/10))}</span><button disabled={page*10>=total} onClick={()=>setPage(page+1)}>下一页</button></div>
+    </>}
   </section></div>;
 }
 
