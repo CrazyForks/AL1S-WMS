@@ -1,6 +1,6 @@
 # AL1S ERP
 
-AL1S ERP is a self-hosted household ERP for managing inventory, purchases, storage, stock batches, expiration dates, and physical stocktaking.
+AL1S ERP is a self-hosted household ERP for managing inventory, purchases, storage, stock batches, expiration dates, and physical stocktaking. Inspired by Grocy<http://grocy.info/>.
 
 ## Features
 
