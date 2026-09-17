@@ -69,9 +69,9 @@ export function createMcpServer(api: ApiCall, boundHomeId: string | null = null)
     stocktake:["search_items and list_locations","reconcile_stock with countedQuantity for one item at one location","positive differences create a new batch; negative differences consume FEFO unless batchId is supplied","report difference and affected batches"],
   }));
   register("list_homes", boundHomeId?"Return the single home bound to this token.":"List homes available to this account token; choose one homeId before other calls.", {}, "GET", () => ({ url: "/api/v1/homes" }));
-  const homeFields = { name: name.max(80), icon: z.enum(["house", "building", "trees", "warehouse", "castle", "leaf", "star"]).describe("Built-in family icon") };
+  const homeFields = { name: name.max(80), icon: z.enum(["house", "building", "trees", "warehouse", "castle", "leaf", "star"]).describe("Built-in family icon"),defaultCurrency:z.enum(["CNY","USD","EUR","JPY","GBP","HKD"]).optional() };
   if(!boundHomeId)register("create_home", "Create a home with built-in categories and no locations. Available only to account-scoped tokens.", homeFields, "POST", body=>({url:"/api/v1/homes",body}));
-  register("update_home", "Edit the selected home name and icon. Both fields are required.", scoped(homeFields), "PATCH", args=>{const value=context(args);return {url:homePath(value.homeId),body:value.body};});
+  register("update_home", "Edit the selected home name, icon, and default currency. Name and icon are required.", scoped(homeFields), "PATCH", args=>{const value=context(args);return {url:homePath(value.homeId),body:value.body};});
   register("get_home_overview", "Primary proactive-management call. Summarizes low stock, expiring batches, expired batches, pending purchases, and recommended actions.", scoped({
     expiryDays:z.number().int().min(1).max(365).optional().describe("Upcoming expiry window; default 30 days"),limit:z.number().int().min(1).max(50).optional().describe("Maximum rows per section; default 10"),
   }), "GET", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/overview?${query(value.body)}`};});

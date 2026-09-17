@@ -51,7 +51,8 @@ export function listItems(db:DatabaseSync,homeId:string,raw:unknown) {
   }
   if(filters.lowStockOnly)where.push(`${balance}<i.reorder_point`);
   if(filters.expiryBefore){where.push("i.expiry_date<=?");params.push(filters.expiryBefore);}
-  const sql=`SELECT i.icon,i.id,i.home_id AS homeId,i.sku,i.barcode,i.name,i.category,i.base_unit AS baseUnit,i.reorder_point AS reorderPoint,i.reorder_quantity AS reorderQuantity,i.manufactured_date AS manufacturedDate,i.expiry_date AS expiryDate,i.default_location_id AS locationId,l.name AS locationName,i.active,${balance} AS quantity FROM items i LEFT JOIN locations l ON l.id=i.default_location_id WHERE ${where.join(" AND ")}`;
+  const latestUnitPrice=`(SELECT ROUND((b.purchase_total_minor/100.0)/NULLIF((SELECT SUM(origin.quantity) FROM stock_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0),2) FROM stock_batches b WHERE b.home_id=i.home_id AND b.item_id=i.id AND b.purchase_total_minor IS NOT NULL ORDER BY b.purchased_date DESC,b.received_at DESC LIMIT 1)`;
+  const sql=`SELECT i.icon,i.id,i.home_id AS homeId,i.sku,i.barcode,i.name,i.category,i.base_unit AS baseUnit,i.reorder_point AS reorderPoint,i.reorder_quantity AS reorderQuantity,i.manufactured_date AS manufacturedDate,i.expiry_date AS expiryDate,i.default_location_id AS locationId,l.name AS locationName,i.active,${balance} AS quantity,${latestUnitPrice} AS lastUnitPrice,(SELECT default_currency FROM homes WHERE id=i.home_id) AS currency FROM items i LEFT JOIN locations l ON l.id=i.default_location_id WHERE ${where.join(" AND ")}`;
   return filters.paged
     ? pageQuery(db,sql,params,filters.limit,filters.offset,"name,id")
     : db.prepare(`SELECT * FROM (${sql}) ORDER BY name,id`).all(...params);

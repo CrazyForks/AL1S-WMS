@@ -74,6 +74,8 @@ type Item = {
   locationId?: string | null;
   manufacturedDate?: string | null;
   expiryDate?: string | null;
+  lastUnitPrice?:number|null;
+  currency?:string|null;
 };
 type LocationScopedItem=Item&{treeQuantity?:number};
 type Stock = { itemId: string; locationId: string; quantity: number };
@@ -584,11 +586,11 @@ export function App() {
   const { i18n: activeI18n } = useTranslation();
   const [setup, setSetup] = useState<{
     complete: boolean;
-    home?: { id: string; name: string; icon?: string };
+    home?: { id: string; name: string; icon?: string;defaultCurrency?:string };
   } | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [homes, setHomes] = useState<
-    { id: string; name: string; icon?: string }[]
+    { id: string; name: string; icon?: string;defaultCurrency?:string }[]
   >([]);
   const [homeNotice, setHomeNotice] = useState("");
   const [passwordNotice, setPasswordNotice] = useState("");
@@ -596,6 +598,7 @@ export function App() {
     id: string;
     name: string;
     icon?: string;
+    defaultCurrency?:string;
   } | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [stock, setStock] = useState<Stock[]>([]);
@@ -1993,7 +1996,7 @@ export function App() {
                 className="primary"
                 disabled={busy}
                 onClick={() => {
-                  setEditingHome({ id: "", name: "", icon: "house" });
+                  setEditingHome({ id: "", name: "", icon: "house",defaultCurrency:"CNY" });
                   setHomeNotice("");
                 }}
               >
@@ -2062,6 +2065,7 @@ export function App() {
                         body: JSON.stringify({
                           name: data.get("name"),
                           icon: data.get("icon"),
+                          defaultCurrency:data.get("defaultCurrency"),
                         }),
                       },
                     );
@@ -2104,6 +2108,7 @@ export function App() {
                     defaultValue={editingHome.name}
                   />
                 </label>
+                <label>{t("默认币种")}<select name="defaultCurrency" defaultValue={editingHome.defaultCurrency||"CNY"}>{["CNY","USD","EUR","JPY","GBP","HKD"].map(currency=><option key={currency} value={currency}>{currency}</option>)}</select></label>
                 <IconPicker home initial={editingHome.icon} />
                 <div className="home-editor-actions">
                   <button className="primary" disabled={busy}>
@@ -2329,6 +2334,7 @@ export function App() {
                         <th>{t("采购项")}</th>
                         <th>{t("数量")}</th>
                         <th>{t("采购计划")}</th>
+                        <th>{t("预计总价")}</th>
                         <th>{t("操作")}</th>
                       </tr>
                     </thead>
@@ -2375,9 +2381,9 @@ export function App() {
                               <small>
                                 {item.plannedDate || t("未安排日期")}
                               </small>
-                              {item.estimatedTotal!=null&&<small>{t("预计 {{amount}}",{amount:formatMoney(item.estimatedTotal,financialSummary?.currency)})}</small>}
                             </span>
                           </td>
+                          <td>{item.estimatedTotal==null?"-":formatMoney(item.estimatedTotal,financialSummary?.currency)}</td>
                           <td>
                             <div className="row-actions desktop-row-actions">
                               {!item.completed && (
@@ -3017,13 +3023,14 @@ export function App() {
                       <th>{t("状态")}</th>
                       <th>{t("存放地点")}</th>
                       <th>{t("日期")}</th>
+                      <th>{t("最近单价")}</th>
                       <th>{t("操作")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="empty">
+                        <td colSpan={9} className="empty">
                           {t("没有符合当前条件的物资。")}
                         </td>
                       </tr>
@@ -3084,6 +3091,7 @@ export function App() {
                                 </span>
                               </div>
                             </td>
+                            <td>{item.lastUnitPrice==null?"-":<div className="date-cell"><span>{formatMoney(item.lastUnitPrice,item.currency??financialSummary?.currency)}</span><span>{t("价值 {{amount}}",{amount:formatMoney((item.treeQuantity??balanceFor(item.id))*item.lastUnitPrice,item.currency??financialSummary?.currency)})}</span></div>}</td>
                             <td>
                               <div className="row-actions desktop-row-actions">
                                 <button

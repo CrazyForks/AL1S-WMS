@@ -48,6 +48,7 @@ const defaultCategories = [
   "宠物用品",
   "其他",
 ];
+const supportedCurrencies=["CNY","USD","EUR","JPY","GBP","HKD"] as const;
 for (const home of db.prepare("SELECT id FROM homes").all() as { id: string }[]) {
   for (const name of defaultCategories)
     db.prepare(
@@ -251,8 +252,8 @@ app.get("/api/v1/setup/status", async () => {
     count: number;
   };
   const home = db
-    .prepare("SELECT id, name, icon FROM homes ORDER BY rowid LIMIT 1")
-    .get() as { id: string; name: string; icon: string } | undefined;
+    .prepare("SELECT id, name, icon, default_currency AS defaultCurrency FROM homes ORDER BY rowid LIMIT 1")
+    .get() as { id: string; name: string; icon: string; defaultCurrency:string } | undefined;
   return { complete: setting.count > 0, home };
 });
 
@@ -335,17 +336,17 @@ app.get("/healthz", async () => ({ status: "ok" }));
 app.get("/api/v1/homes", async request => {
   const token = tokenUser(request);
   return token?.homeId
-    ? db.prepare("SELECT id, name, icon FROM homes WHERE active=1 AND id=?").all(token.homeId)
-    : db.prepare("SELECT id, name, icon FROM homes WHERE active = 1 ORDER BY rowid").all();
+    ? db.prepare("SELECT id, name, icon, default_currency AS defaultCurrency FROM homes WHERE active=1 AND id=?").all(token.homeId)
+    : db.prepare("SELECT id, name, icon, default_currency AS defaultCurrency FROM homes WHERE active = 1 ORDER BY rowid").all();
 });
 app.post<{ Body: unknown }>("/api/v1/homes", async (request, reply) => {
-  const body = request.body as { name?: unknown; icon?: unknown } | null;
-  if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80 || typeof body.icon !== "string" || !["house", "building", "trees", "warehouse", "castle", "leaf", "star", "🏠", "🏡", "🏢", "🏘️", "🌿", "⭐"].includes(body.icon))
+  const body = request.body as { name?: unknown; icon?: unknown;defaultCurrency?:unknown } | null;
+  if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80 || typeof body.icon !== "string" || !["house", "building", "trees", "warehouse", "castle", "leaf", "star", "🏠", "🏡", "🏢", "🏘️", "🌿", "⭐"].includes(body.icon)||body.defaultCurrency!==undefined&&!supportedCurrencies.includes(body.defaultCurrency as typeof supportedCurrencies[number]))
     return sendError(reply,localeOf(request),400,{ key: "error.homeFields" });
-  const home = { id: randomUUID(), name: body.name.trim(), icon: body.icon };
+  const home = { id: randomUUID(), name: body.name.trim(), icon: body.icon,defaultCurrency:(body.defaultCurrency as string|undefined)??"CNY" };
   db.exec("BEGIN");
   try {
-    db.prepare("INSERT INTO homes (id, name, icon, timezone, default_currency) VALUES (?, ?, ?, 'Asia/Shanghai', 'CNY')").run(home.id, home.name, home.icon);
+    db.prepare("INSERT INTO homes (id, name, icon, timezone, default_currency) VALUES (?, ?, ?, 'Asia/Shanghai', ?)").run(home.id, home.name, home.icon,home.defaultCurrency);
     for (const name of defaultCategories)
       db.prepare("INSERT INTO item_categories (id, home_id, name, is_system) VALUES (?, ?, ?, 1)").run(randomUUID(), home.id, name);
     seedShoppingChannels(db,home.id);
@@ -354,12 +355,16 @@ app.post<{ Body: unknown }>("/api/v1/homes", async (request, reply) => {
   return reply.code(201).send(home);
 });
 app.patch<{ Params: { homeId: string }; Body: unknown }>("/api/v1/homes/:homeId", async (request, reply) => {
-  const body = request.body as { name?: unknown; icon?: unknown } | null;
-  if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80 || typeof body.icon !== "string" || !["house", "building", "trees", "warehouse", "castle", "leaf", "star", "🏠", "🏡", "🏢", "🏘️", "🌿", "⭐"].includes(body.icon))
+  const body = request.body as { name?: unknown; icon?: unknown;defaultCurrency?:unknown } | null;
+  if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80 || typeof body.icon !== "string" || !["house", "building", "trees", "warehouse", "castle", "leaf", "star", "🏠", "🏡", "🏢", "🏘️", "🌿", "⭐"].includes(body.icon)||body.defaultCurrency!==undefined&&!supportedCurrencies.includes(body.defaultCurrency as typeof supportedCurrencies[number]))
     return sendError(reply,localeOf(request),400,{ key: "error.homeFields" });
-  const result = db.prepare("UPDATE homes SET name = ?, icon = ? WHERE id = ? AND active = 1").run(body.name.trim(), body.icon, request.params.homeId);
+  const currentCurrency=(db.prepare("SELECT default_currency AS currency FROM homes WHERE id=? AND active=1").get(request.params.homeId) as {currency:string}|undefined)?.currency;
+  const defaultCurrency=(body.defaultCurrency as string|undefined)??currentCurrency??"CNY";
+  if(currentCurrency&&defaultCurrency!==currentCurrency&&db.prepare("SELECT 1 FROM stock_batches WHERE home_id=? AND purchase_total_minor IS NOT NULL LIMIT 1").get(request.params.homeId))
+    return sendError(reply,localeOf(request),409,{key:"error.currencyHasHistory"});
+  const result = db.prepare("UPDATE homes SET name = ?, icon = ?,default_currency=? WHERE id = ? AND active = 1").run(body.name.trim(), body.icon,defaultCurrency, request.params.homeId);
   if (!result.changes) return sendError(reply,localeOf(request),404,{ key: "error.homeNotFound" });
-  return { id: request.params.homeId, name: body.name.trim(), icon: body.icon };
+  return { id: request.params.homeId, name: body.name.trim(), icon: body.icon,defaultCurrency };
 });
 app.post("/api/v1/auth/logout", async (request, reply) => {
   const session = request.headers.cookie?.split(";").map(part => part.trim()).find(part => part.startsWith("session="))?.slice(8);

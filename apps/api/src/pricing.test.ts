@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { openDatabase, seedShoppingChannels } from "@family-erp/db";
 import { financialSummary, itemPriceHistory } from "./pricing.js";
+import { listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
 import { recordStock } from "./stock.js";
 
@@ -33,6 +34,8 @@ test("batch costs produce price history, spending, budget, and remaining invento
   const history=itemPriceHistory(db,homeId,itemId);
   assert.equal(history.items[0].totalPrice,20);
   assert.equal(history.items[0].unitPrice,2);
+  const inventory=listItems(db,homeId,{}) as unknown as {lastUnitPrice:number}[];
+  assert.equal(inventory[0].lastUnitPrice,2);
   db.close();
 });
 

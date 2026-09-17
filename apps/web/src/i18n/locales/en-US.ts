@@ -478,4 +478,7 @@ export const enUS = {
   实际支出: "Actual",
   预算差额: "Variance",
   选择操作: "Choose an action",
+  默认币种: "Default currency",
+  最近单价: "Latest unit price",
+  "价值 {{amount}}": "Value {{amount}}",
 } as const satisfies Record<keyof typeof zhCN, string>;

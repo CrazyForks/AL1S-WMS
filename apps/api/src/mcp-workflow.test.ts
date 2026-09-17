@@ -36,6 +36,8 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal((await request(homeToken,"GET",`/api/v1/homes/${otherHomeId}/items`)).status,403);
   assert.equal(((await request(homeToken,"GET","/api/v1/homes")).body as unknown[]).length,1);
   assert.equal(((await request(accountToken,"GET","/api/v1/homes")).body as unknown[]).length,2);
+  const currencyUpdate=await request(homeToken,"PATCH",`/api/v1/homes/${homeId}`,{name:"本家",icon:"house",defaultCurrency:"USD"});
+  assert.equal(currencyUpdate.status,200);
   const channels=(await request(homeToken,"GET",`/api/v1/homes/${homeId}/shopping-channels`)).body as {id:string;name:string}[];
   assert.equal(channels.length,9);
   const planned=await request(homeToken,"POST",`/api/v1/homes/${homeId}/shopping-list`,{itemId,quantity:1,channelId:channels[0].id,plannedDate:"2026-10-08"});
@@ -84,7 +86,7 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   const overview=parseTool(await client.callTool({name:"get_home_overview",arguments:{}}));
   assert.equal(overview.needsReplenishment.total,1);
   const finance=parseTool(await client.callTool({name:"get_financial_summary",arguments:{month:"2026-09"}}));
-  assert.equal(finance.currency,"CNY");
+  assert.equal(finance.currency,"USD");
   const mcpCalendar=parseTool(await client.callTool({name:"get_shopping_calendar",arguments:{month:"2026-10"}}));
   assert.equal(mcpCalendar[0].channelName,channels[0].name);
   await client.close();await server.close();
