@@ -18,7 +18,7 @@ const homePath = (id: string) => `/api/v1/homes/${id}`;
 
 // MCP is an authenticated adapter over the same application routes as Web.
 export function createMcpServer(api: ApiCall, boundHomeId: string | null = null) {
-  const server = new McpServer({ name: "AL1S-ERP", version: "0.4.1" });
+  const server = new McpServer({ name: "AL1S-ERP", version: "0.4.2" });
   const homeInput: z.ZodRawShape = boundHomeId ? {} : {homeId};
   const scoped = (shape: z.ZodRawShape = {}) => ({...homeInput,...shape});
   const context = (args: Record<string,unknown>) => {
@@ -63,7 +63,7 @@ export function createMcpServer(api: ApiCall, boundHomeId: string | null = null)
     receipt:["search_items or lookup_barcode to resolve itemId","list_locations to resolve locationId","record_receipt once; every receipt creates a new batch and dates belong only to that batch","report beforeQuantity, afterQuantity, and created batch"],
     shoppingPlanning:["list_shopping_channels resolves purchase destinations","update_shopping_item sets channelId and plannedDate; updating an automatic recommendation persists it","get_shopping_calendar answers what to buy and where on a given month"],
     shoppingReceipt:["list_shopping_items","receive_shopping_item with actualQuantity, locationId when needed, and optional batch dates","do not update or delete the item first"],
-    expiredHandling:["get_home_overview returns the exact expired batchId and remaining quantity","confirm disposal or consumption with the user","record_issue with that batchId, quantity, and a clear reason"],
+    expiredHandling:["get_home_overview returns the exact expired batchId and remaining quantity","confirm disposal or consumption with the user","record_issue with that batchId, quantity, and issueReason expired"],
     stocktake:["search_items and list_locations","reconcile_stock with countedQuantity for one item at one location","positive differences create a new batch; negative differences consume FEFO unless batchId is supplied","report difference and affected batches"],
   }));
   register("list_homes", boundHomeId?"Return the single home bound to this token.":"List homes available to this account token; choose one homeId before other calls.", {}, "GET", () => ({ url: "/api/v1/homes" }));
@@ -113,7 +113,7 @@ export function createMcpServer(api: ApiCall, boundHomeId: string | null = null)
   register("get_shopping_calendar", "List planned purchases for one YYYY-MM month, including item, quantity, planned date, and purchase channel.", scoped({month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),includeCompleted:z.boolean().optional()}), "GET", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/shopping-calendar?${query(value.body)}`};});
   for(const type of ["receipt","issue"] as const) {
     register(`record_${type}`, type==="receipt" ? "Receive stock as a new batch with optional production and expiry dates." : "Consume a specified batch, or earliest-expiring batches first (undated last). Rejects insufficient stock.", {
-      ...homeInput,itemId,locationId,quantity,idempotencyKey,...(type==="receipt" ? dates : {batchId:z.string().uuid().optional()}),
+      ...homeInput,itemId,locationId,quantity,idempotencyKey,...(type==="receipt" ? dates : {batchId:z.string().uuid().optional(),issueReason:z.enum(["used","expired","damaged"]).describe("Why stock leaves inventory: normal use, expired disposal, or damage")}),
     }, "POST", args=>atHome(args,`/stock/${type}`));
   }
   register("reconcile_stock", "Physical stocktake: set the counted quantity for one item at one location. Positive differences create a dated batch; negative differences consume FEFO or batchId. The server records the activity description.", scoped({itemId,locationId,countedQuantity:z.number().nonnegative().finite(),idempotencyKey,batchId:z.string().uuid().optional(),...dates}), "POST", args=>atHome(args,"/stock/reconcile"));

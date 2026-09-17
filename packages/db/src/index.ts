@@ -56,6 +56,7 @@ export function openDatabase(
       location_id TEXT NOT NULL,
       type TEXT NOT NULL CHECK(type IN ('receipt', 'issue')),
       quantity REAL NOT NULL CHECK(quantity > 0),
+      issue_reason TEXT,
       reason TEXT,
       idempotency_key TEXT NOT NULL,
       occurred_at TEXT NOT NULL,
@@ -217,6 +218,7 @@ export function openDatabase(
   );`);
   const stockColumns = db.prepare("PRAGMA table_info(stock_transactions)").all() as {name:string}[];
   if (!stockColumns.some(column => column.name === "batch_id")) db.exec("ALTER TABLE stock_transactions ADD COLUMN batch_id TEXT REFERENCES stock_batches(id)");
+  if (!stockColumns.some(column => column.name === "issue_reason")) db.exec("ALTER TABLE stock_transactions ADD COLUMN issue_reason TEXT");
   const eventColumns = db.prepare("PRAGMA table_info(item_events)").all() as {name:string}[];
   if (!eventColumns.some(column => column.name === "batch_id")) db.exec("ALTER TABLE item_events ADD COLUMN batch_id TEXT REFERENCES stock_batches(id)");
   if (!db.prepare("SELECT 1 FROM app_settings WHERE key='batch_migration_v1'").get()) {

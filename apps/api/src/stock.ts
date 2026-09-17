@@ -17,8 +17,10 @@ export class InventoryError extends Error {
   }
 }
 export const batchDates = { manufacturedDate: z.string().date().nullable().optional(), expiryDate: z.string().date().nullable().optional() };
-export const stockInput = z.object({ itemId:z.string().uuid(),locationId:z.string().uuid(),quantity:z.number().positive().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),batchId:z.string().uuid().optional(),...batchDates }).strict();
-export const transferInput = stockInput.omit({locationId:true,manufacturedDate:true,expiryDate:true}).extend({sourceLocationId:z.string().uuid(),targetLocationId:z.string().uuid()});
+export const issueReasonSchema=z.enum(["used","expired","damaged","adjustment"]);
+export type IssueReason=z.infer<typeof issueReasonSchema>;
+export const stockInput = z.object({ itemId:z.string().uuid(),locationId:z.string().uuid(),quantity:z.number().positive().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),issueReason:issueReasonSchema.optional(),batchId:z.string().uuid().optional(),...batchDates }).strict();
+export const transferInput = stockInput.omit({locationId:true,manufacturedDate:true,expiryDate:true,issueReason:true}).extend({sourceLocationId:z.string().uuid(),targetLocationId:z.string().uuid()});
 export const reconcileInput = z.object({itemId:z.string().uuid(),locationId:z.string().uuid(),countedQuantity:z.number().nonnegative().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),batchId:z.string().uuid().optional(),...batchDates}).strict();
 export const batchBalanceQuery = `SELECT b.id AS batchId,b.home_id AS homeId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS baseUnit,b.label,b.manufactured_date AS manufacturedDate,b.expiry_date AS expiryDate,b.received_at AS receivedAt,b.legacy,t.location_id AS locationId,l.name AS locationName,
   COALESCE(SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END),0) AS quantity
@@ -48,9 +50,9 @@ export function recordItemEvent(db:DatabaseSync, homeId:string,itemId:string,typ
   db.prepare("INSERT INTO item_events(id,home_id,item_id,item_name,location_id,location_name,type,quantity,reason,occurred_at,batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(id,homeId,itemId,item.name,locationId,location?.name??null,type,quantity,reason,new Date().toISOString(),batchId);
   return id;
 }
-export function ledgerEntry(db:DatabaseSync,homeId:string,itemId:string,locationId:string,batchId:string,type:"receipt"|"issue",quantity:number,key:string,reason:string) {
+export function ledgerEntry(db:DatabaseSync,homeId:string,itemId:string,locationId:string,batchId:string,type:"receipt"|"issue",quantity:number,key:string,reason:string,issueReason:IssueReason|null=null) {
   const id=randomUUID();
-  db.prepare("INSERT INTO stock_transactions(id,home_id,item_id,location_id,batch_id,type,quantity,idempotency_key,reason,occurred_at) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id,homeId,itemId,locationId,batchId,type,quantity,key,reason,new Date().toISOString());
+  db.prepare("INSERT INTO stock_transactions(id,home_id,item_id,location_id,batch_id,type,quantity,idempotency_key,reason,issue_reason,occurred_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(id,homeId,itemId,locationId,batchId,type,quantity,key,reason,issueReason,new Date().toISOString());
   return id;
 }
 export function refreshItemDates(db:DatabaseSync,homeId:string,itemId:string) {
@@ -79,6 +81,7 @@ export function withStockOperation<T>(db:DatabaseSync,homeId:string,key:string,p
 export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue",raw:unknown) {
   const input=stockInput.parse(raw);
   const {itemId,locationId,quantity,idempotencyKey,reason}=input;
+  const issueReason:IssueReason|null=type==="issue"?input.issueReason??"used":null;
   return withStockOperation(db,homeId,idempotencyKey,{type,...input},()=>{
     requireStockTarget(db,homeId,itemId,locationId);
     const beforeQuantity=stockAt(db,homeId,itemId,locationId);
@@ -94,10 +97,10 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
     const defaultReason = type === "receipt"
       ? ["入库新批次", input.manufacturedDate&&`生产 ${input.manufacturedDate}`, input.expiryDate&&`到期 ${input.expiryDate}`].filter(Boolean).join(" · ")
       : input.batchId ? "领用指定批次" : "按到期顺序领用";
-    const transactions=parts.map((part,index)=>({id:ledgerEntry(db,homeId,itemId,locationId,part.batchId,type,part.quantity,`${idempotencyKey}:${index}`,reason||defaultReason),...part}));
+    const transactions=parts.map((part,index)=>({id:ledgerEntry(db,homeId,itemId,locationId,part.batchId,type,part.quantity,`${idempotencyKey}:${index}`,reason||defaultReason,issueReason),issueReason,...part}));
     refreshItemDates(db,homeId,itemId);
     const afterQuantity=stockAt(db,homeId,itemId,locationId);
-    return {homeId,itemId,locationId,type,quantity,beforeQuantity,afterQuantity,difference:afterQuantity-beforeQuantity,transactions};
+    return {homeId,itemId,locationId,type,quantity,issueReason,beforeQuantity,afterQuantity,difference:afterQuantity-beforeQuantity,transactions};
   });
 }
 export function transferStock(db:DatabaseSync,homeId:string,raw:unknown) {
@@ -135,7 +138,7 @@ export function reconcileStock(db:DatabaseSync,homeId:string,raw:unknown) {
       itemId:input.itemId,locationId:input.locationId,quantity:Math.abs(difference),
       idempotencyKey:`reconcile:${input.idempotencyKey}`,
       reason:input.reason||(difference>0?"盘点盘盈":"盘点盘亏"),
-      ...(difference>0?{manufacturedDate:input.manufacturedDate,expiryDate:input.expiryDate}:{batchId:input.batchId}),
+      ...(difference>0?{manufacturedDate:input.manufacturedDate,expiryDate:input.expiryDate}:{batchId:input.batchId,issueReason:"adjustment"}),
     });
     return {homeId,itemId:input.itemId,locationId:input.locationId,beforeQuantity,afterQuantity:result.afterQuantity,difference,action,transactions:result.transactions};
   });

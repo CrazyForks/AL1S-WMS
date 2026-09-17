@@ -6,13 +6,13 @@ import { translate, type Locale } from "./i18n/index.js";
 export const transactionQuery = `
   SELECT t.id, t.home_id AS homeId, t.item_id AS itemId, i.name AS itemName,
     t.location_id AS locationId, l.name AS locationName, t.type, t.quantity,
-    t.reason, t.idempotency_key AS idempotencyKey, t.occurred_at AS occurredAt, t.batch_id AS batchId
+    t.reason, t.issue_reason AS issueReason, t.idempotency_key AS idempotencyKey, t.occurred_at AS occurredAt, t.batch_id AS batchId
   FROM stock_transactions t JOIN items i ON i.id = t.item_id
   LEFT JOIN locations l ON l.id = t.location_id
   WHERE t.idempotency_key NOT LIKE 'event:%'
   UNION ALL
   SELECT id, home_id, item_id, item_name, location_id, location_name, type,
-    quantity, reason, NULL, occurred_at, batch_id FROM item_events`;
+    quantity, reason, NULL, NULL, occurred_at, batch_id FROM item_events`;
 
 export class DeleteError extends Error {
   constructor(public status: number, public messageKey: "error.deleteNotFound" | "error.deleteParentMissing" | "error.deleteNameConflict") {
@@ -37,7 +37,7 @@ export function deleteInventoryEntity(db: DatabaseSync, homeId: string, kind: "i
   };
   const ledger = (eventId: string, itemId: string, locationId: string, type: string, quantity: number, reason: string) => {
     const parts = allocate(db, homeId, itemId, locationId, quantity);
-    for (const part of parts) ledgerEntry(db,homeId,itemId,locationId,part.batchId,"issue",part.quantity,`event:${eventId}:${randomUUID()}`,reason);
+    for (const part of parts) ledgerEntry(db,homeId,itemId,locationId,part.batchId,"issue",part.quantity,`event:${eventId}:${randomUUID()}`,reason,"adjustment");
   };
   db.exec("BEGIN IMMEDIATE");
   try {

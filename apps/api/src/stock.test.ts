@@ -37,6 +37,7 @@ test("receipts create batches and issues allocate FEFO idempotently", () => {
   const issueInput = {itemId,locationId,quantity:6,idempotencyKey:"issue-fefo"};
   const issued = recordStock(db,homeId,"issue",issueInput);
   assert.deepEqual(issued.transactions.map(row=>[row.batchId,row.quantity]),[[early,3],[late,3]]);
+  assert.equal(issued.issueReason,"used");
   assert.deepEqual(db.prepare("SELECT DISTINCT reason FROM stock_transactions WHERE type='issue'").all().map(row=>row.reason),["按到期顺序领用"]);
   assert.deepEqual(recordStock(db,homeId,"issue",issueInput),issued);
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM stock_transactions WHERE type='issue'").get() as {n:number}).n,2);
@@ -45,6 +46,12 @@ test("receipts create batches and issues allocate FEFO idempotently", () => {
   assert.throws(
     () => recordStock(db,homeId,"issue",{itemId,locationId,batchId:early,quantity:1,idempotencyKey:"empty-batch"}),
     (error:unknown) => error instanceof InventoryError && error.code === "INSUFFICIENT_STOCK",
+  );
+  recordStock(db,homeId,"issue",{itemId,locationId,quantity:1,idempotencyKey:"expired-disposal",issueReason:"expired"});
+  recordStock(db,homeId,"issue",{itemId,locationId,quantity:1,idempotencyKey:"damaged-disposal",issueReason:"damaged"});
+  assert.deepEqual(
+    db.prepare("SELECT issue_reason AS issueReason FROM stock_transactions WHERE idempotency_key IN ('expired-disposal:0','damaged-disposal:0') ORDER BY issue_reason").all().map(row=>row.issueReason),
+    ["damaged","expired"],
   );
   db.close();
 });
