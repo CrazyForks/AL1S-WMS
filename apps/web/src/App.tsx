@@ -2,6 +2,7 @@ import { MaterialIcon, IconPicker, itemIconFor } from "./Icons.js";
 import { BatchFields } from "./BatchFields.js";
 import { Batches, BatchSelect } from "./Batches.js";
 import { BarcodeScanner } from "./BarcodeScanner.js";
+import { ItemCombobox } from "./ItemCombobox.js";
 import { type CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -2445,21 +2446,7 @@ export function App() {
                 disabled={Boolean(linkedShoppingItem)}
               />
             </label>
-            <label>
-              关联物资（可选）
-              <select
-                name="itemId"
-                value={shoppingItemId}
-                onChange={(event) => setShoppingItemId(event.target.value)}
-              >
-                <option value="">不关联已有物资</option>
-                {items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <ItemCombobox items={items} value={shoppingItemId} onChange={setShoppingItemId}/>
             <div className="form-row">
               <label>
                 数量
@@ -2573,21 +2560,7 @@ export function App() {
                 disabled={Boolean(linkedEditShoppingItem)}
               />
             </label>
-            <label>
-              关联物资（可选）
-              <select
-                name="itemId"
-                value={editShoppingItemId}
-                onChange={(event) => setEditShoppingItemId(event.target.value)}
-              >
-                <option value="">不关联已有物资</option>
-                {items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <ItemCombobox items={items} value={editShoppingItemId} onChange={setEditShoppingItemId}/>
             <div className="form-row">
               <label>
                 数量
