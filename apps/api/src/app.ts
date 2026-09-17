@@ -794,8 +794,6 @@ app.patch<{Params:{homeId:string;channelId:string};Body:unknown}>("/api/v1/homes
   return {id:request.params.channelId,name:input.name};
 });
 app.delete<{Params:{homeId:string;channelId:string}}>("/api/v1/homes/:homeId/shopping-channels/:channelId",async(request,reply)=>{
-  if(db.prepare("SELECT 1 FROM shopping_list WHERE home_id=? AND channel_id=? AND completed=0 LIMIT 1").get(request.params.homeId,request.params.channelId))
-    return reply.code(409).send({code:"SHOPPING_CHANNEL_IN_USE",message:"仍有未完成采购项使用该渠道，请先重新安排"});
   const result=db.prepare("UPDATE shopping_channels SET active=0 WHERE id=? AND home_id=? AND active=1").run(request.params.channelId,request.params.homeId);
   return result.changes?{id:request.params.channelId,deleted:true}:reply.code(404).send({code:"SHOPPING_CHANNEL_NOT_FOUND"});
 });

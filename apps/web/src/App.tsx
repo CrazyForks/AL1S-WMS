@@ -591,6 +591,7 @@ export function App() {
   const linkedEditShoppingItem = items.find(
     (item) => item.id === editShoppingItemId,
   );
+  const shoppingChannelName=(item:ShoppingItem)=>shoppingChannels.find(channel=>channel.id===item.channelId)?.name||"未指定";
   const transactionPageCount = Math.max(1, Math.ceil(transactionTotal / 10));
   const pagedTransactions = transactions;
   useEffect(() => {
@@ -1106,13 +1107,8 @@ export function App() {
     if(!response.ok){setNotice(result.message||"购买渠道添加失败");return;}
     setNewChannelName("");load();
   }
-  async function renameShoppingChannel(channel:ShoppingChannel) {
-    const name=window.prompt("购买渠道名称",channel.name)?.trim();if(!name||name===channel.name)return;
-    const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-channels/${channel.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
-    if(!response.ok){setNotice("购买渠道保存失败");return;}load();
-  }
   async function deleteShoppingChannel(channel:ShoppingChannel) {
-    if(!window.confirm(`隐藏购买渠道“${channel.name}”？`))return;
+    if(!window.confirm(`删除购买渠道“${channel.name}”？`))return;
     const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-channels/${channel.id}`,{method:"DELETE"});
     if(!response.ok){const result=await response.json().catch(()=>({}));setNotice(result.message||"购买渠道删除失败");return;}load();
   }
@@ -1778,7 +1774,7 @@ export function App() {
                         <td>
                           {item.quantity} {item.unit || "件"}
                         </td>
-                        <td><span className="shopping-plan"><b>{item.channelName||"未安排渠道"}</b><small>{item.plannedDate||"未安排日期"}</small></span></td>
+                        <td><span className="shopping-plan"><b>{shoppingChannelName(item)}</b><small>{item.plannedDate||"未安排日期"}</small></span></td>
                         <td>
                           <div className="row-actions">
                             {!item.completed && (
@@ -1799,6 +1795,7 @@ export function App() {
                               </button>
                             )}
                             {item.source==="manual"&&<button
+                              className="danger-action"
                               onClick={() =>
                                 fetch(
                                   `/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,
@@ -1819,7 +1816,7 @@ export function App() {
             <details className="channel-manager">
               <summary>购买渠道管理 <span>{shoppingChannels.length} 个渠道</span></summary>
               <form onSubmit={addShoppingChannel}><input value={newChannelName} onChange={event=>setNewChannelName(event.target.value)} maxLength={80} placeholder="新增购买渠道" required/><button className="secondary">添加</button></form>
-              <div>{shoppingChannels.map(channel=><span key={channel.id}><b>{channel.name}</b><button type="button" onClick={()=>renameShoppingChannel(channel)}>重命名</button><button type="button" className="danger-text" onClick={()=>deleteShoppingChannel(channel)}>隐藏</button></span>)}</div>
+              <div>{shoppingChannels.map(channel=><span key={channel.id}><b>{channel.name}</b><button type="button" className="channel-remove" title="删除渠道" aria-label={`删除${channel.name}`} onClick={()=>deleteShoppingChannel(channel)}><X size={12}/></button></span>)}</div>
             </details>
           </section>
           <section className="panel shopping-calendar">
@@ -1841,11 +1838,11 @@ export function App() {
                 return <button type="button" className={`calendar-day ${today?"today":""} ${selectedShoppingDate===date?"selected":""}`} key={date} onClick={()=>setSelectedShoppingDate(date)}>
                   <time>{Number(date.slice(-2))}</time>
                   <span className="calendar-mobile-count">{entries.length||""}</span>
-                  <div>{entries.slice(0,2).map(item=><span className={item.completed?"completed":""} key={item.id}><b>{item.name}</b><small>{item.channelName||"未安排渠道"}</small></span>)}{entries.length>2&&<em>+{entries.length-2}</em>}</div>
+                  <div>{entries.slice(0,2).map(item=><span className={item.completed?"completed":""} key={item.id}><b>{item.name}</b><small>{shoppingChannelName(item)}</small></span>)}{entries.length>2&&<em>+{entries.length-2}</em>}</div>
                 </button>;
               })}</div>
             </div>
-            {selectedShoppingDate&&<div className="calendar-agenda"><strong>{selectedShoppingDate}</strong>{selectedCalendarItems.length?selectedCalendarItems.map(item=><span key={item.id}>{item.name} · {item.quantity} {item.unit||"件"} · {item.channelName||"未安排渠道"}</span>):<span>当天没有采购计划</span>}</div>}
+            {selectedShoppingDate&&<div className="calendar-agenda"><strong>{selectedShoppingDate}</strong>{selectedCalendarItems.length?selectedCalendarItems.map(item=><span key={item.id}>{item.name} · {item.quantity} {item.unit||"件"} · {shoppingChannelName(item)}</span>):<span>当天没有采购计划</span>}</div>}
           </section>
           </section>
         )}
