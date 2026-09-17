@@ -535,6 +535,8 @@ input:disabled,select:disabled{background:#edf3f7!important;color:#768a9c!import
 .danger-action:hover{background:#fff0f1!important;color:#9e3543!important}
 .delete-dialog>p{font-size:13px;line-height:1.8;color:#617789}
 .delete-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.edit-item-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:20px}
+@media(max-width:540px){.edit-item-actions{position:sticky;bottom:-20px;margin:20px -16px -20px;padding:12px 16px;background:#fff;border-top:1px solid var(--aris-line)}.edit-item-actions button{flex:1}}
 .delete-dialog .danger-button{background:#984655;border-color:#984655;box-shadow:none}
 .delete-dialog .danger-button:hover:not(:disabled){background:#803846;border-color:#803846}
 .log-badge.delete{background:#fbeef0;color:#a04757}

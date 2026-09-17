@@ -2071,38 +2071,6 @@ export function App() {
                 />
               </label>
             </div>
-            <div className="form-row">
-              <label>
-                生产日期
-                <input
-                  name="manufacturedDate"
-                  type="date"
-                  defaultValue={detailItem.manufacturedDate || ""}
-                />
-              </label>
-              <label>
-                保质期（可选）
-                <div className="form-row">
-                  <input
-                    name="shelfLifeValue"
-                    type="number"
-                    min="1"
-                    step="1"
-                    placeholder="时长"
-                  />
-                  <select name="shelfLifeUnit" defaultValue="day">
-                    <option value="day">天</option>
-                    <option value="month">月</option>
-                    <option value="year">年</option>
-                  </select>
-                </div>
-                {detailItem.expiryDate && (
-                  <small className="muted">
-                    当前到期日：{detailItem.expiryDate}
-                  </small>
-                )}
-              </label>
-            </div>
             <label>
               存放地点
               <select
@@ -2119,7 +2087,19 @@ export function App() {
               </select>
             </label>
             <IconPicker initial={detailItem.icon} />
-            <button className="primary full">保存修改</button>
+            <div className="edit-item-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setBatchItem(detailItem);
+                  setDetailItem(null);
+                }}
+              >
+                管理库存批次
+              </button>
+              <button className="primary">保存修改</button>
+            </div>
           </form>
         </div>
       )}
