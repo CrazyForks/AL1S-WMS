@@ -466,6 +466,7 @@ export function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [homes, setHomes] = useState<{ id: string; name: string; icon?: string }[]>([]);
   const [homeNotice, setHomeNotice] = useState("");
+  const [passwordNotice, setPasswordNotice] = useState("");
   const [editingHome, setEditingHome] = useState<{ id: string; name: string; icon?: string } | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [stock, setStock] = useState<Stock[]>([]);
@@ -1111,6 +1112,23 @@ export function App() {
     if (response.ok) setApiTokens(await response.json());
     else setNotice("无法加载 MCP 令牌");
   }
+  async function changePassword(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if(busy)return;
+    const form=event.currentTarget,data=new FormData(form);
+    const currentPassword=String(data.get("currentPassword")||"");
+    const newPassword=String(data.get("newPassword")||"");
+    const confirmation=String(data.get("confirmation")||"");
+    if(newPassword!==confirmation){setPasswordNotice("两次输入的新密码不一致");return;}
+    setBusy(true);setPasswordNotice("");
+    try {
+      const response=await fetch("/api/v1/auth/password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({currentPassword,newPassword})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.message||"密码修改失败");
+      form.reset();setPasswordNotice("密码已修改");
+    } catch(error) {setPasswordNotice(error instanceof Error?error.message:"密码修改失败");}
+    finally {setBusy(false);}
+  }
   async function createApiToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1427,6 +1445,18 @@ export function App() {
               ×
             </button>
           </div>
+        )}
+        {activePage === "profile" && (
+          <section className="panel password-panel">
+            <div className="panel-head"><div><h2>修改密码</h2><p className="muted">验证当前密码后设置新密码</p></div></div>
+            <form className="password-form" onSubmit={changePassword}>
+              <label>当前密码<input name="currentPassword" type="password" autoComplete="current-password" required /></label>
+              <label>新密码<input name="newPassword" type="password" autoComplete="new-password" minLength={8} required /></label>
+              <label>确认新密码<input name="confirmation" type="password" autoComplete="new-password" minLength={8} required /></label>
+              <button className="primary" disabled={busy}>{busy?"修改中…":"修改密码"}</button>
+            </form>
+            {passwordNotice&&<p className="password-feedback" role="status">{passwordNotice}</p>}
+          </section>
         )}
         {activePage === "profile" && (
           <section className="panel home-settings">

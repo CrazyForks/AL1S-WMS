@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, scryptSync } from "node:crypto";
 import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -17,7 +17,8 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   db.prepare("INSERT INTO homes(id,name) VALUES (?,?),(?,?)").run(homeId,"本家",otherHomeId,"其他家");
   db.prepare("INSERT INTO locations(id,home_id,name) VALUES (?,?,?)").run(locationId,homeId,"储物柜");
   db.prepare("INSERT INTO items(id,home_id,sku,name,category,base_unit,reorder_point,default_location_id) VALUES (?,?,?,?,?,?,?,?)").run(itemId,homeId,itemId,"牛奶","食品","瓶",3,locationId);
-  db.prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(userId,randomUUID(),"test",new Date().toISOString());
+  const username=randomUUID(),salt=randomBytes(16).toString("hex");
+  db.prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(userId,username,`${salt}:${scryptSync("old-password",salt,64).toString("hex")}`,new Date().toISOString());
   const sessionId=randomUUID();
   db.prepare("INSERT INTO sessions(id,user_id,expires_at) VALUES (?,?,?)").run(sessionId,userId,new Date(Date.now()+86400000).toISOString());
   const addToken=(home:string|null) => {
@@ -40,6 +41,13 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal(db.prepare("SELECT home_id FROM api_tokens WHERE id=?").get(createdToken.json().id)?.home_id,homeId);
   const missingScope=await app.inject({method:"POST",url:"/api/v1/auth/tokens",headers:{cookie:`session=${sessionId}`},payload:{name:"无范围"}});
   assert.equal(missingScope.statusCode,400);
+  assert.equal((await app.inject({method:"DELETE",url:`/api/v1/auth/tokens/${createdToken.json().id}`,headers:{cookie:`session=${sessionId}`}})).statusCode,200);
+  const activeTokens=(await app.inject({method:"GET",url:"/api/v1/auth/tokens",headers:{cookie:`session=${sessionId}`}})).json() as {id:string}[];
+  assert.equal(activeTokens.some(token=>token.id===createdToken.json().id),false);
+  assert.equal((await app.inject({method:"POST",url:"/api/v1/auth/password",headers:{cookie:`session=${sessionId}`},payload:{currentPassword:"wrong",newPassword:"new-password"}})).statusCode,401);
+  assert.equal((await app.inject({method:"POST",url:"/api/v1/auth/password",headers:{cookie:`session=${sessionId}`},payload:{currentPassword:"old-password",newPassword:"new-password"}})).statusCode,200);
+  assert.equal((await app.inject({method:"POST",url:"/api/v1/auth/login",payload:{username,password:"old-password"}})).statusCode,401);
+  assert.equal((await app.inject({method:"POST",url:"/api/v1/auth/login",payload:{username,password:"new-password"}})).statusCode,200);
 
   const server=createMcpServer((method,url,body)=>request(homeToken,method,url,body),homeId);
   const client=new Client({name:"workflow-test",version:"1"});

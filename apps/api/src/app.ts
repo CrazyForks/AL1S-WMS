@@ -58,6 +58,12 @@ function setSession(reply: any, userId: string) {
     `session=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`,
   );
 }
+function passwordMatches(password:string,passwordHash:string) {
+  const [salt,expected]=passwordHash.split(":");
+  if(!salt||!expected)return false;
+  const actual=scryptSync(password,salt,64).toString("hex");
+  return actual.length===expected.length&&timingSafeEqual(Buffer.from(actual),Buffer.from(expected));
+}
 function sessionUser(request: any) {
   const cookie = request.headers.cookie
     ?.split(";")
@@ -142,7 +148,7 @@ app.get("/api/v1/auth/tokens", async (request) => {
   const user = sessionUser(request) as { id: string };
   return db
     .prepare(
-      "SELECT api_tokens.id, api_tokens.name, api_tokens.home_id AS homeId, homes.name AS homeName, token_prefix AS tokenPrefix, created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM api_tokens LEFT JOIN homes ON homes.id=api_tokens.home_id WHERE user_id = ? ORDER BY created_at DESC",
+      "SELECT api_tokens.id, api_tokens.name, api_tokens.home_id AS homeId, homes.name AS homeName, token_prefix AS tokenPrefix, created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM api_tokens LEFT JOIN homes ON homes.id=api_tokens.home_id WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC",
     )
     .all(user.id);
 });
@@ -199,6 +205,23 @@ app.get(
   async (request, reply) =>
     sessionUser(request) ?? reply.code(401).send({ code: "UNAUTHENTICATED" }),
 );
+app.post<{Body:unknown}>("/api/v1/auth/password",async(request,reply)=>{
+  const user=sessionUser(request) as {id:string}|undefined;
+  if(!user)return reply.code(401).send({code:"UNAUTHENTICATED"});
+  const body=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+  const currentPassword=typeof body.currentPassword==="string"?body.currentPassword:"";
+  const newPassword=typeof body.newPassword==="string"?body.newPassword:"";
+  if(newPassword.length<8||newPassword.length>256)
+    return reply.code(400).send({code:"INVALID_NEW_PASSWORD",message:"新密码至少需要 8 个字符"});
+  const row=db.prepare("SELECT password_hash AS passwordHash FROM users WHERE id=?").get(user.id) as {passwordHash:string};
+  if(!passwordMatches(currentPassword,row.passwordHash))
+    return reply.code(401).send({code:"INVALID_CURRENT_PASSWORD",message:"当前密码不正确"});
+  if(passwordMatches(newPassword,row.passwordHash))
+    return reply.code(400).send({code:"PASSWORD_UNCHANGED",message:"新密码不能与当前密码相同"});
+  const salt=randomBytes(16).toString("hex");
+  db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(`${salt}:${scryptSync(newPassword,salt,64).toString("hex")}`,user.id);
+  return {changed:true};
+});
 app.post<{ Body: unknown }>("/api/v1/auth/login", async (request, reply) => {
   const body =
     request.body && typeof request.body === "object"
@@ -214,12 +237,7 @@ app.post<{ Body: unknown }>("/api/v1/auth/login", async (request, reply) => {
     return reply
       .code(401)
       .send({ code: "INVALID_CREDENTIALS", message: "用户名或密码错误" });
-  const [salt, expected] = user.password_hash.split(":");
-  const actual = scryptSync(password, salt, 64).toString("hex");
-  if (
-    actual.length !== expected.length ||
-    !timingSafeEqual(Buffer.from(actual), Buffer.from(expected))
-  )
+  if (!passwordMatches(password,user.password_hash))
     return reply
       .code(401)
       .send({ code: "INVALID_CREDENTIALS", message: "用户名或密码错误" });
