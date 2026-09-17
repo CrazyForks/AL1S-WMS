@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { openDatabase } from "@family-erp/db";
 import { buildApp } from "../app.js";
-import { parseAcceptLanguage, translate } from "./index.js";
+import { displayUnit, parseAcceptLanguage, translate } from "./index.js";
 
 test("Accept-Language parsing is strict and negotiates supported locales", () => {
   assert.equal(parseAcceptLanguage(undefined), "zh-CN");
@@ -22,6 +22,8 @@ test("translate requires catalog keys and interpolates values", () => {
     translate("en-US", "error.insufficientStock", { available: 2 }),
     "Insufficient stock at this location; available: 2",
   );
+  assert.equal(displayUnit("en-US", "瓶"), "bottle(s)");
+  assert.equal(displayUnit("zh-CN", "瓶"), "瓶");
 });
 
 test("HTTP errors honor locale while default Chinese contracts stay compatible", async () => {
@@ -141,7 +143,7 @@ test("HTTP errors honor locale while default Chinese contracts stay compatible",
   });
   assert.equal(
     overviewEnglish.json().recommendedActions[0].message,
-    "Replenish 牛奶 by 2 瓶",
+    "Replenish 牛奶 by 2 bottle(s)",
   );
 
   await app.close();

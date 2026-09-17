@@ -43,7 +43,12 @@ test("saved locale wins, browser English is detected, and API locale follows", a
   savedLocale = null;
   assert.equal(locale.detectLocale(), "en-US");
 
+  await locale.setLocale("zh-CN");
+  assert.equal(locale.displayUnit("瓶"), "瓶");
   await locale.setLocale("en-US");
+  assert.equal(locale.displayUnit("瓶"), "bottle(s)");
+  assert.equal(locale.displayUnit("自定义单位"), "自定义单位");
+
   let sentHeaders: Headers | undefined;
   Object.defineProperty(globalThis, "fetch", {
     configurable: true,

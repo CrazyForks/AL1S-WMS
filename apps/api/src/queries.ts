@@ -3,7 +3,7 @@ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { transactionQuery } from "./inventory-delete.js";
 import { batchBalanceQuery } from "./stock.js";
 import { InventoryError } from "./stock.js";
-import { translate, type Locale } from "./i18n/index.js";
+import { displayUnit, translate, type Locale } from "./i18n/index.js";
 
 const bool = z.enum(["true","false"]).transform(value=>value==="true");
 const paging = { limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).default(0) };
@@ -88,8 +88,8 @@ export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown,locale
   const actions=[
     ...(expired as Record<string,unknown>[]).map(row=>({type:"handle_expired",priority:"urgent",itemId:row.itemId,batchId:row.batchId,message:translate(locale,"action.expired",{itemName:row.itemName,expiryDate:row.expiryDate})})),
     ...(expiring as Record<string,unknown>[]).map(row=>({type:"use_expiring",priority:"high",itemId:row.itemId,batchId:row.batchId,message:translate(locale,"action.expiring",{itemName:row.itemName,expiryDate:row.expiryDate})})),
-    ...pending.filter(row=>row.source==="manual").map(row=>({type:"buy_pending",priority:"normal",shoppingItemId:row.id,itemId:row.itemId,message:translate(locale,"action.buyPending",{name:row.name,quantity:row.quantity,unit:row.unit??""}).trim()})),
-    ...(needsReplenishment as Record<string,unknown>[]).map(row=>({type:"replenish",priority:"normal",itemId:row.itemId,message:translate(locale,"action.replenish",{name:row.name,quantity:row.suggestedQuantity,unit:row.unit})})),
+    ...pending.filter(row=>row.source==="manual").map(row=>({type:"buy_pending",priority:"normal",shoppingItemId:row.id,itemId:row.itemId,message:translate(locale,"action.buyPending",{name:row.name,quantity:row.quantity,unit:displayUnit(locale,row.unit??"")}).trim()})),
+    ...(needsReplenishment as Record<string,unknown>[]).map(row=>({type:"replenish",priority:"normal",itemId:row.itemId,message:translate(locale,"action.replenish",{name:row.name,quantity:row.suggestedQuantity,unit:displayUnit(locale,row.unit)})})),
   ].slice(0,filters.limit);
   return {
     home,

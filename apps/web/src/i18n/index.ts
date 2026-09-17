@@ -53,4 +53,25 @@ export function localeForDates() {
     : "zh-CN";
 }
 
+const storedUnits = [
+  "个",
+  "瓶",
+  "盒",
+  "包",
+  "箱",
+  "袋",
+  "千克",
+  "升",
+  "米",
+  "其他",
+  "件",
+] as const;
+
+export function displayUnit(unit?: string | null) {
+  if (!unit) return "";
+  return storedUnits.includes(unit as (typeof storedUnits)[number])
+    ? i18n.t(unit)
+    : unit;
+}
+
 export default i18n;

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import i18n, { localeForDates } from "./i18n/index.js";
+import i18n, { displayUnit, localeForDates } from "./i18n/index.js";
 import { apiFetch } from "./i18n/apiFetch.js";
 const t = i18n.t.bind(i18n);
 import { X } from "lucide-react";
@@ -188,7 +188,7 @@ export function Batches({
                       </td>
                       <td>{row.locationName || t("未指定")}</td>
                       <td>
-                        {row.quantity} {item.baseUnit}
+                        {row.quantity} {displayUnit(item.baseUnit)}
                       </td>
                       <td>
                         <div className="date-cell">

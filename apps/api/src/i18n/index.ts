@@ -197,6 +197,40 @@ export function renderTranslation(
   );
 }
 
+const units = {
+  "zh-CN": {
+    个: "个",
+    瓶: "瓶",
+    盒: "盒",
+    包: "包",
+    箱: "箱",
+    袋: "袋",
+    千克: "千克",
+    升: "升",
+    米: "米",
+    其他: "其他",
+    件: "件",
+  },
+  "en-US": {
+    个: "unit",
+    瓶: "bottle(s)",
+    盒: "box(es)",
+    包: "pack(s)",
+    箱: "carton(s)",
+    袋: "bag(s)",
+    千克: "kg",
+    升: "L",
+    米: "m",
+    其他: "other",
+    件: "piece(s)",
+  },
+} as const;
+
+export function displayUnit(locale: Locale, unit: unknown) {
+  const value = String(unit ?? "");
+  return (units[locale] as Record<string, string>)[value] ?? value;
+}
+
 export function translate<K extends TranslationKey>(
   locale: Locale,
   key: K,
