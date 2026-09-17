@@ -549,8 +549,8 @@ input:disabled,select:disabled{background:#edf3f7!important;color:#768a9c!import
 .delete-dialog .danger-button:hover:not(:disabled){background:#803846;border-color:#803846}
 .log-badge.delete{background:#fbeef0;color:#a04757}
 .log-row b.delete{color:#a04757}
-.log-badge.move,.log-badge.reclassify{background:#e9f7f8;color:#287fa1}
-.log-row b.move,.log-row b.reclassify{color:#287fa1;font-size:12px;white-space:nowrap}
+.log-badge.move,.log-badge.reclassify,.log-badge.update{background:#e9f7f8;color:#287fa1}
+.log-row b.move,.log-row b.reclassify,.log-row b.update{color:#287fa1;font-size:12px;white-space:nowrap}
 /* Maid hero: white apron surfaces, ink-blue ribbons, cyan square halo. */
 :root{
   --aris-canvas:#f3f7fa;

@@ -1172,7 +1172,7 @@ export function App() {
     id: string;
     name: string;
     parentId: string | null;
-    items: Item[];
+    items: (Item & { treeQuantity?: number })[];
   };
   const treeNodes: TreeNode[] =
     treeMode === "location"
@@ -1180,7 +1180,15 @@ export function App() {
           id: location.id,
           name: location.name,
           parentId: location.parentId,
-          items: items.filter((item) => item.locationId === location.id),
+          items: items.flatMap((item) => {
+            const quantity=stock
+              .filter(row=>row.itemId===item.id&&row.locationId===location.id)
+              .reduce((sum,row)=>sum+row.quantity,0);
+            if(quantity>1e-9)return [{...item,treeQuantity:quantity}];
+            if(item.locationId===location.id&&balanceFor(item.id)<=1e-9)
+              return [{...item,treeQuantity:0}];
+            return [];
+          }),
         }))
       : categories.map((category) => ({
           id: category.id,
@@ -1274,7 +1282,7 @@ export function App() {
                 >
                   <strong className="tree-item-name"><MaterialIcon value={itemIconFor(item)} />{item.name}</strong>
                   <span className="tree-item-stock">
-                    {balanceFor(item.id)} {item.baseUnit}
+                    {item.treeQuantity ?? balanceFor(item.id)} {item.baseUnit}
                   </span>
                   <span className={`stock-status ${status.level}`}>
                     {status.label}
