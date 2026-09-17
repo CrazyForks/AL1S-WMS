@@ -64,16 +64,15 @@ test("Chinese barcodes prefer ApiZero and optionally send its API key",async()=>
   let calls=0;
   const fetcher:typeof fetch=async(input,init)=>{
     calls++;
+    assert.equal(String(input),`https://v1.apizero.cn/api/barcode-lookup?barcode=${barcode}`);
     assert.equal(new Headers(init?.headers).get("Authorization"),"Bearer sk_test_example");
-    return new Response(JSON.stringify(String(input).includes("barcode-gs1")
-      ?{code:0,data:{barcode,found:true,name:"小白鲸75%乙醇消毒液100ml",brand:"小白鲸",category:"消毒剂",specification:"100毫升"}}
-      :{code:0,data:{barcode,found:false}}),{status:200});
+    return new Response(JSON.stringify({code:0,data:{barcode,found:true,name:"示例国内商品",brand:"示例品牌",category:"日用品",spec:"100毫升"}}),{status:200});
   };
   try {
     const result=await lookupBarcode(db,homeId,barcode,fetcher);
-    assert.equal(result.product?.provider,"apizero-gs1");
-    assert.equal(result.product?.name,"小白鲸75%乙醇消毒液100ml");
-    assert.equal(calls,2);
+    assert.equal(result.product?.provider,"apizero");
+    assert.equal(result.product?.name,"示例国内商品");
+    assert.equal(calls,1);
   } finally {
     delete process.env.APIZERO_API_KEY;
     db.close();

@@ -90,28 +90,6 @@ export async function lookupBarcode(db:DatabaseSync,homeId:string,raw:string,fet
       // Fall through to Open Facts; an unavailable domestic lookup is not cached.
     }
   }
-  if(barcode.startsWith("69")&&barcode.length<=13) {
-    try {
-      const apiKey=process.env.APIZERO_API_KEY?.trim();
-      const response=await fetcher(`https://v1.apizero.cn/api/barcode-gs1?code=${barcode}`,{
-        headers:{"Accept":"application/json","User-Agent":process.env.BARCODE_USER_AGENT??"AL1S-ERP/1.0 (https://github.com/RicterZ/AL1S-ERP)",...(apiKey?{"Authorization":`Bearer ${apiKey}`}:{})},
-        signal:AbortSignal.timeout(4000),
-      });
-      if(response.ok) {
-        const payload=await response.json() as {code?:number;data?:{found?:boolean;name?:string|null;brand?:string|null;manufacturer?:string|null;specification?:string|null;category?:string|null;description?:string|null;images?:string[]|null}};
-        const product=payload.data,name=String(product?.name||"").trim().slice(0,200);
-        if(payload.code===0&&product?.found&&name) {
-          const brand=String(product.brand||"").trim().slice(0,200)||null;
-          const text=`${name} ${brand??""} ${product.manufacturer??""} ${product.category??""} ${product.specification??""} ${product.description??""}`;
-          const row:CatalogRow={barcode,found:1,name,brand,category:inferCategory({fallbackCategory:"其他"},text),baseUnit:inferUnit(text),imageUrl:product.images?.[0]??null,provider:"apizero-gs1",fetchedAt:new Date().toISOString()};
-          db.prepare("INSERT INTO barcode_catalog(barcode,found,name,brand,category,base_unit,image_url,provider,fetched_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(barcode) DO UPDATE SET found=excluded.found,name=excluded.name,brand=excluded.brand,category=excluded.category,base_unit=excluded.base_unit,image_url=excluded.image_url,provider=excluded.provider,fetched_at=excluded.fetched_at").run(row.barcode,row.found,row.name,row.brand,row.category,row.baseUnit,row.imageUrl,row.provider,row.fetchedAt);
-          return {found:true,source:"online",barcode,product:responseProduct(db,homeId,row)};
-        }
-      }
-    } catch {
-      // Fall through to Open Facts.
-    }
-  }
   for(const provider of providers) {
     try {
       const fields="code,product_name,product_name_zh,brands,categories,categories_tags,image_front_url,quantity";
