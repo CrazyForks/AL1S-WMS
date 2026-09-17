@@ -1,5 +1,10 @@
 docs
 node_modules
+.pnpm-store
 .git
 .env*
-
+**/dist
+**/data
+*.db
+*.db-shm
+*.db-wal

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const homeIdSchema = z.string().uuid();
+export const itemIconSchema = z.enum(["package", "apple", "carrot", "beef", "fish", "egg", "milk", "coffee", "wine", "cooking", "sandwich", "cookie", "spray", "laundry", "shirt", "pill", "health", "wrench", "cable", "battery", "book", "pet", "bath", "leaf"]);
 
 export const itemSchema = z.object({
   id: z.string().uuid(),
@@ -8,6 +9,7 @@ export const itemSchema = z.object({
   sku: z.string().min(1),
   name: z.string().min(1),
   category: z.string().min(1),
+  icon: itemIconSchema.nullable().optional(),
   baseUnit: z.string().min(1),
   reorderPoint: z.number().nonnegative(),
   reorderQuantity: z.number().nonnegative(),
@@ -24,6 +26,7 @@ export const createItemSchema = itemSchema.omit({ id: true, active: true }).exte
 export type Item = z.infer<typeof itemSchema>;
 export type CreateItem = z.infer<typeof createItemSchema>;
 export const updateItemSchema = z.object({
+  icon: itemIconSchema.nullable().optional(),
   name: z.string().min(1).optional(),
   category: z.string().min(1).optional(),
   baseUnit: z.string().min(1).optional(),

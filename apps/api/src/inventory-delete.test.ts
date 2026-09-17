@@ -1,0 +1,82 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { test } from "node:test";
+import { openDatabase } from "@family-erp/db";
+import { deleteInventoryEntity, transactionQuery } from "./inventory-delete.js";
+import { createMcpServer } from "./mcp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+
+test("deletion preserves stock, promotes children, logs only item changes and scopes homes", async () => {
+  const db = openDatabase(":memory:");
+  const home = randomUUID(), otherHome = randomUUID();
+  for (const id of [home, otherHome]) db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(id,id);
+  const node = (table: string, name: string, parent: string | null = null) => {
+    const id = randomUUID();
+    db.prepare(`INSERT INTO ${table}(id,home_id,name,parent_id) VALUES (?,?,?,?)`).run(id,home,name,parent);
+    return id;
+  };
+  const root = node("locations", "厨房"), child = node("locations", "冰箱", root), grandchild = node("locations", "冷冻层", child);
+  const food = node("item_categories", "食品"), dairy = node("item_categories", "乳品", food), yogurt = node("item_categories", "酸奶", dairy);
+  const item = randomUUID();
+  db.prepare("INSERT INTO items(id,home_id,sku,name,category,base_unit,default_location_id) VALUES (?,?,?,'牛奶','乳品','瓶',?)").run(item,home,item,child);
+  db.prepare("INSERT INTO stock_transactions(id,home_id,item_id,location_id,type,quantity,idempotency_key,occurred_at) VALUES (?,?,?,?,'receipt',12,?,?)").run(randomUUID(),home,item,child,randomUUID(),new Date().toISOString());
+  db.prepare("INSERT INTO shopping_list(id,home_id,item_id,name,quantity,category,location_id,created_at) VALUES (?,?,?,'牛奶',2,'乳品',?,?)").run(randomUUID(),home,item,child,new Date().toISOString());
+  const balance = (location: string) => (db.prepare("SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) AS n FROM stock_transactions WHERE item_id=? AND location_id=?").get(item,location) as {n:number}).n;
+  const events = () => db.prepare(`SELECT * FROM (${transactionQuery}) WHERE homeId=?`).all(home);
+  assert.throws(() => deleteInventoryEntity(db,otherHome,"location",child), /不存在/);
+  assert.equal(balance(child),12);
+  deleteInventoryEntity(db,home,"location",child);
+  assert.equal(balance(child),0);
+  assert.equal(balance(root),12);
+  assert.equal(db.prepare("SELECT parent_id FROM locations WHERE id=?").get(grandchild)?.parent_id,root);
+  assert.equal(db.prepare("SELECT default_location_id FROM items WHERE id=?").get(item)?.default_location_id,root);
+  assert.equal(events().filter(row => row.type === "move").length,1);
+  assert.equal(events().length,2, "transfer ledger entries must not duplicate the item event");
+  deleteInventoryEntity(db,home,"category",dairy);
+  assert.equal(db.prepare("SELECT category FROM items WHERE id=?").get(item)?.category,"食品");
+  assert.equal(db.prepare("SELECT parent_id FROM item_categories WHERE id=?").get(yogurt)?.parent_id,food);
+  assert.equal(events().filter(row => row.type === "reclassify").length,1);
+  const empty = node("locations","空房间");
+  const count = events().length;
+  deleteInventoryEntity(db,home,"location",empty);
+  assert.equal(events().length,count,"empty node deletion has no item log");
+  deleteInventoryEntity(db,home,"category",food);
+  assert.equal(db.prepare("SELECT category FROM items WHERE id=?").get(item)?.category,"未分类");
+  deleteInventoryEntity(db,home,"location",root);
+  const destination = db.prepare("SELECT id FROM locations WHERE home_id=? AND name='未指定' AND active=1").get(home)?.id as string;
+  assert.equal(balance(destination),12);
+  assert.equal(db.prepare("SELECT parent_id FROM locations WHERE id=?").get(grandchild)?.parent_id,null);
+  assert.equal(db.prepare("SELECT location_id FROM shopping_list WHERE item_id=?").get(item)?.location_id,destination);
+
+  // MCP shares deletion semantics and exposes/filter item event types.
+  const server = createMcpServer(db), client = new Client({name:"delete-check",version:"1"});
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  const result = await client.callTool({name:"delete_item",arguments:{homeId:home,itemId:item}});
+  assert.notEqual(result.isError,true,JSON.stringify(result));
+  assert.equal(balance(destination),0);
+  assert.equal(db.prepare("SELECT active FROM items WHERE id=?").get(item)?.active,0);
+  assert.equal(db.prepare("SELECT item_id FROM shopping_list WHERE home_id=?").get(home)?.item_id,null);
+  const log = await client.callTool({name:"list_transactions",arguments:{homeId:home,type:"delete"}});
+  const rows = JSON.parse((log.content as {text:string}[])[0].text);
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].itemName,"牛奶");
+  assert.equal(rows[0].quantity,12);
+  assert.equal(events().filter(row => row.type === "receipt").length,1,"original history retained");
+  assert.throws(() => deleteInventoryEntity(db,home,"item",item), /已删除/);
+  await client.close(); await server.close(); db.close();
+});
+
+test("conflicting child promotion rolls back item changes and events", () => {
+  const db = openDatabase(":memory:");
+  db.exec(`INSERT INTO homes(id,name) VALUES ('h','家');
+    INSERT INTO item_categories(id,home_id,name,parent_id) VALUES ('p','h','父',NULL),('n','h','节点','p'),('c','h','同名','n'),('s','h','同名','p');
+    INSERT INTO items(id,home_id,sku,name,category,base_unit) VALUES ('i','h','i','物资','节点','件');`);
+  assert.throws(() => deleteInventoryEntity(db,"h","category","n"), /同名/);
+  assert.equal(db.prepare("SELECT category FROM items WHERE id='i'").get()?.category,"节点");
+  assert.equal(db.prepare("SELECT name FROM item_categories WHERE id='n'").get()?.name,"节点");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM item_events").get()?.n,0);
+  db.close();
+});
