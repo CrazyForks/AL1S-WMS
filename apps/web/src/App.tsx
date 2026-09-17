@@ -657,6 +657,7 @@ export function App() {
   >({});
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
+  const [mobileAction,setMobileAction]=useState<{kind:"shopping";item:ShoppingItem}|{kind:"inventory";item:LocationScopedItem}|null>(null);
   const [shoppingChannels, setShoppingChannels] = useState<ShoppingChannel[]>(
     [],
   );
@@ -1064,6 +1065,9 @@ export function App() {
         initialStock: Number(data.get("initialStock") || 0),
         manufacturedDate: data.get("manufacturedDate") || undefined,
         expiryDate: data.get("expiryDate") || undefined,
+        totalPrice:data.get("totalPrice")===""?undefined:Number(data.get("totalPrice")),
+        purchaseDate:data.get("purchaseDate")||null,
+        channelId:data.get("channelId")||null,
       }),
     });
     setBusy(false);
@@ -2375,7 +2379,7 @@ export function App() {
                             </span>
                           </td>
                           <td>
-                            <div className="row-actions">
+                            <div className="row-actions desktop-row-actions">
                               {!item.completed && (
                                 <button
                                   onClick={() => {
@@ -2409,6 +2413,7 @@ export function App() {
                                 </button>
                               )}
                             </div>
+                            <button type="button" className="mobile-action-trigger" onClick={()=>setMobileAction({kind:"shopping",item})}>{t("操作")}</button>
                           </td>
                         </tr>
                       ))}
@@ -3080,7 +3085,7 @@ export function App() {
                               </div>
                             </td>
                             <td>
-                              <div className="row-actions">
+                              <div className="row-actions desktop-row-actions">
                                 <button
                                   onClick={() =>
                                     openStockAction("receipt", item)
@@ -3114,6 +3119,7 @@ export function App() {
                                   {t("删除")}
                                 </button>
                               </div>
+                              <button type="button" className="mobile-action-trigger" onClick={()=>setMobileAction({kind:"inventory",item})}>{t("操作")}</button>
                             </td>
                           </tr>
                         );
@@ -3252,6 +3258,7 @@ export function App() {
           </section>
         )}
       </main>
+      {mobileAction&&<div className="modal-backdrop mobile-action-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setMobileAction(null)}><section className="mobile-action-sheet" role="dialog" aria-modal="true"><div className="modal-head"><div><h2>{mobileAction.item.name}</h2><p className="muted">{t("选择操作")}</p></div><button type="button" className="close" aria-label={t("关闭")} onClick={()=>setMobileAction(null)}><X size={18}/></button></div><div className="mobile-action-list">{mobileAction.kind==="shopping"?<><button type="button" onClick={()=>{setEditShoppingItem(mobileAction.item);setEditShoppingItemId(mobileAction.item.itemId||"");setMobileAction(null);}}>{mobileAction.item.source==="automatic"?t("安排"):t("编辑")}</button><button type="button" onClick={()=>{openShoppingReceipt(mobileAction.item);setMobileAction(null);}}>{t("入库")}</button>{mobileAction.item.source==="manual"&&<button type="button" className="danger-action" onClick={()=>{const item=mobileAction.item;setMobileAction(null);void apiFetch(`/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,{method:"DELETE"}).then(load);}}>{t("删除")}</button>}</>:<><button type="button" onClick={()=>{openStockAction("receipt",mobileAction.item);setMobileAction(null);}}>{t("入库")}</button><button type="button" onClick={()=>{openStockAction("issue",mobileAction.item);setMobileAction(null);}}>{t("领用")}</button><button type="button" onClick={()=>{setBatchItem(mobileAction.item);setMobileAction(null);}}>{t("批次")}</button><button type="button" onClick={()=>{setDetailItem(items.find(item=>item.id===mobileAction.item.id)??mobileAction.item);setMobileAction(null);}}>{t("编辑")}</button><button type="button" className="danger-action" onClick={()=>{confirmDelete("item",mobileAction.item);setMobileAction(null);}}>{t("删除")}</button></>}</div></section></div>}
       {deleteTarget && (
         <div
           className="modal-backdrop"
@@ -4034,6 +4041,7 @@ export function App() {
               />
             </label>
             <BatchFields title={t("初始库存批次（可选）")} />
+            <fieldset className="purchase-cost"><legend>{t("初始库存成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue=""><option value="">{t("未指定")}</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label></div></fieldset>
             <label>
               {t("存放地点")}
               <select

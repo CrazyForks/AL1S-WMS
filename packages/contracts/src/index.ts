@@ -23,7 +23,10 @@ export const itemSchema = z.object({
 export const createItemSchema = itemSchema.omit({ id: true, active: true }).extend({
   sku: z.string().trim().max(80).optional(),
   locationId: z.string().uuid().optional(),
-  initialStock: z.number().nonnegative().optional().default(0)
+  initialStock: z.number().nonnegative().optional().default(0),
+  totalPrice: z.number().nonnegative().finite().optional(),
+  purchaseDate: z.string().date().nullable().optional(),
+  channelId: z.string().uuid().nullable().optional(),
 });
 export type Item = z.infer<typeof itemSchema>;
 export type CreateItem = z.infer<typeof createItemSchema>;

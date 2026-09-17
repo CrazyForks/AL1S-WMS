@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { openDatabase, seedShoppingChannels } from "@family-erp/db";
-import { getHomeOverview, listBatches, listItems } from "./queries.js";
+import { getHomeOverview, listBatches, listItems, listTransactions } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
 import { InventoryError, reconcileStock, recordStock } from "./stock.js";
 
@@ -33,12 +33,14 @@ test("receipts create batches and issues allocate FEFO idempotently", () => {
   const late = receive(5,"2027-06-01","late").transactions[0].batchId;
   const early = receive(3,"2027-01-01","early").transactions[0].batchId;
   const undated = receive(2,null,"undated").transactions[0].batchId;
-  assert.equal(db.prepare("SELECT reason FROM stock_transactions WHERE idempotency_key='early:0'").get()?.reason,"入库新批次 · 到期 2027-01-01");
+  assert.equal(db.prepare("SELECT reason FROM stock_transactions WHERE idempotency_key='early:0'").get()?.reason,"reason.newBatch");
   const issueInput = {itemId,locationId,quantity:6,idempotencyKey:"issue-fefo"};
   const issued = recordStock(db,homeId,"issue",issueInput);
   assert.deepEqual(issued.transactions.map(row=>[row.batchId,row.quantity]),[[early,3],[late,3]]);
   assert.equal(issued.issueReason,"used");
-  assert.deepEqual(db.prepare("SELECT DISTINCT reason FROM stock_transactions WHERE type='issue'").all().map(row=>row.reason),["按到期顺序领用"]);
+  assert.deepEqual(db.prepare("SELECT DISTINCT reason FROM stock_transactions WHERE type='issue'").all().map(row=>row.reason),["reason.fefoIssue"]);
+  const englishHistory=listTransactions(db,homeId,{type:"issue"},"en-US") as unknown as {items:{reason:string}[]};
+  assert.equal(englishHistory.items[0].reason,"Issue by earliest expiry");
   assert.deepEqual(recordStock(db,homeId,"issue",issueInput),issued);
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM stock_transactions WHERE type='issue'").get() as {n:number}).n,2);
   const batches = listBatches(db,homeId,{itemId,includeEmpty:"true"}) as unknown as {items:{batchId:string;quantity:number}[]};

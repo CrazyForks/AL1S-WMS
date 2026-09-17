@@ -101,8 +101,8 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
       parts=[{batchId,quantity}];
     } else parts=allocate(db,homeId,itemId,locationId,quantity,input.batchId);
     const defaultReason = type === "receipt"
-      ? ["入库新批次", input.manufacturedDate&&`生产 ${input.manufacturedDate}`, input.expiryDate&&`到期 ${input.expiryDate}`].filter(Boolean).join(" · ")
-      : input.batchId ? "领用指定批次" : "按到期顺序领用";
+      ? "reason.newBatch"
+      : input.batchId ? "reason.specifiedBatchIssue" : "reason.fefoIssue";
     const transactions=parts.map((part,index)=>({id:ledgerEntry(db,homeId,itemId,locationId,part.batchId,type,part.quantity,`${idempotencyKey}:${index}`,reason||defaultReason,issueReason),issueReason,...part}));
     refreshItemDates(db,homeId,itemId);
     const afterQuantity=stockAt(db,homeId,itemId,locationId);
@@ -143,7 +143,7 @@ export function reconcileStock(db:DatabaseSync,homeId:string,raw:unknown) {
     const result=recordStock(db,homeId,action,{
       itemId:input.itemId,locationId:input.locationId,quantity:Math.abs(difference),
       idempotencyKey:`reconcile:${input.idempotencyKey}`,
-      reason:input.reason||(difference>0?"盘点盘盈":"盘点盘亏"),
+      reason:input.reason||(difference>0?"reason.stocktakeGain":"reason.stocktakeLoss"),
       ...(difference>0?{manufacturedDate:input.manufacturedDate,expiryDate:input.expiryDate}:{batchId:input.batchId,issueReason:"adjustment"}),
     });
     return {homeId,itemId:input.itemId,locationId:input.locationId,beforeQuantity,afterQuantity:result.afterQuantity,difference,action,transactions:result.transactions};

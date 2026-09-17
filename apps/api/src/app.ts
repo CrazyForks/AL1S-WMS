@@ -653,7 +653,7 @@ for (const [resource, kind] of [["items", "item"], ["categories", "category"], [
   });
 }
 
-app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/transactions", async request => listTransactions(db,request.params.homeId,request.query));
+app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/transactions", async request => listTransactions(db,request.params.homeId,request.query,localeOf(request)));
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/transfers",async request => transferStock(db,request.params.homeId,request.body));
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/reconcile",async request => reconcileStock(db,request.params.homeId,request.body));
 
@@ -738,8 +738,9 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
       );
       validateDates(parsed.data.manufacturedDate,parsed.data.expiryDate);
       if (parsed.data.initialStock > 0) recordStock(db,item.homeId,"receipt",{
-        itemId:item.id,locationId,quantity:parsed.data.initialStock,idempotencyKey:`initial:${item.id}`,reason:"初始库存",
-        manufacturedDate:parsed.data.manufacturedDate,expiryDate:parsed.data.expiryDate
+        itemId:item.id,locationId,quantity:parsed.data.initialStock,idempotencyKey:`initial:${item.id}`,reason:"reason.initialStock",
+        manufacturedDate:parsed.data.manufacturedDate,expiryDate:parsed.data.expiryDate,
+        totalPrice:parsed.data.totalPrice,purchaseDate:parsed.data.purchaseDate,channelId:parsed.data.channelId
       });
       db.exec("COMMIT");
     } catch (error) {

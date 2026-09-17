@@ -3,7 +3,7 @@ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { transactionQuery } from "./inventory-delete.js";
 import { batchBalanceQuery } from "./stock.js";
 import { InventoryError } from "./stock.js";
-import { displayUnit, translate, type Locale } from "./i18n/index.js";
+import { displayUnit, localizeReason, translate, type Locale } from "./i18n/index.js";
 
 const bool = z.enum(["true","false"]).transform(value=>value==="true");
 const paging = { limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).default(0) };
@@ -17,14 +17,15 @@ export function pageQuery(db:DatabaseSync,sql:string,params:SQLInputValue[],limi
   const nextOffset=offset+items.length<total?offset+items.length:null;
   return {items,total,limit,offset,hasMore:nextOffset!==null,nextOffset};
 }
-export function listTransactions(db:DatabaseSync,homeId:string,raw:unknown) {
+export function listTransactions(db:DatabaseSync,homeId:string,raw:unknown,locale:Locale="zh-CN") {
   const filters=transactionFilters.parse(raw), snapshotAt=filters.snapshotAt??new Date().toISOString();
   const where=["homeId=?","occurredAt<=?"],params:SQLInputValue[]=[homeId,snapshotAt];
   for(const key of ["itemId","locationId","batchId","type"] as const) if(filters[key]) {where.push(`${key}=?`);params.push(filters[key]!);}
   if(filters.query) {where.push("(itemName LIKE ? OR reason LIKE ?)");params.push(`%${filters.query}%`,`%${filters.query}%`);}
   if(filters.occurredFrom) {where.push("occurredAt>=?");params.push(filters.occurredFrom);}
   if(filters.occurredTo) {where.push("occurredAt<=?");params.push(filters.occurredTo);}
-  return {...pageQuery(db,`SELECT * FROM (${transactionQuery}) WHERE ${where.join(" AND ")}`,params,filters.limit,filters.offset,"occurredAt DESC,id DESC"),snapshotAt};
+  const page=pageQuery(db,`SELECT * FROM (${transactionQuery}) WHERE ${where.join(" AND ")}`,params,filters.limit,filters.offset,"occurredAt DESC,id DESC");
+  return {...page,items:(page.items as Record<string,unknown>[]).map(item=>({...item,reason:localizeReason(locale,item.reason)})),snapshotAt};
 }
 function descendants(db:DatabaseSync,homeId:string,table:"locations"|"item_categories",id:string,include:boolean) {
   const result=[id];

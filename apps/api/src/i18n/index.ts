@@ -73,6 +73,13 @@ const messages = {
     "action.expiring": "{itemName} 批次将于 {expiryDate} 到期",
     "action.buyPending": "待采购 {name} {quantity} {unit}",
     "action.replenish": "{name} 建议补充 {quantity} {unit}",
+    "reason.initialStock": "初始库存",
+    "reason.purchaseReceipt": "采购入库",
+    "reason.newBatch": "入库新批次",
+    "reason.specifiedBatchIssue": "领用指定批次",
+    "reason.fefoIssue": "按到期顺序领用",
+    "reason.stocktakeGain": "盘点盘盈",
+    "reason.stocktakeLoss": "盘点盘亏",
   },
   "en-US": {
     "error.validation": "Invalid request parameters",
@@ -143,6 +150,13 @@ const messages = {
     "action.expiring": "{itemName} batch expires on {expiryDate}",
     "action.buyPending": "Buy {name} {quantity} {unit}",
     "action.replenish": "Replenish {name} by {quantity} {unit}",
+    "reason.initialStock": "Initial stock",
+    "reason.purchaseReceipt": "Purchase receipt",
+    "reason.newBatch": "New batch receipt",
+    "reason.specifiedBatchIssue": "Issue specified batch",
+    "reason.fefoIssue": "Issue by earliest expiry",
+    "reason.stocktakeGain": "Stocktake gain",
+    "reason.stocktakeLoss": "Stocktake loss",
   },
 } as const;
 
@@ -237,6 +251,17 @@ export function translate<K extends TranslationKey>(
   ...args: ParamsFor<K> extends undefined ? [] : [ParamsFor<K>]
 ): string {
   return renderTranslation(locale, key, args[0] as Record<string, unknown> | undefined);
+}
+
+const legacyReasons:Record<string,TranslationKey>={
+  "初始库存":"reason.initialStock","采购入库":"reason.purchaseReceipt","入库新批次":"reason.newBatch",
+  "领用指定批次":"reason.specifiedBatchIssue","按到期顺序领用":"reason.fefoIssue",
+  "盘点盘盈":"reason.stocktakeGain","盘点盘亏":"reason.stocktakeLoss",
+};
+export function localizeReason(locale:Locale,reason:unknown) {
+  const value=String(reason??"");
+  const key=(value.startsWith("reason.")?value:legacyReasons[value]) as TranslationKey|undefined;
+  return key&&key in messages[locale]?renderTranslation(locale,key):value;
 }
 
 type ErrorBody = { code?: string; message?: string; details?: unknown };

@@ -461,6 +461,7 @@ export const enUS = {
   到期日期: "Expiry date",
   无法加载价格统计: "Unable to load price statistics",
   "采购成本（可选）": "Purchase cost (optional)",
+  "初始库存成本（可选）": "Initial stock cost (optional)",
   实付总价: "Actual total",
   采购日期: "Purchase date",
   预计总价: "Estimated total",
@@ -476,4 +477,5 @@ export const enUS = {
   预计支出: "Estimated",
   实际支出: "Actual",
   预算差额: "Variance",
+  选择操作: "Choose an action",
 } as const satisfies Record<keyof typeof zhCN, string>;
