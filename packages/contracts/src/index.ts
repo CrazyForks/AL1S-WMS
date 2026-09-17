@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const homeIdSchema = z.string().uuid();
-export const itemIconSchema = z.enum(["package", "apple", "carrot", "beef", "fish", "egg", "milk", "coffee", "wine", "cooking", "sandwich", "cookie", "spray", "laundry", "shirt", "pill", "health", "wrench", "cable", "battery", "book", "pet", "bath", "leaf"]);
+export const itemIconSchema = z.enum(["package", "apple", "carrot", "beef", "fish", "egg", "milk", "coffee", "wine", "cooking", "sandwich", "cookie", "spray", "laundry", "shirt", "pill", "health", "wrench", "cable", "battery", "book", "pet", "bath", "leaf", "wheat", "bean", "nut", "candy", "icecream", "water", "utensils", "refrigerator", "microwave", "lightbulb", "smartphone", "laptop", "scissors", "storage", "baby", "flower", "umbrella", "glasses"]);
 
 export const itemSchema = z.object({
   id: z.string().uuid(),

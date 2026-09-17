@@ -637,11 +637,11 @@ export function App() {
     const quantity = balanceFor(item.id);
     const difference = quantity - item.reorderPoint;
     if (quantity === 0 && difference < 0)
-      return { level: "empty", label: "库存已空", priority: 0 };
+      return { level: "empty", label: "缺货", priority: 0 };
     if (difference < 0)
       return {
         level: "low",
-        label: `补充 ${Math.abs(difference)} ${item.baseUnit}`,
+        label: "不足",
         priority: 1,
       };
     if (difference === 0)
@@ -649,14 +649,14 @@ export function App() {
     return { level: "normal", label: "正常", priority: 3 };
   };
   const expiryStatusFor = (item: Item) => {
-    if (!item.expiryDate) return { level: "none", label: "未设置" };
+    if (!item.expiryDate) return { level: "none", label: "未设" };
     const today = new Date().toISOString().slice(0, 10);
     const threshold = new Date(Date.now() + 30 * 86400000)
       .toISOString()
       .slice(0, 10);
-    if (item.expiryDate < today) return { level: "expired", label: "已过期" };
+    if (item.expiryDate < today) return { level: "expired", label: "过期" };
     if (item.expiryDate <= threshold)
-      return { level: "expiring", label: "即将到期" };
+      return { level: "expiring", label: "临期" };
     return { level: "valid", label: "有效" };
   };
   const locationScopeIds = useMemo(() => {
@@ -1817,10 +1817,10 @@ export function App() {
                   <span>全部物资</span><strong>{items.length}</strong>
                 </button>
                 <button className={stockStatusFilter === "empty" ? "active danger" : ""} onClick={() => { setStockStatusFilter("empty"); setExpiryFilter(""); }}>
-                  <span>库存已空</span><strong>{emptyStockCount}</strong>
+                  <span>缺货</span><strong>{emptyStockCount}</strong>
                 </button>
                 <button className={stockStatusFilter === "replenishment" ? "active warning" : ""} onClick={() => { setStockStatusFilter("replenishment"); setExpiryFilter(""); }}>
-                  <span>建议补充</span><strong>{belowStockCount}</strong>
+                  <span>不足</span><strong>{belowStockCount}</strong>
                 </button>
                 <button className={stockStatusFilter === "warning" ? "active warning" : ""} onClick={() => { setStockStatusFilter("warning"); setExpiryFilter(""); }}>
                   <span>临界</span><strong>{criticalStockCount}</strong>
@@ -1844,8 +1844,8 @@ export function App() {
                   <SlidersHorizontal size={15} strokeWidth={1.8} />
                   <label>分类<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">全部分类</option>{categoryOptions.map((category) => <option key={category.id} value={category.name}>{"　".repeat(category.depth)}{category.name}</option>)}</select></label>
                   <label>地点<select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}><option value="">全部地点</option>{locationOptions.map((location) => <option key={location.id} value={location.id}>{"　".repeat(location.depth)}{location.name}</option>)}</select></label>
-                  <label>库存状态<select value={stockStatusFilter} onChange={(event) => setStockStatusFilter(event.target.value)}><option value="">全部状态</option><option value="empty">库存已空</option><option value="replenishment">建议补充</option><option value="warning">临界</option><option value="normal">正常</option></select></label>
-                  <label>到期状态<select value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value)}><option value="">全部</option><option value="expired">已过期</option><option value="expiring">30 天内到期</option><option value="valid">有效</option><option value="none">未设置</option></select></label>
+                  <label>库存状态<select value={stockStatusFilter} onChange={(event) => setStockStatusFilter(event.target.value)}><option value="">全部状态</option><option value="empty">缺货</option><option value="replenishment">不足</option><option value="warning">临界</option><option value="normal">正常</option></select></label>
+                  <label>到期状态<select value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value)}><option value="">全部</option><option value="expired">过期</option><option value="expiring">临期</option><option value="valid">有效</option><option value="none">未设</option></select></label>
                   {(query || categoryFilter || locationFilter || stockStatusFilter || expiryFilter) && (
                     <button type="button" className="text-button" onClick={() => { setQuery(""); setCategoryFilter(""); setLocationFilter(""); setStockStatusFilter(""); setExpiryFilter(""); }}>重置</button>
                   )}
