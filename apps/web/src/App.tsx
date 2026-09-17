@@ -1,7 +1,7 @@
 import { MaterialIcon, IconPicker, itemIconFor } from "./Icons.js";
 import { BatchFields } from "./BatchFields.js";
 import { Batches, BatchSelect } from "./Batches.js";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -1258,7 +1258,7 @@ export function App() {
                 <div
                   className="tree-item-row"
                   key={item.id}
-                  style={{ paddingLeft: 54 + depth * 22 }}
+                  style={{ "--tree-depth": depth } as CSSProperties}
                 >
                   <strong className="tree-item-name"><MaterialIcon value={itemIconFor(item)} />{item.name}</strong>
                   <span className="tree-item-stock">
@@ -1266,6 +1266,12 @@ export function App() {
                   </span>
                   <span className={`stock-status ${status.level}`}>
                     {status.label}
+                  </span>
+                  <span className="tree-item-meta">
+                    {treeMode === "location"
+                      ? item.category || "未分类"
+                      : item.locationName || "未指定地点"}
+                    {item.expiryDate ? ` · 到期 ${item.expiryDate}` : ""}
                   </span>
                   <button
                     className="text-button"
