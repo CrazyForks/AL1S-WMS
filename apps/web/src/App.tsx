@@ -175,6 +175,9 @@ const itemCategories = [
 const newIdempotencyKey = () =>
   globalThis.crypto?.randomUUID?.() ??
   `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function BrandWordmark() {
+  return <strong className="brand-wordmark"><b>AL</b><i>1</i><b>S</b><small>ERP</small></strong>;
+}
 async function getItems() {
   const response = await fetch(`/api/v1/homes/${getHomeId()}/items`);
   if (!response.ok) throw new Error("无法加载物资");
@@ -263,7 +266,7 @@ function Setup({
         <div className="setup-brand">
           <img className="setup-mascot" src="/alice.gif" alt="Alice" />
           <div>
-            <strong>AL1S-ERP</strong>
+            <BrandWordmark />
             <span>首次启动设置</span>
           </div>
         </div>
@@ -279,7 +282,7 @@ function Setup({
             <p className="eyebrow">建立本地管理员</p>
             <h1>先创建你的账号</h1>
             <p className="muted">
-              账号只保存在这台 AL1S-ERP 中，用于管理成员和敏感操作。
+              账号只保存在这台 AL1S ERP 中，用于管理成员和敏感操作。
             </p>
             <label>
               用户名
@@ -422,8 +425,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         <div className="setup-brand">
           <img className="setup-mascot" src="/alice.gif" alt="Alice" />
           <div>
-            <strong>AL1S-ERP</strong>
-            <span>登录你的家庭</span>
+            <BrandWordmark />
           </div>
         </div>
         <div className="setup-step">
@@ -1303,11 +1305,9 @@ export function App() {
     <div className="shell" data-page={activePage}>
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" role="img" aria-label="家庭">
-            <MaterialIcon value={setup.home?.icon} home size={24} />
-          </span>
+          <img className="brand-mascot" src="/alice.gif" alt="Alice" />
           <div>
-            <strong>AL1S-ERP</strong>
+            <BrandWordmark />
           </div>
         </div>
         <nav className="main-nav" aria-label="主导航">

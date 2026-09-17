@@ -360,6 +360,10 @@ tbody tr:hover td{background:#f3f9fd}
 }
 .setup-brand{border-bottom:1px solid #dceaf3;padding-bottom:18px}
 .setup-mascot{display:block;width:52px;height:52px;flex:0 0 52px;object-fit:cover;border:1px solid #9fc7df;border-radius:10px;background:#dff6ff;box-shadow:0 3px 10px #315a7424}
+.brand-mascot{display:block;width:38px;height:38px;flex:0 0 38px;object-fit:cover;border:1px solid #9fc7df;border-radius:7px;background:#dff6ff}
+.brand-wordmark{display:flex!important;align-items:baseline;line-height:1!important;color:var(--aris-navy-strong);font-size:20px!important;font-weight:800;letter-spacing:.015em;white-space:nowrap}
+.brand-wordmark b{font:inherit}.brand-wordmark i{color:var(--aris-cyan);font:inherit;font-style:normal}.brand-wordmark small{margin-left:7px;color:#687f92;font-size:10px;font-weight:750;letter-spacing:.12em}
+.setup-brand .brand-wordmark{font-size:24px!important}.setup-brand .brand-wordmark small{font-size:11px}
 .setup-progress{color:#8296a7}
 .setup-progress span.active{color:var(--aris-blue-dark)}
 .setup-progress i{background:#cfe1ec}
