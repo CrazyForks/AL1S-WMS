@@ -678,6 +678,33 @@ export function App() {
     }
     return ids;
   }, [locations, locationFilter]);
+  const categoryScopeNames = useMemo(() => {
+    if (!categoryFilter) return null;
+    const ids = new Set(
+      categories
+        .filter((category) => category.name === categoryFilter)
+        .map((category) => category.id),
+    );
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const category of categories) {
+        if (
+          category.parentId &&
+          ids.has(category.parentId) &&
+          !ids.has(category.id)
+        ) {
+          ids.add(category.id);
+          changed = true;
+        }
+      }
+    }
+    return new Set(
+      categories
+        .filter((category) => ids.has(category.id))
+        .map((category) => category.name),
+    );
+  }, [categories, categoryFilter]);
   const filtered = useMemo(
     () =>
       items.filter((item) => {
@@ -692,7 +719,8 @@ export function App() {
           (!item.locationId || !locationScopeIds.has(item.locationId))
         )
           return false;
-        if (categoryFilter && item.category !== categoryFilter) return false;
+        if (categoryScopeNames && !categoryScopeNames.has(item.category))
+          return false;
         if (
           stockStatusFilter === "replenishment" &&
           replenishmentFor(item) <= 0
@@ -717,7 +745,7 @@ export function App() {
       items,
       query,
       locationScopeIds,
-      categoryFilter,
+      categoryScopeNames,
       stockStatusFilter,
       expiryFilter,
       stock,
