@@ -19,7 +19,7 @@ import {
   updateItemSchema,
   type Item,
 } from "@family-erp/contracts";
-import { openDatabase } from "@family-erp/db";
+import { openDatabase, seedShoppingChannels } from "@family-erp/db";
 import { handleMcpRequest } from "./mcp.js";
 import { deleteInventoryEntity, DeleteError } from "./inventory-delete.js";
 
@@ -43,11 +43,13 @@ const defaultCategories = [
   "宠物用品",
   "其他",
 ];
-for (const home of db.prepare("SELECT id FROM homes").all() as { id: string }[])
+for (const home of db.prepare("SELECT id FROM homes").all() as { id: string }[]) {
   for (const name of defaultCategories)
     db.prepare(
       "INSERT OR IGNORE INTO item_categories (id, home_id, name, is_system) VALUES (?, ?, ?, 1)",
     ).run(randomUUID(), home.id, name);
+  seedShoppingChannels(db,home.id);
+}
 
 function setSession(reply: any, userId: string) {
   const id = randomUUID();
@@ -316,6 +318,7 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
       db.prepare(
         "INSERT INTO item_categories (id, home_id, name, is_system) VALUES (?, ?, ?, 1)",
       ).run(randomUUID(), homeId, name);
+    seedShoppingChannels(db,homeId);
     for (const name of [...new Set(locationNames)])
       location.run(randomUUID(), homeId, name);
     db.prepare(
@@ -350,6 +353,7 @@ app.post<{ Body: unknown }>("/api/v1/homes", async (request, reply) => {
     db.prepare("INSERT INTO homes (id, name, icon, timezone, default_currency) VALUES (?, ?, ?, 'Asia/Shanghai', 'CNY')").run(home.id, home.name, home.icon);
     for (const name of defaultCategories)
       db.prepare("INSERT INTO item_categories (id, home_id, name, is_system) VALUES (?, ?, ?, 1)").run(randomUUID(), home.id, name);
+    seedShoppingChannels(db,home.id);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
   return reply.code(201).send(home);
@@ -763,17 +767,42 @@ app.get<{ Params: { homeId: string } }>(
   async (request) => {
     const manual = db
       .prepare(
-        "SELECT id, item_id AS itemId, name, quantity, unit, category, location_id AS locationId, source, completed, created_at AS createdAt FROM shopping_list WHERE home_id = ? ORDER BY completed, created_at DESC",
+        "SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.category,s.location_id AS locationId,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.source,s.completed,s.created_at AS createdAt FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? ORDER BY s.completed,s.planned_date IS NULL,s.planned_date,s.created_at DESC",
       )
       .all(request.params.homeId);
     const automatic = db
       .prepare(
-        "SELECT 'auto:' || items.id AS id, items.id AS itemId, items.name, MAX(items.reorder_point - (SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id), 0) AS quantity, items.base_unit AS unit, items.category, items.default_location_id AS locationId, 'automatic' AS source, 0 AS completed, NULL AS createdAt FROM items WHERE items.home_id = ? AND items.active = 1 AND (SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id) < items.reorder_point GROUP BY items.id ORDER BY items.name",
+        "SELECT 'auto:' || items.id AS id, items.id AS itemId, items.name, MAX(items.reorder_point - (SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id), 0) AS quantity, items.base_unit AS unit, items.category, items.default_location_id AS locationId,NULL AS channelId,NULL AS channelName,NULL AS plannedDate,'automatic' AS source,0 AS completed,NULL AS createdAt FROM items WHERE items.home_id=? AND items.active=1 AND (SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) FROM stock_transactions WHERE item_id=items.id)<items.reorder_point AND NOT EXISTS (SELECT 1 FROM shopping_list s WHERE s.home_id=items.home_id AND s.item_id=items.id AND s.completed=0) GROUP BY items.id ORDER BY items.name",
       )
       .all(request.params.homeId);
     return [...manual, ...automatic];
   },
 );
+app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/shopping-channels",async request=>
+  db.prepare("SELECT id,name,is_system AS isSystem,sort_order AS sortOrder FROM shopping_channels WHERE home_id=? AND active=1 ORDER BY sort_order,name").all(request.params.homeId));
+app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-channels",async(request,reply)=>{
+  const input=z.object({name:z.string().trim().min(1).max(80)}).strict().parse(request.body),id=randomUUID();
+  const order=(db.prepare("SELECT COALESCE(MAX(sort_order),-1)+1 AS value FROM shopping_channels WHERE home_id=?").get(request.params.homeId) as {value:number}).value;
+  try{db.prepare("INSERT INTO shopping_channels(id,home_id,name,sort_order) VALUES (?,?,?,?)").run(id,request.params.homeId,input.name,order);}
+  catch(error){if(String(error).includes("UNIQUE"))return reply.code(409).send({code:"SHOPPING_CHANNEL_EXISTS",message:"购买渠道已存在"});throw error;}
+  return reply.code(201).send({id,name:input.name,isSystem:false,sortOrder:order});
+});
+app.patch<{Params:{homeId:string;channelId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-channels/:channelId",async(request,reply)=>{
+  const input=z.object({name:z.string().trim().min(1).max(80)}).strict().parse(request.body);
+  try{const result=db.prepare("UPDATE shopping_channels SET name=? WHERE id=? AND home_id=? AND active=1").run(input.name,request.params.channelId,request.params.homeId);if(!result.changes)return reply.code(404).send({code:"SHOPPING_CHANNEL_NOT_FOUND"});}
+  catch(error){if(String(error).includes("UNIQUE"))return reply.code(409).send({code:"SHOPPING_CHANNEL_EXISTS",message:"购买渠道已存在"});throw error;}
+  return {id:request.params.channelId,name:input.name};
+});
+app.delete<{Params:{homeId:string;channelId:string}}>("/api/v1/homes/:homeId/shopping-channels/:channelId",async(request,reply)=>{
+  if(db.prepare("SELECT 1 FROM shopping_list WHERE home_id=? AND channel_id=? AND completed=0 LIMIT 1").get(request.params.homeId,request.params.channelId))
+    return reply.code(409).send({code:"SHOPPING_CHANNEL_IN_USE",message:"仍有未完成采购项使用该渠道，请先重新安排"});
+  const result=db.prepare("UPDATE shopping_channels SET active=0 WHERE id=? AND home_id=? AND active=1").run(request.params.channelId,request.params.homeId);
+  return result.changes?{id:request.params.channelId,deleted:true}:reply.code(404).send({code:"SHOPPING_CHANNEL_NOT_FOUND"});
+});
+app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/shopping-calendar",async request=>{
+  const input=z.object({month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),includeCompleted:z.enum(["true","false"]).default("false")}).strict().parse(request.query);
+  return db.prepare("SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.completed FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? AND substr(s.planned_date,1,7)=? AND (?='true' OR s.completed=0) ORDER BY s.planned_date,c.sort_order,s.name").all(request.params.homeId,input.month,input.includeCompleted);
+});
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-list",async(request,reply)=>reply.code(201).send(saveShopping(db,request.params.homeId,request.body)));
 app.patch<{Params:{homeId:string;shoppingId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-list/:shoppingId",async request=>saveShopping(db,request.params.homeId,request.body,request.params.shoppingId));
 app.post<{Params:{homeId:string;shoppingId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-list/:shoppingId/receive",async request=>receiveShopping(db,request.params.homeId,request.params.shoppingId,request.body));

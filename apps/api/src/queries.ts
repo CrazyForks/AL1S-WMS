@@ -76,10 +76,13 @@ export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown) {
   const expired=db.prepare(`SELECT * FROM (${batchBase}) WHERE expiryDate<? ORDER BY expiryDate,receivedAt LIMIT ?`).all(homeId,today,filters.limit);
   const expiringCount=(db.prepare(`SELECT COUNT(*) AS n FROM (${batchBase}) WHERE expiryDate>=? AND expiryDate<=?`).get(homeId,today,threshold) as {n:number}).n;
   const expiring=db.prepare(`SELECT * FROM (${batchBase}) WHERE expiryDate>=? AND expiryDate<=? ORDER BY expiryDate,receivedAt LIMIT ?`).all(homeId,today,threshold,filters.limit);
-  const manualSql="SELECT id,item_id AS itemId,name,quantity,unit,category,location_id AS locationId,'manual' AS source FROM shopping_list WHERE home_id=? AND completed=0";
-  const manual=db.prepare(`${manualSql} ORDER BY created_at LIMIT ?`).all(homeId,filters.limit) as Record<string,unknown>[];
-  const automatic=(needsReplenishment as Record<string,unknown>[]).map(row=>({id:`auto:${row.itemId}`,itemId:row.itemId,name:row.name,quantity:row.suggestedQuantity,unit:row.unit,locationId:row.locationId,source:"automatic"}));
-  const pendingCount=(db.prepare("SELECT COUNT(*) AS n FROM shopping_list WHERE home_id=? AND completed=0").get(homeId) as {n:number}).n+needsCount;
+  const manualSql="SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.category,s.location_id AS locationId,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,'manual' AS source FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? AND s.completed=0";
+  const manual=db.prepare(`${manualSql} ORDER BY s.planned_date IS NULL,s.planned_date,s.created_at LIMIT ?`).all(homeId,filters.limit) as Record<string,unknown>[];
+  const automaticSql=`SELECT * FROM (${lowSql}) low WHERE NOT EXISTS (SELECT 1 FROM shopping_list s WHERE s.home_id=? AND s.item_id=low.itemId AND s.completed=0)`;
+  const automaticRows=db.prepare(`${automaticSql} ORDER BY suggestedQuantity DESC,name LIMIT ?`).all(homeId,homeId,filters.limit) as Record<string,unknown>[];
+  const automatic=automaticRows.map(row=>({id:`auto:${row.itemId}`,itemId:row.itemId,name:row.name,quantity:row.suggestedQuantity,unit:row.unit,locationId:row.locationId,channelId:null,channelName:null,plannedDate:null,source:"automatic"}));
+  const automaticCount=(db.prepare(`SELECT COUNT(*) AS n FROM (${automaticSql})`).get(homeId,homeId) as {n:number}).n;
+  const pendingCount=(db.prepare("SELECT COUNT(*) AS n FROM shopping_list WHERE home_id=? AND completed=0").get(homeId) as {n:number}).n+automaticCount;
   const pending=[...manual,...automatic].slice(0,filters.limit);
   const actions=[
     ...(expired as Record<string,unknown>[]).map(row=>({type:"handle_expired",priority:"urgent",itemId:row.itemId,batchId:row.batchId,message:`${row.itemName} 批次已于 ${row.expiryDate} 过期`})),

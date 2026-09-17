@@ -92,9 +92,13 @@ type ShoppingItem = {
   unit?: string | null;
   category?: string | null;
   locationId?: string | null;
+  channelId?: string | null;
+  channelName?: string | null;
+  plannedDate?: string | null;
   source: "manual" | "automatic";
   completed: number;
 };
+type ShoppingChannel={id:string;name:string;isSystem:boolean;sortOrder:number};
 type ApiToken = {
   id: string;
   name: string;
@@ -203,6 +207,16 @@ async function getTransactions(page = 1, snapshotAt = "") {
 async function getShoppingList() {
   const response = await fetch(`/api/v1/homes/${getHomeId()}/shopping-list`);
   if (!response.ok) throw new Error("无法加载采购清单");
+  return response.json() as Promise<ShoppingItem[]>;
+}
+async function getShoppingChannels() {
+  const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-channels`);
+  if(!response.ok)throw new Error("无法加载购买渠道");
+  return response.json() as Promise<ShoppingChannel[]>;
+}
+async function getShoppingCalendar(month:string,includeCompleted=false) {
+  const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-calendar?month=${month}&includeCompleted=${includeCompleted}`);
+  if(!response.ok)throw new Error("无法加载采购日历");
   return response.json() as Promise<ShoppingItem[]>;
 }
 async function getCategories() {
@@ -525,6 +539,12 @@ export function App() {
   >({});
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
+  const [shoppingChannels,setShoppingChannels]=useState<ShoppingChannel[]>([]);
+  const [shoppingMonth,setShoppingMonth]=useState(()=>new Date().toISOString().slice(0,7));
+  const [calendarItems,setCalendarItems]=useState<ShoppingItem[]>([]);
+  const [calendarIncludeCompleted,setCalendarIncludeCompleted]=useState(false);
+  const [selectedShoppingDate,setSelectedShoppingDate]=useState("");
+  const [newChannelName,setNewChannelName]=useState("");
   const [showShoppingForm, setShowShoppingForm] = useState(false);
   const [shoppingItemId, setShoppingItemId] = useState("");
   const [editShoppingItemId, setEditShoppingItemId] = useState("");
@@ -592,6 +612,7 @@ export function App() {
       getTransactions(transactionPage,transactionPage===1?"":transactionSnapshot),
       getShoppingList(),
       getCategories(),
+      getShoppingChannels(),
     ])
       .then(
         ([
@@ -601,6 +622,7 @@ export function App() {
           nextTransactions,
           nextShoppingList,
           nextCategories,
+          nextShoppingChannels,
         ]) => {
           setItems(nextItems);
           setStock(nextStock);
@@ -610,9 +632,14 @@ export function App() {
           if(transactionPage===1)setTransactionSnapshot(nextTransactions.snapshotAt);
           setShoppingList(nextShoppingList);
           setCategories(nextCategories);
+          setShoppingChannels(nextShoppingChannels);
         },
       )
       .catch((error) => setNotice(error.message));
+  useEffect(()=>{
+    if(!authenticated)return;
+    getShoppingCalendar(shoppingMonth,calendarIncludeCompleted).then(setCalendarItems).catch(error=>setNotice(error.message));
+  },[authenticated,shoppingMonth,calendarIncludeCompleted,shoppingList]);
   useEffect(() => {
     fetch("/api/v1/setup/status")
       .then((response) => response.json())
@@ -824,6 +851,15 @@ export function App() {
     day: "numeric",
     weekday: "short",
   }).format(new Date());
+  const [calendarYear,calendarMonthNumber]=shoppingMonth.split("-").map(Number);
+  const calendarOffset=(new Date(calendarYear,calendarMonthNumber-1,1).getDay()+6)%7;
+  const calendarDayCount=new Date(calendarYear,calendarMonthNumber,0).getDate();
+  const calendarCells:(string|null)[]=[
+    ...Array.from({length:calendarOffset},()=>null),
+    ...Array.from({length:calendarDayCount},(_,index)=>`${shoppingMonth}-${String(index+1).padStart(2,"0")}`),
+  ];
+  while(calendarCells.length%7)calendarCells.push(null);
+  const selectedCalendarItems=selectedShoppingDate?calendarItems.filter(item=>item.plannedDate===selectedShoppingDate):[];
   if (!setup) return <div className="loading-screen">正在检查家庭设置…</div>;
   if (!setup.complete)
     return (
@@ -977,12 +1013,14 @@ export function App() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: data.get("name"),
         quantity: Number(data.get("quantity") || 1),
-        unit: data.get("unit") || undefined,
-        category: data.get("category") || undefined,
-        locationId: data.get("locationId") || undefined,
         itemId: data.get("itemId") || undefined,
+        channelId: data.get("channelId") || null,
+        plannedDate: data.get("plannedDate") || null,
+        ...(!linkedShoppingItem?{
+          name:data.get("name"),unit:data.get("unit")||undefined,
+          category:data.get("category")||undefined,locationId:data.get("locationId")||undefined,
+        }:{}),
       }),
     });
     if (!response.ok) {
@@ -1042,12 +1080,14 @@ export function App() {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: data.get("name"),
           quantity: Number(data.get("quantity") || 1),
-          unit: data.get("unit"),
-          category: data.get("category"),
-          locationId: data.get("locationId") || null,
           itemId: data.get("itemId") || null,
+          channelId: data.get("channelId") || null,
+          plannedDate: data.get("plannedDate") || null,
+          ...(!linkedEditShoppingItem?{
+            name:data.get("name"),unit:data.get("unit"),
+            category:data.get("category"),locationId:data.get("locationId")||null,
+          }:{}),
         }),
       },
     );
@@ -1058,6 +1098,28 @@ export function App() {
     setEditShoppingItem(null);
     setEditShoppingItemId("");
     load();
+  }
+  async function addShoppingChannel(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();if(!newChannelName.trim())return;
+    const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-channels`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:newChannelName.trim()})});
+    const result=await response.json();
+    if(!response.ok){setNotice(result.message||"购买渠道添加失败");return;}
+    setNewChannelName("");load();
+  }
+  async function renameShoppingChannel(channel:ShoppingChannel) {
+    const name=window.prompt("购买渠道名称",channel.name)?.trim();if(!name||name===channel.name)return;
+    const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-channels/${channel.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
+    if(!response.ok){setNotice("购买渠道保存失败");return;}load();
+  }
+  async function deleteShoppingChannel(channel:ShoppingChannel) {
+    if(!window.confirm(`隐藏购买渠道“${channel.name}”？`))return;
+    const response=await fetch(`/api/v1/homes/${getHomeId()}/shopping-channels/${channel.id}`,{method:"DELETE"});
+    if(!response.ok){const result=await response.json().catch(()=>({}));setNotice(result.message||"购买渠道删除失败");return;}load();
+  }
+  function moveShoppingMonth(offset:number) {
+    const [year,month]=shoppingMonth.split("-").map(Number),date=new Date(year,month-1+offset,1);
+    setShoppingMonth(`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`);
+    setSelectedShoppingDate("");
   }
   async function updateTreeNode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1473,19 +1535,15 @@ export function App() {
               </button>
             </div>
           )}
-          {(activePage === "count" || activePage === "shopping") && (
+          {activePage === "shopping" && (
             <button
               className="primary"
-              onClick={() =>
-                activePage === "count"
-                  ? openItemForm()
-                  : setShowShoppingForm(true)
-              }
+              onClick={() => setShowShoppingForm(true)}
             >
-              ＋ {activePage === "count" ? "添加物资" : "添加采购项"}
+              ＋ 添加采购项
             </button>
           )}
-          {activePage==="count"&&<button className="secondary" onClick={()=>{openItemForm();setShowBarcodeScanner(true);}}>扫描条码</button>}
+          {activePage==="count"&&<div className="welcome-actions count-actions"><button className="primary" onClick={()=>openItemForm()}>＋ 添加物资</button><button className="secondary" onClick={()=>{openItemForm();setShowBarcodeScanner(true);}}>扫描条码</button></div>}
         </section>
         {notice && (
           <div className="notice" role="status">
@@ -1685,6 +1743,7 @@ export function App() {
           </section>
         )}
         {activePage === "shopping" && (
+          <section className="shopping-workspace">
           <section className="panel shopping-list">
             <div className="panel-head">
               <div>
@@ -1701,9 +1760,7 @@ export function App() {
                     <tr>
                       <th>采购项</th>
                       <th>数量</th>
-                      <th>种类</th>
-                      <th>存放地点</th>
-                      <th>来源</th>
+                      <th>采购计划</th>
                       <th>操作</th>
                     </tr>
                   </thead>
@@ -1715,33 +1772,23 @@ export function App() {
                             <span className="item-icon">
                               <MaterialIcon value={itemIconFor(items.find(existing => existing.id === item.itemId) || item)} />
                             </span>
-                            <strong>{item.name}</strong>
+                            <span><strong>{item.name}</strong><small>{item.category||"未分类"} · {locations.find(location=>location.id===item.locationId)?.name||"未指定存放地点"} · {item.source==="automatic"?"低库存建议":"手动添加"}</small></span>
                           </div>
                         </td>
                         <td>
                           {item.quantity} {item.unit || "件"}
                         </td>
-                        <td>{item.category || "未分类"}</td>
-                        <td>
-                          {locations.find(
-                            (location) => location.id === item.locationId,
-                          )?.name || "未指定"}
-                        </td>
-                        <td>
-                          {item.source === "automatic"
-                            ? "低库存建议"
-                            : "手动添加"}
-                        </td>
+                        <td><span className="shopping-plan"><b>{item.channelName||"未安排渠道"}</b><small>{item.plannedDate||"未安排日期"}</small></span></td>
                         <td>
                           <div className="row-actions">
-                            {item.source === "manual" && (
+                            {!item.completed && (
                               <button
                                 onClick={() => {
                                   setEditShoppingItem(item);
                                   setEditShoppingItemId(item.itemId || "");
                                 }}
                               >
-                                编辑
+                                {item.source==="automatic"?"安排":"编辑"}
                               </button>
                             )}
                             {!item.completed && (
@@ -1751,7 +1798,7 @@ export function App() {
                                 完成入库
                               </button>
                             )}
-                            <button
+                            {item.source==="manual"&&<button
                               onClick={() =>
                                 fetch(
                                   `/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,
@@ -1760,7 +1807,7 @@ export function App() {
                               }
                             >
                               删除
-                            </button>
+                            </button>}
                           </div>
                         </td>
                       </tr>
@@ -1769,6 +1816,37 @@ export function App() {
                 </table>
               </div>
             )}
+            <details className="channel-manager">
+              <summary>购买渠道管理 <span>{shoppingChannels.length} 个渠道</span></summary>
+              <form onSubmit={addShoppingChannel}><input value={newChannelName} onChange={event=>setNewChannelName(event.target.value)} maxLength={80} placeholder="新增购买渠道" required/><button className="secondary">添加</button></form>
+              <div>{shoppingChannels.map(channel=><span key={channel.id}><b>{channel.name}</b><button type="button" onClick={()=>renameShoppingChannel(channel)}>重命名</button><button type="button" className="danger-text" onClick={()=>deleteShoppingChannel(channel)}>隐藏</button></span>)}</div>
+            </details>
+          </section>
+          <section className="panel shopping-calendar">
+            <div className="panel-head">
+              <div><h2>采购日历</h2><p className="muted">按计划采购日查看物品和购买渠道</p></div>
+              <div className="calendar-controls">
+                <button type="button" className="secondary" onClick={()=>moveShoppingMonth(-1)}><ArrowLeft size={15}/></button>
+                <button type="button" className="text-button" onClick={()=>{setShoppingMonth(new Date().toISOString().slice(0,7));setSelectedShoppingDate("");}}>今天</button>
+                <strong>{calendarYear} 年 {calendarMonthNumber} 月</strong>
+                <button type="button" className="secondary" onClick={()=>moveShoppingMonth(1)}><ArrowRight size={15}/></button>
+                <label><input type="checkbox" checked={calendarIncludeCompleted} onChange={event=>setCalendarIncludeCompleted(event.target.checked)}/>显示已完成</label>
+              </div>
+            </div>
+            <div className="calendar-wrap">
+              <div className="calendar-weekdays">{["一","二","三","四","五","六","日"].map(day=><span key={day}>周{day}</span>)}</div>
+              <div className="calendar-grid">{calendarCells.map((date,index)=>{
+                if(!date)return <span className="calendar-day empty-day" key={`empty-${index}`}/>;
+                const entries=calendarItems.filter(item=>item.plannedDate===date),today=date===new Date().toISOString().slice(0,10);
+                return <button type="button" className={`calendar-day ${today?"today":""} ${selectedShoppingDate===date?"selected":""}`} key={date} onClick={()=>setSelectedShoppingDate(date)}>
+                  <time>{Number(date.slice(-2))}</time>
+                  <span className="calendar-mobile-count">{entries.length||""}</span>
+                  <div>{entries.slice(0,2).map(item=><span className={item.completed?"completed":""} key={item.id}><b>{item.name}</b><small>{item.channelName||"未安排渠道"}</small></span>)}{entries.length>2&&<em>+{entries.length-2}</em>}</div>
+                </button>;
+              })}</div>
+            </div>
+            {selectedShoppingDate&&<div className="calendar-agenda"><strong>{selectedShoppingDate}</strong>{selectedCalendarItems.length?selectedCalendarItems.map(item=><span key={item.id}>{item.name} · {item.quantity} {item.unit||"件"} · {item.channelName||"未安排渠道"}</span>):<span>当天没有采购计划</span>}</div>}
+          </section>
           </section>
         )}
         {activePage === "home" && (
@@ -2452,6 +2530,10 @@ export function App() {
                 ))}
               </select>
             </label>
+            <div className="form-row">
+              <label>购买渠道<select name="channelId" defaultValue=""><option value="">未安排</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label>
+              <label>计划采购日<input name="plannedDate" type="date"/></label>
+            </div>
             <button className="primary full">加入采购清单</button>
           </form>
         </div>
@@ -2586,6 +2668,10 @@ export function App() {
                 ))}
               </select>
             </label>
+            <div className="form-row">
+              <label>购买渠道<select name="channelId" defaultValue={editShoppingItem.channelId||""}><option value="">未安排</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label>
+              <label>计划采购日<input name="plannedDate" type="date" defaultValue={editShoppingItem.plannedDate||""}/></label>
+            </div>
             <button className="primary full">保存修改</button>
           </form>
         </div>

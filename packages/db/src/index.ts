@@ -3,6 +3,12 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 
+export const defaultShoppingChannels = ["京东","淘宝","美团外卖","淘宝闪购","大润发","盒马鲜生","新世纪百货","沃尔玛","永辉超市"] as const;
+export function seedShoppingChannels(db:DatabaseSync,homeId:string) {
+  for(const [sortOrder,name] of defaultShoppingChannels.entries())
+    db.prepare("INSERT OR IGNORE INTO shopping_channels(id,home_id,name,active,is_system,sort_order) VALUES (?,?,?,1,1,?)").run(randomUUID(),homeId,name,sortOrder);
+}
+
 export function openDatabase(
   filename = process.env.DATABASE_URL ?? "./data/family-erp.db",
 ) {
@@ -102,6 +108,15 @@ export function openDatabase(
       last_used_at TEXT,
       revoked_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS shopping_channels (
+      id TEXT PRIMARY KEY,
+      home_id TEXT NOT NULL REFERENCES homes(id),
+      name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      is_system INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(home_id, name)
+    );
     CREATE TABLE IF NOT EXISTS shopping_list (
       id TEXT PRIMARY KEY,
       home_id TEXT NOT NULL REFERENCES homes(id),
@@ -109,6 +124,8 @@ export function openDatabase(
       name TEXT NOT NULL,
       quantity REAL NOT NULL DEFAULT 1,
       unit TEXT,
+      channel_id TEXT REFERENCES shopping_channels(id),
+      planned_date TEXT,
       source TEXT NOT NULL DEFAULT 'manual',
       completed INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -120,6 +137,10 @@ export function openDatabase(
   } catch {
     /* existing column */
   }
+  const shoppingColumns = db.prepare("PRAGMA table_info(shopping_list)").all() as {name:string}[];
+  if(!shoppingColumns.some(column=>column.name==="channel_id"))db.exec("ALTER TABLE shopping_list ADD COLUMN channel_id TEXT REFERENCES shopping_channels(id)");
+  if(!shoppingColumns.some(column=>column.name==="planned_date"))db.exec("ALTER TABLE shopping_list ADD COLUMN planned_date TEXT");
+  for(const home of db.prepare("SELECT id FROM homes WHERE active=1").all() as {id:string}[])seedShoppingChannels(db,home.id);
   try {
     db.exec("ALTER TABLE shopping_list ADD COLUMN category TEXT");
   } catch {
@@ -215,6 +236,7 @@ export function openDatabase(
   db.exec(`CREATE INDEX IF NOT EXISTS idx_stock_batch ON stock_transactions(home_id,item_id,batch_id,location_id);
     CREATE INDEX IF NOT EXISTS idx_stock_history ON stock_transactions(home_id,occurred_at,id);
     CREATE INDEX IF NOT EXISTS idx_item_history ON item_events(home_id,occurred_at,id);
+    CREATE INDEX IF NOT EXISTS idx_shopping_calendar ON shopping_list(home_id,planned_date,completed);
     DROP INDEX IF EXISTS idx_items_home_barcode;
     CREATE UNIQUE INDEX idx_items_home_barcode ON items(home_id,barcode) WHERE barcode IS NOT NULL AND active=1;`);
   // SQLite treats NULLs as distinct in UNIQUE constraints; normalize the

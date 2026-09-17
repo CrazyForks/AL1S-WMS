@@ -36,6 +36,15 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal((await request(homeToken,"GET",`/api/v1/homes/${otherHomeId}/items`)).status,403);
   assert.equal(((await request(homeToken,"GET","/api/v1/homes")).body as unknown[]).length,1);
   assert.equal(((await request(accountToken,"GET","/api/v1/homes")).body as unknown[]).length,2);
+  const channels=(await request(homeToken,"GET",`/api/v1/homes/${homeId}/shopping-channels`)).body as {id:string;name:string}[];
+  assert.equal(channels.length,9);
+  const planned=await request(homeToken,"POST",`/api/v1/homes/${homeId}/shopping-list`,{itemId,quantity:1,channelId:channels[0].id,plannedDate:"2026-10-08"});
+  assert.equal(planned.status,201);
+  const shopping=(await request(homeToken,"GET",`/api/v1/homes/${homeId}/shopping-list`)).body as {itemId:string;source:string}[];
+  assert.equal(shopping.filter(entry=>entry.itemId===itemId).length,1,"persisted plans suppress duplicate automatic suggestions");
+  const calendar=await request(homeToken,"GET",`/api/v1/homes/${homeId}/shopping-calendar?month=2026-10&includeCompleted=false`);
+  assert.equal((calendar.body as {plannedDate:string}[])[0].plannedDate,"2026-10-08");
+  assert.equal((await request(homeToken,"DELETE",`/api/v1/homes/${homeId}/shopping-channels/${channels[0].id}`)).status,409);
   const createdToken=await app.inject({method:"POST",url:"/api/v1/auth/tokens",headers:{cookie:`session=${sessionId}`},payload:{name:"家庭 Agent",homeId}});
   assert.equal(createdToken.statusCode,201);
   assert.equal(db.prepare("SELECT home_id FROM api_tokens WHERE id=?").get(createdToken.json().id)?.home_id,homeId);
@@ -71,6 +80,8 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal(received.afterQuantity,2);
   const overview=parseTool(await client.callTool({name:"get_home_overview",arguments:{}}));
   assert.equal(overview.needsReplenishment.total,1);
+  const mcpCalendar=parseTool(await client.callTool({name:"get_shopping_calendar",arguments:{month:"2026-10"}}));
+  assert.equal(mcpCalendar[0].channelName,channels[0].name);
   await client.close();await server.close();
 
   const accountServer=createMcpServer((method,url,body)=>request(accountToken,method,url,body));

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
-import { openDatabase } from "@family-erp/db";
+import { openDatabase, seedShoppingChannels } from "@family-erp/db";
 import { getHomeOverview, listBatches, listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
 import { InventoryError, reconcileStock, recordStock } from "./stock.js";
@@ -61,6 +61,23 @@ test("shopping receipt creates one batch and safe retries do not duplicate stock
   db.close();
 });
 
+test("shopping plans validate channels and materialize automatic suggestions",()=>{
+  const {db,homeId,itemId}=fixture();
+  seedShoppingChannels(db,homeId);
+  const channelId=db.prepare("SELECT id FROM shopping_channels WHERE home_id=? AND name='京东'").get(homeId)?.id as string;
+  db.prepare("UPDATE items SET reorder_point=3 WHERE id=?").run(itemId);
+  const planned=saveShopping(db,homeId,{channelId,plannedDate:"2026-10-08"},`auto:${itemId}`);
+  assert.equal(planned.itemId,itemId);
+  assert.equal(planned.channelName,"京东");
+  assert.equal(planned.plannedDate,"2026-10-08");
+  assert.equal(planned.id.startsWith("auto:"),false);
+  const otherHome=randomUUID(),otherChannel=randomUUID();
+  db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(otherHome,"其他家");
+  db.prepare("INSERT INTO shopping_channels(id,home_id,name) VALUES (?,?,?)").run(otherChannel,otherHome,"其他渠道");
+  assert.throws(()=>saveShopping(db,homeId,{itemId,channelId:otherChannel}),/购买渠道/);
+  db.close();
+});
+
 test("overview returns actionable stock, expiry, and shopping state", () => {
   const {db,homeId,locationId,itemId} = fixture();
   db.prepare("UPDATE items SET reorder_point=5 WHERE id=?").run(itemId);
@@ -69,7 +86,7 @@ test("overview returns actionable stock, expiry, and shopping state", () => {
   const overview=getHomeOverview(db,homeId,{expiryDays:"30",limit:"10"});
   assert.equal(overview.needsReplenishment.total,1);
   assert.equal(overview.expired.total,1);
-  assert.equal(overview.shopping.total,2,"manual purchase and automatic recommendation are both pending");
+  assert.equal(overview.shopping.total,1,"a persisted purchase suppresses its duplicate automatic recommendation");
   assert.equal(overview.recommendedActions[0].type,"handle_expired");
   assert.equal(overview.recommendedActions.some(action=>action.type==="buy_pending"),true);
   db.close();
