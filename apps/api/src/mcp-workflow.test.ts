@@ -16,7 +16,7 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   const homeId=randomUUID(),otherHomeId=randomUUID(),locationId=randomUUID(),itemId=randomUUID(),userId=randomUUID();
   db.prepare("INSERT INTO homes(id,name) VALUES (?,?),(?,?)").run(homeId,"本家",otherHomeId,"其他家");
   db.prepare("INSERT INTO locations(id,home_id,name) VALUES (?,?,?)").run(locationId,homeId,"储物柜");
-  db.prepare("INSERT INTO items(id,home_id,sku,name,category,base_unit,reorder_point,default_location_id) VALUES (?,?,?,?,?,?,?,?)").run(itemId,homeId,itemId,"牛奶","食品","瓶",3,locationId);
+  db.prepare("INSERT INTO items(id,home_id,sku,barcode,name,category,base_unit,reorder_point,default_location_id) VALUES (?,?,?,?,?,?,?,?,?)").run(itemId,homeId,itemId,"3017620422003","牛奶","食品","瓶",3,locationId);
   const username=randomUUID(),salt=randomBytes(16).toString("hex");
   db.prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(userId,username,`${salt}:${scryptSync("old-password",salt,64).toString("hex")}`,new Date().toISOString());
   const sessionId=randomUUID();
@@ -63,6 +63,9 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal(context.currentHome.id,homeId);
   const guide=parseTool(await client.callTool({name:"get_agent_guide",arguments:{}}));
   assert.equal(guide.receipt.length,4);
+  const barcode=parseTool(await client.callTool({name:"lookup_barcode",arguments:{barcode:"3017620422003"}}));
+  assert.equal(barcode.source,"inventory");
+  assert.equal(barcode.item.id,itemId);
   const received=parseTool(await client.callTool({name:"record_receipt",arguments:{itemId,locationId,quantity:2,idempotencyKey:"mcp-receipt",expiryDate:"2027-01-01"}}));
   assert.equal(received.beforeQuantity,0);
   assert.equal(received.afterQuantity,2);

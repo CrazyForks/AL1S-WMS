@@ -22,6 +22,7 @@ export function openDatabase(
       id TEXT PRIMARY KEY,
       home_id TEXT NOT NULL REFERENCES homes(id),
       sku TEXT NOT NULL,
+      barcode TEXT,
       name TEXT NOT NULL,
       category TEXT NOT NULL DEFAULT '其他',
       base_unit TEXT NOT NULL,
@@ -165,6 +166,7 @@ export function openDatabase(
     db.exec("ALTER TABLE api_tokens ADD COLUMN home_id TEXT REFERENCES homes(id)");
   const itemColumns = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
   if (!itemColumns.some(column => column.name === "icon")) db.exec("ALTER TABLE items ADD COLUMN icon TEXT");
+  if (!itemColumns.some(column => column.name === "barcode")) db.exec("ALTER TABLE items ADD COLUMN barcode TEXT");
   const eventDefinition = db.prepare("SELECT sql FROM sqlite_master WHERE name='item_events'").get() as { sql: string };
   if (!eventDefinition.sql.includes("'update'")) {
     db.exec("BEGIN IMMEDIATE");
@@ -180,6 +182,17 @@ export function openDatabase(
   CREATE TABLE IF NOT EXISTS stock_operations (
     home_id TEXT NOT NULL REFERENCES homes(id), idempotency_key TEXT NOT NULL, payload TEXT NOT NULL, response TEXT NOT NULL,
     PRIMARY KEY(home_id, idempotency_key)
+  );
+  CREATE TABLE IF NOT EXISTS barcode_catalog (
+    barcode TEXT PRIMARY KEY,
+    found INTEGER NOT NULL,
+    name TEXT,
+    brand TEXT,
+    category TEXT,
+    base_unit TEXT,
+    image_url TEXT,
+    provider TEXT,
+    fetched_at TEXT NOT NULL
   );`);
   const stockColumns = db.prepare("PRAGMA table_info(stock_transactions)").all() as {name:string}[];
   if (!stockColumns.some(column => column.name === "batch_id")) db.exec("ALTER TABLE stock_transactions ADD COLUMN batch_id TEXT REFERENCES stock_batches(id)");
@@ -201,7 +214,9 @@ export function openDatabase(
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_stock_batch ON stock_transactions(home_id,item_id,batch_id,location_id);
     CREATE INDEX IF NOT EXISTS idx_stock_history ON stock_transactions(home_id,occurred_at,id);
-    CREATE INDEX IF NOT EXISTS idx_item_history ON item_events(home_id,occurred_at,id);`);
+    CREATE INDEX IF NOT EXISTS idx_item_history ON item_events(home_id,occurred_at,id);
+    DROP INDEX IF EXISTS idx_items_home_barcode;
+    CREATE UNIQUE INDEX idx_items_home_barcode ON items(home_id,barcode) WHERE barcode IS NOT NULL AND active=1;`);
   // SQLite treats NULLs as distinct in UNIQUE constraints; normalize the
   // catalog before enforcing one name per sibling branch.
   db.exec(`

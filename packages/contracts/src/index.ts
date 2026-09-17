@@ -1,12 +1,14 @@
 import { z } from "zod";
 
 export const homeIdSchema = z.string().uuid();
+export const barcodeSchema = z.string().trim().regex(/^\d{8,14}$/, "条码必须为 8 到 14 位数字");
 export const itemIconSchema = z.enum(["package", "apple", "carrot", "beef", "fish", "egg", "milk", "coffee", "wine", "cooking", "sandwich", "cookie", "spray", "laundry", "shirt", "pill", "health", "wrench", "cable", "battery", "book", "pet", "bath", "leaf", "wheat", "bean", "nut", "candy", "icecream", "water", "utensils", "refrigerator", "microwave", "lightbulb", "smartphone", "laptop", "scissors", "storage", "baby", "flower", "umbrella", "glasses"]);
 
 export const itemSchema = z.object({
   id: z.string().uuid(),
   homeId: homeIdSchema,
   sku: z.string().min(1),
+  barcode: barcodeSchema.nullable().optional(),
   name: z.string().min(1),
   category: z.string().min(1),
   icon: itemIconSchema.nullable().optional(),
@@ -27,6 +29,7 @@ export type Item = z.infer<typeof itemSchema>;
 export type CreateItem = z.infer<typeof createItemSchema>;
 export const updateItemSchema = z.object({
   icon: itemIconSchema.nullable().optional(),
+  barcode: barcodeSchema.nullable().optional(),
   name: z.string().min(1).optional(),
   category: z.string().min(1).optional(),
   baseUnit: z.string().min(1).optional(),

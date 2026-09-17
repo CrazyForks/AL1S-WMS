@@ -12,6 +12,7 @@ AL1S ERP is a self-hosted household ERP for managing inventory, purchases, stora
 - Maintain shopping lists with automatic replenishment suggestions.
 - Receive purchased items directly into inventory.
 - Reconcile physical counts and record gains or losses automatically.
+- Look up products by barcode using household data, a local cache, and Open Facts databases.
 - Give AI agents controlled access through MCP.
 
 ## Deployment
@@ -77,6 +78,7 @@ Agents can use MCP to:
 
 - Review household status, including replenishment needs, pending purchases, and expiring or expired batches.
 - Search and manage items, categories, and storage locations.
+- Resolve barcodes with `lookup_barcode` before creating or receiving items.
 - Record receipts, issues, transfers, and physical stock counts.
 - Create, update, delete, and receive shopping-list items.
 - Inspect batches and update batch metadata.

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { listItems, listTransactions, listBatches, getHomeOverview } from "./queries.js";
 import { atomic, batchDates, batchBalanceQuery, InventoryError, reconcileStock, recordItemEvent, recordStock, refreshItemDates, requireStockTarget, transferStock, validateDates } from "./stock.js";
 import { saveShopping, receiveShopping } from "./shopping.js";
+import { lookupBarcode, normalizeBarcode } from "./barcodes.js";
 import fastifyStatic from "@fastify/static";
 import {
   createHash,
@@ -370,13 +371,14 @@ app.post("/api/v1/auth/logout", async (request, reply) => {
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async request => listItems(db,request.params.homeId,request.query));
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/overview", async request => getHomeOverview(db,request.params.homeId,request.query));
+app.get<{Params:{homeId:string;barcode:string}}>("/api/v1/homes/:homeId/barcodes/:barcode",async request=>lookupBarcode(db,request.params.homeId,request.params.barcode));
 
 app.get<{ Params: { homeId: string; itemId: string } }>(
   "/api/v1/homes/:homeId/items/:itemId",
   async (request, reply) => {
     const item = db
       .prepare(
-        "SELECT items.icon, items.id, items.home_id AS homeId, items.sku, items.name, items.category, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1",
+        "SELECT items.icon, items.id, items.home_id AS homeId, items.sku, items.barcode, items.name, items.category, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1",
       )
       .get(request.params.homeId, request.params.itemId);
     return item ?? reply.code(404).send({ code: "ITEM_NOT_FOUND" });
@@ -385,9 +387,12 @@ app.get<{ Params: { homeId: string; itemId: string } }>(
 
 app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:homeId/items/:itemId", async request => {
   const changes=updateItemSchema.parse(request.body),{homeId,itemId}=request.params;
+  if(changes.barcode)changes.barcode=normalizeBarcode(changes.barcode);
   requireStockTarget(db,homeId,itemId,changes.locationId??undefined);
   const current=db.prepare("SELECT * FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as Record<string,any>;
   const columns:Record<string,string>={baseUnit:"base_unit",reorderPoint:"reorder_point",locationId:"default_location_id"};
+  if(changes.barcode&&db.prepare("SELECT 1 FROM items WHERE home_id=? AND barcode=? AND id!=? AND active=1").get(homeId,changes.barcode,itemId))
+    throw new InventoryError(409,"BARCODE_EXISTS","该条码已关联其他物资");
   if(changes.baseUnit && changes.baseUnit!==current.base_unit && db.prepare("SELECT 1 FROM stock_transactions WHERE home_id=? AND item_id=? LIMIT 1").get(homeId,itemId))
     throw new InventoryError(409,"UNIT_HAS_HISTORY","已有库存流水的物资暂不支持更改单位，避免改变历史数量含义");
   if(changes.locationId===null && db.prepare("SELECT 1 FROM stock_transactions WHERE home_id=? AND item_id=? GROUP BY item_id HAVING SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END)>0").get(homeId,itemId))
@@ -406,10 +411,10 @@ app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:h
     if(changes.category && changes.category!==current.category) recordItemEvent(db,homeId,itemId,"reclassify",`分类变更：${current.category} → ${changes.category}`);
     const other=fields.filter(([key])=>!["category","locationId"].includes(key));
     if(other.length) {
-      const labels:Record<string,string>={name:"名称",icon:"图标",baseUnit:"单位",reorderPoint:"最低库存"};
+      const labels:Record<string,string>={name:"名称",icon:"图标",barcode:"条码",baseUnit:"单位",reorderPoint:"最低库存"};
       recordItemEvent(db,homeId,itemId,"update",other.map(([key,value])=>`${labels[key]??key}：${current[columns[key]??key]??"自动"} → ${value??"自动"}`).join("；"));
     }
-    return db.prepare("SELECT id,icon,name,category,base_unit AS baseUnit,reorder_point AS reorderPoint,default_location_id AS locationId FROM items WHERE id=? AND home_id=?").get(itemId,homeId);
+    return db.prepare("SELECT id,icon,barcode,name,category,base_unit AS baseUnit,reorder_point AS reorderPoint,default_location_id AS locationId FROM items WHERE id=? AND home_id=?").get(itemId,homeId);
   });
 });
 
@@ -697,7 +702,9 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
       return reply.code(404).send({ code: "HOME_NOT_FOUND" });
     const id = randomUUID();
     const sku = parsed.data.sku || `ITEM-${id.slice(0, 8).toUpperCase()}`;
-    const item: Item = { ...parsed.data, id, sku, active: true };
+    const item: Item = { ...parsed.data,barcode:parsed.data.barcode?normalizeBarcode(parsed.data.barcode):null,id, sku, active: true };
+    if(parsed.data.barcode&&db.prepare("SELECT 1 FROM items WHERE home_id=? AND barcode=? AND active=1").get(item.homeId,parsed.data.barcode))
+      throw new InventoryError(409,"BARCODE_EXISTS","该条码已关联其他物资");
     const locationId = parsed.data.locationId ?? null;
     if (parsed.data.initialStock > 0 && !locationId)
       return reply.code(400).send({
@@ -716,11 +723,12 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
     db.exec("BEGIN");
     try {
       db.prepare(
-        "INSERT INTO items (id, home_id, sku, name, category, base_unit, reorder_point, reorder_quantity, default_location_id, manufactured_date, expiry_date, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO items (id, home_id, sku, barcode, name, category, base_unit, reorder_point, reorder_quantity, default_location_id, manufactured_date, expiry_date, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).run(
         item.id,
         item.homeId,
         sku,
+        item.barcode??null,
         item.name,
         item.category,
         item.baseUnit,

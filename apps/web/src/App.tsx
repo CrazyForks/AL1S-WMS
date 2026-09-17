@@ -1,6 +1,7 @@
 import { MaterialIcon, IconPicker, itemIconFor } from "./Icons.js";
 import { BatchFields } from "./BatchFields.js";
 import { Batches, BatchSelect } from "./Batches.js";
+import { BarcodeScanner } from "./BarcodeScanner.js";
 import { type CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -33,6 +34,7 @@ type Item = {
   id: string;
   homeId: string;
   sku: string;
+  barcode?: string | null;
   name: string;
   category: string;
   baseUnit: string;
@@ -492,6 +494,13 @@ export function App() {
   const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [prefillLocationId, setPrefillLocationId] = useState("");
   const [prefillCategory, setPrefillCategory] = useState("");
+  const [prefillName,setPrefillName]=useState("");
+  const [prefillUnit,setPrefillUnit]=useState("个");
+  const [barcodeInput,setBarcodeInput]=useState("");
+  const [barcodeBusy,setBarcodeBusy]=useState(false);
+  const [barcodeNotice,setBarcodeNotice]=useState("");
+  const [showBarcodeScanner,setShowBarcodeScanner]=useState(false);
+  const [itemFormRevision,setItemFormRevision]=useState(0);
   const [categoryName, setCategoryName] = useState("");
   const [categoryParent, setCategoryParent] = useState("");
   const [locationName, setLocationName] = useState("");
@@ -837,6 +846,7 @@ export function App() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: data.get("name"),
+        barcode: data.get("barcode") || undefined,
         icon: data.get("icon") || null,
         category: data.get("category"),
         baseUnit: data.get("baseUnit"),
@@ -908,6 +918,7 @@ export function App() {
         body: JSON.stringify({
           name: data.get("name"),
           icon: data.get("icon") || null,
+          barcode: data.get("barcode") || null,
           category: data.get("category"),
           baseUnit: data.get("baseUnit"),
           reorderPoint: Number(data.get("reorderPoint") || 0),
@@ -1159,15 +1170,52 @@ export function App() {
   function openItemForm(preset?: {
     locationId?: string;
     category?: string;
+    name?:string;
+    baseUnit?:string;
+    barcode?:string;
   }) {
     setPrefillLocationId(preset?.locationId || "");
     setPrefillCategory(preset?.category || "");
+    setPrefillName(preset?.name||"");
+    setPrefillUnit(preset?.baseUnit||"个");
+    setBarcodeInput(preset?.barcode||"");
+    setBarcodeNotice("");
+    setItemFormRevision(value=>value+1);
     setShowForm(true);
   }
   function closeItemForm() {
     setShowForm(false);
+    setShowBarcodeScanner(false);
     setPrefillLocationId("");
     setPrefillCategory("");
+    setPrefillName("");
+    setPrefillUnit("个");
+    setBarcodeInput("");
+    setBarcodeNotice("");
+  }
+  async function lookupItemBarcode(raw=barcodeInput) {
+    const barcode=raw.replace(/[\s-]/g,"");
+    if(!barcode)return;
+    setBarcodeBusy(true);setBarcodeNotice("");
+    try {
+      const response=await fetch(`/api/v1/homes/${getHomeId()}/barcodes/${encodeURIComponent(barcode)}`);
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.message||"条码查询失败");
+      setBarcodeInput(result.barcode);
+      if(result.item) {
+        closeItemForm();setDetailItem(result.item);
+        setNotice(`条码已关联物资“${result.item.name}”`);
+        return;
+      }
+      if(result.found&&result.product) {
+        setPrefillName(result.product.name||"");
+        setPrefillCategory(result.product.category||"其他");
+        setPrefillUnit(result.product.baseUnit||"个");
+        setItemFormRevision(value=>value+1);
+        setBarcodeNotice(result.source==="online"?"已从在线条码库补全商品信息":"已从本地条码缓存补全商品信息");
+      } else setBarcodeNotice("在线条码库暂无该商品，请手动填写信息");
+    } catch(error) {setBarcodeNotice(error instanceof Error?error.message:"条码查询失败");}
+    finally {setBarcodeBusy(false);}
   }
   function navigate(page: Page) {
     if (window.location.pathname !== pagePaths[page])
@@ -1437,6 +1485,7 @@ export function App() {
               ＋ {activePage === "count" ? "添加物资" : "添加采购项"}
             </button>
           )}
+          {activePage==="count"&&<button className="secondary" onClick={()=>{openItemForm();setShowBarcodeScanner(true);}}>扫描条码</button>}
         </section>
         {notice && (
           <div className="notice" role="status">
@@ -1501,6 +1550,7 @@ export function App() {
                   连接地址为当前站点的 /mcp，认证方式为 Bearer Token。默认仅管理所选家庭。
                 </p>
               </div>
+              {barcodeNotice&&<p className="barcode-feedback" role="status">{barcodeNotice}</p>}
             </div>
             <form className="token-create" onSubmit={createApiToken}>
               <input
@@ -2067,6 +2117,10 @@ export function App() {
               <input name="name" required defaultValue={detailItem.name} />
             </label>
             <label>
+              商品条码（可选）
+              <input name="barcode" inputMode="numeric" pattern="[0-9]{8,14}" defaultValue={detailItem.barcode||""} />
+            </label>
+            <label>
               类型
               <select name="category" defaultValue={detailItem.category}>
                 {selectCategoryOptions.map((category) => (
@@ -2609,7 +2663,7 @@ export function App() {
             event.target === event.currentTarget && closeItemForm()
           }
         >
-          <form className="modal item-form-modal" onSubmit={addItem}>
+          <form className="modal item-form-modal" key={itemFormRevision} onSubmit={addItem}>
             <div className="modal-head">
               <div>
                 <h2>添加物资</h2>
@@ -2624,9 +2678,19 @@ export function App() {
                 <X size={18} strokeWidth={1.8} />
               </button>
             </div>
+            <div className="barcode-lookup">
+              <label>
+                商品条码（可选）
+                <input name="barcode" inputMode="numeric" pattern="[0-9]{8,14}" value={barcodeInput} onChange={event=>setBarcodeInput(event.target.value)} placeholder="输入 EAN / UPC / GTIN" />
+              </label>
+              <div>
+                <button type="button" className="secondary" disabled={barcodeBusy||!barcodeInput} onClick={()=>lookupItemBarcode()}>{barcodeBusy?"查询中…":"查询"}</button>
+                <button type="button" className="secondary" onClick={()=>setShowBarcodeScanner(true)}>摄像头扫描</button>
+              </div>
+            </div>
             <label>
               物资名称
-              <input name="name" required placeholder="例如：洗衣液" />
+              <input name="name" required defaultValue={prefillName} placeholder="例如：洗衣液" />
             </label>
             <label>
               类型
@@ -2642,7 +2706,7 @@ export function App() {
             <div className="form-row">
               <label>
                 单位
-                <select name="baseUnit" defaultValue="个">
+                <select name="baseUnit" defaultValue={prefillUnit}>
                   <option>个</option>
                   <option>瓶</option>
                   <option>盒</option>
@@ -2699,6 +2763,7 @@ export function App() {
           </form>
         </div>
       )}
+      {showBarcodeScanner&&<BarcodeScanner onClose={()=>setShowBarcodeScanner(false)} onScan={barcode=>{setShowBarcodeScanner(false);setBarcodeInput(barcode);void lookupItemBarcode(barcode);}}/>}
     </div>
   );
 }
