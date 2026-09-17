@@ -860,7 +860,7 @@ export function App() {
     ...Array.from({length:calendarDayCount},(_,index)=>`${shoppingMonth}-${String(index+1).padStart(2,"0")}`),
   ];
   while(calendarCells.length%7)calendarCells.push(null);
-  const selectedCalendarItems=selectedShoppingDate?calendarItems.filter(item=>item.plannedDate===selectedShoppingDate):[];
+  const visibleShoppingItems=selectedShoppingDate?shoppingList.filter(item=>item.plannedDate===selectedShoppingDate):shoppingList;
   if (!setup) return <div className="loading-screen">正在检查家庭设置…</div>;
   if (!setup.complete)
     return (
@@ -1744,11 +1744,11 @@ export function App() {
             <div className="panel-head">
               <div>
                 <h2>采购清单</h2>
-                <p className="muted">自动建议与手动采购项</p>
+                <p className="muted">{selectedShoppingDate?`${selectedShoppingDate} 的采购项 · 再次点击日期恢复全部`:"自动建议与手动采购项"}</p>
               </div>
             </div>
-            {shoppingList.length === 0 ? (
-              <p className="empty">暂无采购项</p>
+            {visibleShoppingItems.length === 0 ? (
+              <p className="empty">{selectedShoppingDate?`${selectedShoppingDate} 暂无采购项`:"暂无采购项"}</p>
             ) : (
               <div className="table-wrap">
                 <table>
@@ -1761,7 +1761,7 @@ export function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {shoppingList.map((item) => (
+                    {visibleShoppingItems.map((item) => (
                       <tr key={item.id}>
                         <td>
                           <div className="item-name">
@@ -1835,14 +1835,13 @@ export function App() {
               <div className="calendar-grid">{calendarCells.map((date,index)=>{
                 if(!date)return <span className="calendar-day empty-day" key={`empty-${index}`}/>;
                 const entries=calendarItems.filter(item=>item.plannedDate===date),today=date===new Date().toISOString().slice(0,10);
-                return <button type="button" className={`calendar-day ${today?"today":""} ${selectedShoppingDate===date?"selected":""}`} key={date} onClick={()=>setSelectedShoppingDate(date)}>
+                return <button type="button" className={`calendar-day ${today?"today":""} ${selectedShoppingDate===date?"selected":""}`} key={date} onClick={()=>setSelectedShoppingDate(current=>current===date?"":date)}>
                   <time>{Number(date.slice(-2))}</time>
                   <span className="calendar-mobile-count">{entries.length||""}</span>
                   <div>{entries.slice(0,2).map(item=><span className={item.completed?"completed":""} key={item.id}><b>{item.name}</b><small>{shoppingChannelName(item)}</small></span>)}{entries.length>2&&<em>+{entries.length-2}</em>}</div>
                 </button>;
               })}</div>
             </div>
-            {selectedShoppingDate&&<div className="calendar-agenda"><strong>{selectedShoppingDate}</strong>{selectedCalendarItems.length?selectedCalendarItems.map(item=><span key={item.id}>{item.name} · {item.quantity} {item.unit||"件"} · {shoppingChannelName(item)}</span>):<span>当天没有采购计划</span>}</div>}
           </section>
           </section>
         )}
