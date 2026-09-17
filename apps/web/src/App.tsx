@@ -2234,7 +2234,7 @@ export function App() {
                   <option>米</option>
                   <option>其他</option>
                 </select>
-                <small className="muted">已有库存流水后不可更改单位</small>
+                <small className="form-hint">已有库存流水后不可更改单位</small>
               </label>
               <label>
                 最低库存
