@@ -8,6 +8,7 @@ export class InventoryError extends Error {
 export const batchDates = { manufacturedDate: z.string().date().nullable().optional(), expiryDate: z.string().date().nullable().optional() };
 export const stockInput = z.object({ itemId:z.string().uuid(),locationId:z.string().uuid(),quantity:z.number().positive().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),batchId:z.string().uuid().optional(),...batchDates }).strict();
 export const transferInput = stockInput.omit({locationId:true,manufacturedDate:true,expiryDate:true}).extend({sourceLocationId:z.string().uuid(),targetLocationId:z.string().uuid()});
+export const reconcileInput = z.object({itemId:z.string().uuid(),locationId:z.string().uuid(),countedQuantity:z.number().nonnegative().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),batchId:z.string().uuid().optional(),...batchDates}).strict();
 export const batchBalanceQuery = `SELECT b.id AS batchId,b.home_id AS homeId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS baseUnit,b.label,b.manufactured_date AS manufacturedDate,b.expiry_date AS expiryDate,b.received_at AS receivedAt,b.legacy,t.location_id AS locationId,l.name AS locationName,
   COALESCE(SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END),0) AS quantity
   FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN stock_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
@@ -25,6 +26,9 @@ export function validateDates(manufactured?:string|null, expiry?:string|null) {
 export function requireStockTarget(db:DatabaseSync,homeId:string,itemId:string,locationId?:string) {
   if(!db.prepare("SELECT 1 FROM items WHERE id=? AND home_id=? AND active=1").get(itemId,homeId)) throw new InventoryError(404,"ITEM_NOT_FOUND","物资不存在或已删除");
   if(locationId && !db.prepare("SELECT 1 FROM locations WHERE id=? AND home_id=? AND active=1").get(locationId,homeId)) throw new InventoryError(404,"LOCATION_NOT_FOUND","地点不存在或不属于当前家庭");
+}
+export function stockAt(db:DatabaseSync,homeId:string,itemId:string,locationId:string) {
+  return (db.prepare("SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) AS quantity FROM stock_transactions WHERE home_id=? AND item_id=? AND location_id=?").get(homeId,itemId,locationId) as {quantity:number}).quantity;
 }
 export function recordItemEvent(db:DatabaseSync, homeId:string,itemId:string,type:"delete"|"reclassify"|"move"|"update",reason:string, locationId:string|null=null,quantity:number|null=null,batchId:string|null=null) {
   const item=db.prepare("SELECT name FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as {name:string};
@@ -66,6 +70,7 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
   const {itemId,locationId,quantity,idempotencyKey,reason}=input;
   return withStockOperation(db,homeId,idempotencyKey,{type,...input},()=>{
     requireStockTarget(db,homeId,itemId,locationId);
+    const beforeQuantity=stockAt(db,homeId,itemId,locationId);
     validateDates(input.manufacturedDate,input.expiryDate);
     if(type==="receipt" && input.batchId) throw new InventoryError(400,"NEW_BATCH_REQUIRED","每次入库创建独立批次，不可指定已有批次");
     if(type==="issue" && (input.manufacturedDate!==undefined||input.expiryDate!==undefined)) throw new InventoryError(400,"INVALID_FIELDS","领用不能修改批次日期");
@@ -80,7 +85,8 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
       : input.batchId ? "领用指定批次" : "按到期顺序领用";
     const transactions=parts.map((part,index)=>({id:ledgerEntry(db,homeId,itemId,locationId,part.batchId,type,part.quantity,`${idempotencyKey}:${index}`,reason||defaultReason),...part}));
     refreshItemDates(db,homeId,itemId);
-    return {homeId,itemId,locationId,type,quantity,transactions};
+    const afterQuantity=stockAt(db,homeId,itemId,locationId);
+    return {homeId,itemId,locationId,type,quantity,beforeQuantity,afterQuantity,difference:afterQuantity-beforeQuantity,transactions};
   });
 }
 export function transferStock(db:DatabaseSync,homeId:string,raw:unknown) {
@@ -89,6 +95,7 @@ export function transferStock(db:DatabaseSync,homeId:string,raw:unknown) {
   return withStockOperation(db,homeId,idempotencyKey,{type:"transfer",...input},()=>{
     requireStockTarget(db,homeId,itemId,sourceLocationId); requireStockTarget(db,homeId,itemId,targetLocationId);
     if(sourceLocationId===targetLocationId) throw new InventoryError(400,"SAME_LOCATION","调出和调入地点不能相同");
+    const sourceBefore=stockAt(db,homeId,itemId,sourceLocationId),targetBefore=stockAt(db,homeId,itemId,targetLocationId);
     const parts=allocate(db,homeId,itemId,sourceLocationId,quantity,batchId);
     const source=db.prepare("SELECT name FROM locations WHERE id=?").get(sourceLocationId) as {name:string};
     const target=db.prepare("SELECT name FROM locations WHERE id=?").get(targetLocationId) as {name:string};
@@ -98,6 +105,27 @@ export function transferStock(db:DatabaseSync,homeId:string,raw:unknown) {
       ledgerEntry(db,homeId,itemId,sourceLocationId,part.batchId,"issue",part.quantity,`event:${eventId}:${index}:out`,reason);
       ledgerEntry(db,homeId,itemId,targetLocationId,part.batchId,"receipt",part.quantity,`event:${eventId}:${index}:in`,reason);
     }
-    return {homeId,itemId,sourceLocationId,targetLocationId,quantity,batches:parts};
+    return {homeId,itemId,sourceLocationId,targetLocationId,quantity,sourceBefore,sourceAfter:stockAt(db,homeId,itemId,sourceLocationId),targetBefore,targetAfter:stockAt(db,homeId,itemId,targetLocationId),batches:parts};
+  });
+}
+
+export function reconcileStock(db:DatabaseSync,homeId:string,raw:unknown) {
+  const input=reconcileInput.parse(raw);
+  return withStockOperation(db,homeId,input.idempotencyKey,{type:"reconcile",...input},()=>{
+    requireStockTarget(db,homeId,input.itemId,input.locationId);
+    validateDates(input.manufacturedDate,input.expiryDate);
+    const beforeQuantity=stockAt(db,homeId,input.itemId,input.locationId);
+    const difference=input.countedQuantity-beforeQuantity;
+    if(Math.abs(difference)<1e-9)return {homeId,itemId:input.itemId,locationId:input.locationId,beforeQuantity,afterQuantity:beforeQuantity,difference:0,action:"none",transactions:[]};
+    if(difference>0&&input.batchId)throw new InventoryError(400,"NEW_BATCH_REQUIRED","盘盈会创建新批次，不能指定已有批次");
+    if(difference<0&&(input.manufacturedDate!==undefined||input.expiryDate!==undefined))throw new InventoryError(400,"INVALID_FIELDS","盘亏不能修改批次日期");
+    const action=difference>0?"receipt":"issue";
+    const result=recordStock(db,homeId,action,{
+      itemId:input.itemId,locationId:input.locationId,quantity:Math.abs(difference),
+      idempotencyKey:`reconcile:${input.idempotencyKey}`,
+      reason:input.reason||(difference>0?"盘点盘盈":"盘点盘亏"),
+      ...(difference>0?{manufacturedDate:input.manufacturedDate,expiryDate:input.expiryDate}:{batchId:input.batchId}),
+    });
+    return {homeId,itemId:input.itemId,locationId:input.locationId,beforeQuantity,afterQuantity:result.afterQuantity,difference,action,transactions:result.transactions};
   });
 }

@@ -93,6 +93,7 @@ export function openDatabase(
     CREATE TABLE IF NOT EXISTS api_tokens (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id),
+      home_id TEXT REFERENCES homes(id),
       name TEXT NOT NULL,
       token_hash TEXT NOT NULL UNIQUE,
       token_prefix TEXT NOT NULL,
@@ -159,6 +160,9 @@ export function openDatabase(
   } catch {
     /* existing column */
   }
+  const tokenColumns = db.prepare("PRAGMA table_info(api_tokens)").all() as { name: string }[];
+  if (!tokenColumns.some(column => column.name === "home_id"))
+    db.exec("ALTER TABLE api_tokens ADD COLUMN home_id TEXT REFERENCES homes(id)");
   const itemColumns = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
   if (!itemColumns.some(column => column.name === "icon")) db.exec("ALTER TABLE items ADD COLUMN icon TEXT");
   const eventDefinition = db.prepare("SELECT sql FROM sqlite_master WHERE name='item_events'").get() as { sql: string };

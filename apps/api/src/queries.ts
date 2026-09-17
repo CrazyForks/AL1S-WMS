@@ -2,12 +2,14 @@ import { z } from "zod";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { transactionQuery } from "./inventory-delete.js";
 import { batchBalanceQuery } from "./stock.js";
+import { InventoryError } from "./stock.js";
 
 const bool = z.enum(["true","false"]).transform(value=>value==="true");
 const paging = { limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).default(0) };
 export const transactionFilters = z.object({...paging,itemId:z.string().uuid().optional(),locationId:z.string().uuid().optional(),batchId:z.string().uuid().optional(),type:z.enum(["receipt","issue","move","delete","reclassify","update"]).optional(),query:z.string().trim().max(200).optional(),occurredFrom:z.string().datetime().optional(),occurredTo:z.string().datetime().optional(),snapshotAt:z.string().datetime().optional()}).strict();
 export const itemFilters = z.object({...paging,paged:bool.optional(),query:z.string().trim().max(200).optional(),category:z.string().trim().max(200).optional(),locationId:z.string().uuid().optional(),includeDescendantLocations:bool.default("true"),includeDescendantCategories:bool.default("true"),lowStockOnly:bool.optional(),expiryBefore:z.string().date().optional()}).strict();
 export const batchFilters = z.object({...paging,itemId:z.string().uuid().optional(),locationId:z.string().uuid().optional(),includeEmpty:bool.default("false")}).strict();
+export const overviewFilters = z.object({expiryDays:z.coerce.number().int().min(1).max(365).default(30),limit:z.coerce.number().int().min(1).max(50).default(10)}).strict();
 export function pageQuery(db:DatabaseSync,sql:string,params:SQLInputValue[],limit:number,offset:number,order:string) {
   const total=(db.prepare(`SELECT COUNT(*) AS n FROM (${sql})`).get(...params) as {n:number}).n;
   const items=db.prepare(`SELECT * FROM (${sql}) ORDER BY ${order} LIMIT ? OFFSET ?`).all(...params,limit,offset);
@@ -57,4 +59,42 @@ export function listBatches(db:DatabaseSync,homeId:string,raw:unknown) {
   for(const key of ["itemId","locationId"] as const)if(filters[key]){where.push(`${key}=?`);params.push(filters[key]!);}
   if(!filters.includeEmpty)where.push("quantity>0");
   return pageQuery(db,`SELECT * FROM (${batchBalanceQuery}) WHERE ${where.join(" AND ")}`,params,filters.limit,filters.offset,"expiryDate IS NULL,expiryDate,receivedAt,batchId,locationId");
+}
+
+export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown) {
+  const filters=overviewFilters.parse(raw);
+  const home=db.prepare("SELECT id,name,icon,timezone FROM homes WHERE id=? AND active=1").get(homeId) as {id:string;name:string;icon:string;timezone:string}|undefined;
+  if(!home)throw new InventoryError(404,"HOME_NOT_FOUND","家庭不存在");
+  const today=new Date().toISOString().slice(0,10);
+  const threshold=new Date(Date.now()+filters.expiryDays*86400000).toISOString().slice(0,10);
+  const balance="(SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) FROM stock_transactions WHERE home_id=i.home_id AND item_id=i.id)";
+  const lowSql=`SELECT i.id AS itemId,i.name,i.base_unit AS unit,i.reorder_point AS reorderPoint,${balance} AS quantity,MAX(i.reorder_point-${balance},0) AS suggestedQuantity,i.default_location_id AS locationId,l.name AS locationName FROM items i LEFT JOIN locations l ON l.id=i.default_location_id WHERE i.home_id=? AND i.active=1 AND ${balance}<i.reorder_point`;
+  const needsCount=(db.prepare(`SELECT COUNT(*) AS n FROM (${lowSql})`).get(homeId) as {n:number}).n;
+  const needsReplenishment=db.prepare(`SELECT * FROM (${lowSql}) ORDER BY suggestedQuantity DESC,name LIMIT ?`).all(homeId,filters.limit);
+  const batchBase=`SELECT * FROM (${batchBalanceQuery}) WHERE homeId=? AND quantity>0 AND expiryDate IS NOT NULL`;
+  const expiredCount=(db.prepare(`SELECT COUNT(*) AS n FROM (${batchBase}) WHERE expiryDate<?`).get(homeId,today) as {n:number}).n;
+  const expired=db.prepare(`SELECT * FROM (${batchBase}) WHERE expiryDate<? ORDER BY expiryDate,receivedAt LIMIT ?`).all(homeId,today,filters.limit);
+  const expiringCount=(db.prepare(`SELECT COUNT(*) AS n FROM (${batchBase}) WHERE expiryDate>=? AND expiryDate<=?`).get(homeId,today,threshold) as {n:number}).n;
+  const expiring=db.prepare(`SELECT * FROM (${batchBase}) WHERE expiryDate>=? AND expiryDate<=? ORDER BY expiryDate,receivedAt LIMIT ?`).all(homeId,today,threshold,filters.limit);
+  const manualSql="SELECT id,item_id AS itemId,name,quantity,unit,category,location_id AS locationId,'manual' AS source FROM shopping_list WHERE home_id=? AND completed=0";
+  const manual=db.prepare(`${manualSql} ORDER BY created_at LIMIT ?`).all(homeId,filters.limit) as Record<string,unknown>[];
+  const automatic=(needsReplenishment as Record<string,unknown>[]).map(row=>({id:`auto:${row.itemId}`,itemId:row.itemId,name:row.name,quantity:row.suggestedQuantity,unit:row.unit,locationId:row.locationId,source:"automatic"}));
+  const pendingCount=(db.prepare("SELECT COUNT(*) AS n FROM shopping_list WHERE home_id=? AND completed=0").get(homeId) as {n:number}).n+needsCount;
+  const pending=[...manual,...automatic].slice(0,filters.limit);
+  const actions=[
+    ...(expired as Record<string,unknown>[]).map(row=>({type:"handle_expired",priority:"urgent",itemId:row.itemId,batchId:row.batchId,message:`${row.itemName} 批次已于 ${row.expiryDate} 过期`})),
+    ...(expiring as Record<string,unknown>[]).map(row=>({type:"use_expiring",priority:"high",itemId:row.itemId,batchId:row.batchId,message:`${row.itemName} 批次将于 ${row.expiryDate} 到期`})),
+    ...pending.filter(row=>row.source==="manual").map(row=>({type:"buy_pending",priority:"normal",shoppingItemId:row.id,itemId:row.itemId,message:`待采购 ${row.name} ${row.quantity} ${row.unit??""}`.trim()})),
+    ...(needsReplenishment as Record<string,unknown>[]).map(row=>({type:"replenish",priority:"normal",itemId:row.itemId,message:`${row.name} 建议补充 ${row.suggestedQuantity} ${row.unit}`})),
+  ].slice(0,filters.limit);
+  return {
+    home,
+    generatedAt:new Date().toISOString(),
+    expiryWindow:{days:filters.expiryDays,through:threshold},
+    needsReplenishment:{items:needsReplenishment,total:needsCount,hasMore:needsCount>needsReplenishment.length},
+    expiring:{items:expiring,total:expiringCount,hasMore:expiringCount>expiring.length},
+    expired:{items:expired,total:expiredCount,hasMore:expiredCount>expired.length},
+    shopping:{items:pending,total:pendingCount,hasMore:pendingCount>pending.length},
+    recommendedActions:actions,
+  };
 }

@@ -96,6 +96,8 @@ type ShoppingItem = {
 type ApiToken = {
   id: string;
   name: string;
+  homeId?: string | null;
+  homeName?: string | null;
   tokenPrefix: string;
   createdAt: string;
   lastUsedAt?: string | null;
@@ -1112,11 +1114,13 @@ export function App() {
   async function createApiToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const name = String(new FormData(form).get("name") || "").trim();
+    const data = new FormData(form);
+    const name = String(data.get("name") || "").trim();
+    const scope = String(data.get("homeId") || "");
     const response = await fetch("/api/v1/auth/tokens", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, homeId: scope === "all" ? null : scope }),
     });
     if (!response.ok) {
       setNotice("创建令牌失败");
@@ -1458,7 +1462,7 @@ export function App() {
               <div>
                 <h2>MCP 访问令牌</h2>
                 <p className="muted">
-                  连接地址为当前站点的 /mcp，认证方式为 Bearer Token。
+                  连接地址为当前站点的 /mcp，认证方式为 Bearer Token。默认仅管理所选家庭。
                 </p>
               </div>
             </div>
@@ -1469,6 +1473,10 @@ export function App() {
                 maxLength={80}
                 placeholder="令牌名称，例如：Claude Desktop"
               />
+              <select name="homeId" defaultValue={getHomeId()} aria-label="令牌家庭范围">
+                {homes.map(home => <option key={home.id} value={home.id}>{home.name}</option>)}
+                <option value="all">全部家庭（高级）</option>
+              </select>
               <button type="submit" className="primary">创建令牌</button>
             </form>
             {newApiToken && (
@@ -1502,7 +1510,7 @@ export function App() {
                     <div>
                       <strong>{token.name}</strong>
                       <span>
-                        {token.tokenPrefix} · 创建于{" "}
+                        {token.tokenPrefix} · {token.homeId ? `家庭：${token.homeName || "已删除"}` : "全部家庭（高级）"} · 创建于{" "}
                         {new Date(token.createdAt).toLocaleString()}
                       </span>
                       <span>

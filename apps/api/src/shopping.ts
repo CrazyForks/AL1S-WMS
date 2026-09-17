@@ -42,6 +42,6 @@ export function receiveShopping(db:DatabaseSync,homeId:string,shoppingId:string,
     }
     const receipt=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:input.actualQuantity,idempotencyKey:`purchase:${input.idempotencyKey}`,reason:"采购入库",manufacturedDate:input.manufacturedDate,expiryDate:input.expiryDate});
     if(!automatic)db.prepare("UPDATE shopping_list SET item_id=?,completed=1,completed_at=? WHERE home_id=? AND id=?").run(itemId,new Date().toISOString(),homeId,shoppingId);
-    return {id:shoppingId,completed:true,received:input.actualQuantity,itemId,locationId,transactions:receipt.transactions};
+    return {id:shoppingId,completed:true,received:input.actualQuantity,itemId,locationId,beforeQuantity:receipt.beforeQuantity,afterQuantity:receipt.afterQuantity,difference:receipt.difference,transactions:receipt.transactions};
   });
 }

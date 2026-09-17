@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import { z } from "zod";
-import { listItems, listTransactions, listBatches } from "./queries.js";
-import { atomic, batchDates, batchBalanceQuery, InventoryError, recordItemEvent, recordStock, refreshItemDates, requireStockTarget, transferStock, validateDates } from "./stock.js";
+import { listItems, listTransactions, listBatches, getHomeOverview } from "./queries.js";
+import { atomic, batchDates, batchBalanceQuery, InventoryError, reconcileStock, recordItemEvent, recordStock, refreshItemDates, requireStockTarget, transferStock, validateDates } from "./stock.js";
 import { saveShopping, receiveShopping } from "./shopping.js";
 import fastifyStatic from "@fastify/static";
 import {
@@ -80,10 +80,10 @@ function tokenUser(request: any) {
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const row = db
     .prepare(
-      "SELECT api_tokens.id, users.id AS userId, users.username, users.role FROM api_tokens JOIN users ON users.id = api_tokens.user_id WHERE api_tokens.token_hash = ? AND api_tokens.revoked_at IS NULL",
+      "SELECT api_tokens.id, api_tokens.home_id AS homeId, users.id AS userId, users.username, users.role FROM api_tokens JOIN users ON users.id = api_tokens.user_id WHERE api_tokens.token_hash = ? AND api_tokens.revoked_at IS NULL",
     )
     .get(tokenHash) as
-    | { id: string; userId: string; username: string; role: string }
+    | { id: string; homeId: string | null; userId: string; username: string; role: string }
     | undefined;
   if (row)
     db.prepare("UPDATE api_tokens SET last_used_at = ? WHERE id = ?").run(
@@ -127,15 +127,22 @@ app.addHook("preHandler", async (request, reply) => {
     request.url === "/api/v1/setup/status" ||
     request.url === "/api/v1/setup" ||
     request.url === "/api/v1/auth/login";
-  if (!publicPath && !sessionUser(request) && !(request.url.startsWith("/api/v1/homes") && tokenUser(request)))
-    return reply.code(401).send({ code: "UNAUTHENTICATED" });
+  if (publicPath) return;
+  if (sessionUser(request)) return;
+  const token = request.url.startsWith("/api/v1/homes") ? tokenUser(request) : undefined;
+  if (!token) return reply.code(401).send({ code: "UNAUTHENTICATED" });
+  const requestedHome = request.url.split("?")[0].match(/^\/api\/v1\/homes\/([^/]+)/)?.[1];
+  if (token.homeId && requestedHome && requestedHome !== token.homeId)
+    return reply.code(403).send({ code: "HOME_SCOPE_FORBIDDEN", message: "该令牌不能访问其他家庭" });
+  if (token.homeId && request.url.split("?")[0] === "/api/v1/homes" && request.method !== "GET")
+    return reply.code(403).send({ code: "HOME_SCOPE_FORBIDDEN", message: "家庭令牌不能创建其他家庭" });
 });
 
 app.get("/api/v1/auth/tokens", async (request) => {
   const user = sessionUser(request) as { id: string };
   return db
     .prepare(
-      "SELECT id, name, token_prefix AS tokenPrefix, created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC",
+      "SELECT api_tokens.id, api_tokens.name, api_tokens.home_id AS homeId, homes.name AS homeName, token_prefix AS tokenPrefix, created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM api_tokens LEFT JOIN homes ON homes.id=api_tokens.home_id WHERE user_id = ? ORDER BY created_at DESC",
     )
     .all(user.id);
 });
@@ -147,23 +154,29 @@ app.post<{ Body: unknown }>("/api/v1/auth/tokens", async (request, reply) => {
       ? (request.body as Record<string, unknown>)
       : {};
   const name = typeof body.name === "string" ? body.name.trim() : "";
+  const homeId = body.homeId === null ? null : typeof body.homeId === "string" ? body.homeId : undefined;
   if (!name || name.length > 80)
     return reply.code(400).send({ code: "INVALID_TOKEN_NAME" });
+  if (homeId === undefined)
+    return reply.code(400).send({ code: "TOKEN_SCOPE_REQUIRED", message: "请选择令牌管理的家庭" });
+  if (homeId && !db.prepare("SELECT 1 FROM homes WHERE id=? AND active=1").get(homeId))
+    return reply.code(400).send({ code: "HOME_NOT_FOUND", message: "所选家庭不存在" });
   const token = `al1s_${randomBytes(32).toString("hex")}`;
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   const tokenPrefix = `${token.slice(0, 13)}…`;
   db.prepare(
-    "INSERT INTO api_tokens (id, user_id, name, token_hash, token_prefix, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    "INSERT INTO api_tokens (id, user_id, home_id, name, token_hash, token_prefix, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
   ).run(
     id,
     user.id,
+    homeId,
     name,
     createHash("sha256").update(token).digest("hex"),
     tokenPrefix,
     createdAt,
   );
-  return reply.code(201).send({ id, name, token, tokenPrefix, createdAt });
+  return reply.code(201).send({ id, name, homeId, token, tokenPrefix, createdAt });
 });
 
 app.delete<{ Params: { tokenId: string } }>(
@@ -302,9 +315,12 @@ app.post<{ Body: unknown }>("/api/v1/setup", async (request, reply) => {
 
 app.get("/healthz", async () => ({ status: "ok" }));
 
-app.get("/api/v1/homes", async () =>
-  db.prepare("SELECT id, name, icon FROM homes WHERE active = 1 ORDER BY rowid").all(),
-);
+app.get("/api/v1/homes", async request => {
+  const token = tokenUser(request);
+  return token?.homeId
+    ? db.prepare("SELECT id, name, icon FROM homes WHERE active=1 AND id=?").all(token.homeId)
+    : db.prepare("SELECT id, name, icon FROM homes WHERE active = 1 ORDER BY rowid").all();
+});
 app.post<{ Body: unknown }>("/api/v1/homes", async (request, reply) => {
   const body = request.body as { name?: unknown; icon?: unknown } | null;
   if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 80 || typeof body.icon !== "string" || !["house", "building", "trees", "warehouse", "castle", "leaf", "star", "🏠", "🏡", "🏢", "🏘️", "🌿", "⭐"].includes(body.icon))
@@ -335,6 +351,7 @@ app.post("/api/v1/auth/logout", async (request, reply) => {
 });
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async request => listItems(db,request.params.homeId,request.query));
+app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/overview", async request => getHomeOverview(db,request.params.homeId,request.query));
 
 app.get<{ Params: { homeId: string; itemId: string } }>(
   "/api/v1/homes/:homeId/items/:itemId",
@@ -618,6 +635,7 @@ for (const [resource, kind] of [["items", "item"], ["categories", "category"], [
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/transactions", async request => listTransactions(db,request.params.homeId,request.query));
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/transfers",async request => transferStock(db,request.params.homeId,request.body));
+app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/reconcile",async request => reconcileStock(db,request.params.homeId,request.body));
 
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/batches",async request => listBatches(db,request.params.homeId,request.query));
 app.patch<{Params:{homeId:string;batchId:string};Body:unknown}>("/api/v1/homes/:homeId/batches/:batchId",async request => {
@@ -749,7 +767,7 @@ app.delete<{ Params: { homeId: string; shoppingId: string } }>(
 app.all("/mcp", async (request, reply) => handleMcpRequest(request, reply, async (method, url, body) => {
   const response = await app.inject({ method, url, headers: { authorization: request.headers.authorization || "" }, payload: body });
   return { status: response.statusCode, body: response.json() };
-}));
+}, tokenUser(request)?.homeId??null));
 
 const staticRoot = resolve(process.env.STATIC_ROOT ?? "./public");
 if (existsSync(staticRoot)) {

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { openDatabase } from "@family-erp/db";
-import { listBatches, listItems } from "./queries.js";
+import { getHomeOverview, listBatches, listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
-import { InventoryError, recordStock } from "./stock.js";
+import { InventoryError, reconcileStock, recordStock } from "./stock.js";
 
 function fixture() {
   const db = openDatabase(":memory:");
@@ -58,5 +58,37 @@ test("shopping receipt creates one batch and safe retries do not duplicate stock
   assert.deepEqual(second,first);
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM stock_transactions WHERE item_id=?").get(first.itemId) as {n:number}).n,1);
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM stock_batches WHERE item_id=?").get(first.itemId) as {n:number}).n,1);
+  db.close();
+});
+
+test("overview returns actionable stock, expiry, and shopping state", () => {
+  const {db,homeId,locationId,itemId} = fixture();
+  db.prepare("UPDATE items SET reorder_point=5 WHERE id=?").run(itemId);
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:2,idempotencyKey:"overview-stock",expiryDate:"2020-01-01"});
+  saveShopping(db,homeId,{itemId,quantity:3});
+  const overview=getHomeOverview(db,homeId,{expiryDays:"30",limit:"10"});
+  assert.equal(overview.needsReplenishment.total,1);
+  assert.equal(overview.expired.total,1);
+  assert.equal(overview.shopping.total,2,"manual purchase and automatic recommendation are both pending");
+  assert.equal(overview.recommendedActions[0].type,"handle_expired");
+  assert.equal(overview.recommendedActions.some(action=>action.type==="buy_pending"),true);
+  db.close();
+});
+
+test("physical reconciliation records shortages by FEFO and gains as a new batch", () => {
+  const {db,homeId,locationId,itemId} = fixture();
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:10,idempotencyKey:"opening",expiryDate:"2027-01-01"});
+  const shortage={itemId,locationId,countedQuantity:7,idempotencyKey:"count-short"};
+  const first=reconcileStock(db,homeId,shortage);
+  assert.equal(first.difference,-3);
+  assert.equal(first.action,"issue");
+  assert.deepEqual(reconcileStock(db,homeId,shortage),first);
+  const gain=reconcileStock(db,homeId,{itemId,locationId,countedQuantity:12,idempotencyKey:"count-gain",manufacturedDate:"2026-09-01",expiryDate:"2027-09-01"});
+  assert.equal(gain.difference,5);
+  assert.equal(gain.action,"receipt");
+  assert.equal(gain.transactions.length,1);
+  const unchanged=reconcileStock(db,homeId,{itemId,locationId,countedQuantity:12,idempotencyKey:"count-same"});
+  assert.equal(unchanged.action,"none");
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM stock_transactions WHERE item_id=?").get(itemId) as {n:number}).n,3);
   db.close();
 });

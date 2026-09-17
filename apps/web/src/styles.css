@@ -511,6 +511,9 @@ input:disabled,select:disabled{background:#edf3f7!important;color:#768a9c!import
 .icon-picker summary::-webkit-details-marker{display:none}
 .icon-picker-change{margin-left:auto;font-size:12px;color:#287fa1}
 .icon-picker details[open] summary{margin-bottom:10px}
+.token-create input{height:40px}.token-create select{min-width:170px;height:40px;padding:0 10px;border:1px solid var(--aris-line-strong);border-radius:4px;background:#fff;font:inherit}
+.token-create button{height:40px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+@media(max-width:540px){.token-create select{width:100%;min-width:0}}
 .icon-picker details .icon-picker-grid{max-height:280px;overflow-y:auto;padding-right:4px}
 .item-form-modal{width:min(760px,calc(100vw - 40px));display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px}
 .item-form-modal>.modal-head,.item-form-modal>.batch-dates,.item-form-modal>.icon-picker,.item-form-modal>.full{grid-column:1/-1}
