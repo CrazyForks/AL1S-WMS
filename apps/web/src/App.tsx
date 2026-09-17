@@ -638,16 +638,16 @@ export function App() {
   const stockStatusFor = (item: Item) => {
     const quantity = balanceFor(item.id);
     const difference = quantity - item.reorderPoint;
-    if (quantity === 0 && difference < 0)
-      return { level: "empty", label: "缺货", priority: 0 };
     if (difference < 0)
       return {
         level: "low",
         label: "不足",
-        priority: 1,
+        priority: 0,
       };
+    if (quantity === 0)
+      return { level: "empty", label: "缺货", priority: 2 };
     if (difference === 0)
-      return { level: "warning", label: "临界", priority: 2 };
+      return { level: "warning", label: "临界", priority: 1 };
     return { level: "normal", label: "正常", priority: 3 };
   };
   const expiryStatusFor = (item: Item) => {

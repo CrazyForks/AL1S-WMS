@@ -283,8 +283,8 @@ tbody tr:hover td{background:#f3f9fd}
 .stock-status::before,.expiry-status::before{content:"";width:4px;height:8px;flex:none;background:currentColor;opacity:.8}
 .stock-status.warning{--status-ink:#8b6418;--status-fill:#fff6df;background:var(--status-fill);color:var(--status-ink)}
 .stock-status.expiring,.expiry-status.expiring{--status-ink:#a6531f;--status-fill:#fff0e3;background:var(--status-fill);color:var(--status-ink)}
-.stock-status.low{--status-ink:#ad5966;--status-fill:#fff1f3;background:var(--status-fill);color:var(--status-ink)}
-.stock-status.empty{--status-ink:#8f2639;--status-fill:#f8e3e7;background:var(--status-fill);color:var(--status-ink)}
+.stock-status.low{--status-ink:#8f2639;--status-fill:#f8e3e7;background:var(--status-fill);color:var(--status-ink)}
+.stock-status.empty{--status-ink:#607586;--status-fill:#edf2f5;background:var(--status-fill);color:var(--status-ink)}
 .stock-status.expired,.expiry-status.expired{--status-ink:#721c2d;--status-fill:#f4dce1;background:var(--status-fill);color:var(--status-ink)}
 
 .count-summary button{border-top:3px solid #9dcfe9;color:#5d748a}
