@@ -73,7 +73,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     const content=<>
       <span className="budget-tree-heading"><strong>{node.name}</strong>{budget!==undefined&&<small>{t("预算")} {money(budget)}</small>}</span>
       {amounts(node.actual,node.planned)}
-      {budget!==undefined&&<><span className="category-execution-bar"><i style={{width:node.actual/max*100+"%"}}/><em style={{width:node.planned/max*100+"%"}}/><b style={{left:(budget/max*100)+"%"}}/></span><span className={remaining<0?"budget-tree-over":"budget-tree-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</span></>}
+      {budget!==undefined&&<><span className="category-execution-bar"><i style={{width:node.actual/max*100+"%"}}/><em style={{width:node.planned/max*100+"%"}}/></span><span className={remaining<0?"budget-tree-over":"budget-tree-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</span></>}
       {budget!==undefined&&childBudgets.length>0&&<div className={flexibleRemaining<0?"allocation-split invalid":"allocation-split"}><span>{node.name} {money(allocation!.unallocated)}</span><span>{flexibleRemaining<0?t("超支"):t("可用")} {money(Math.abs(flexibleRemaining))}</span></div>}
     </>;
     return <div className="budget-spend-node" key={node.name}>
