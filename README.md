@@ -1,27 +1,75 @@
 # AL1S WMS
 
-AL1S WMS is a self-hosted household warehouse management system for managing inventory, purchases, storage, stock batches, expiration dates, and physical stocktaking. Inspired by [Grocy](http://grocy.info/).
+AL1S WMS is a lightweight, self-hosted warehouse manager for the home. It helps a household answer practical questions: what is on hand, where it is stored, what needs buying, what is nearing expiry, and how much has been spent this month.
+
+Stocktaking, purchasing, and finance share one data trail. Receiving a purchase creates a stock batch and transaction; recording its cost updates actual spending, price history, and inventory value. AL1S WMS also exposes an MCP interface so an AI agent can assist within an explicitly authorized scope.
+
+[中文文档](README.zh-CN.md)
+
+## Who It Is For
+
+- Households organizing food, household supplies, medicine, consumables, or storage rooms.
+- Anyone tracking the same item across rooms, cabinets, and refrigerator zones.
+- People who want purchase plans, actual costs, and monthly budgets to stay connected instead of maintaining separate spreadsheets.
+- Users who want an AI agent to help check stock, expiry, and replenishment suggestions while retaining approval over consequential actions.
 
 ## Features
 
-- Manage household items, categories, and hierarchical storage locations.
-- Track quantities across locations with a complete stock movement history.
-- Record each receipt as an independent batch with production and expiration dates.
-- Consume stock by a selected batch or automatically using FEFO.
-- Highlight expired, expiring, low-stock, and out-of-stock items.
-- Maintain shopping lists with automatic replenishment suggestions.
-- Receive purchased items directly into inventory.
-- Reconcile physical counts and record gains or losses automatically.
-- Track planned budgets, actual batch costs, channel price history, monthly spending, and inventory value.
-- Look up products by barcode using household data, a local cache, and Open Facts databases.
-- Give AI agents controlled access through MCP.
+### Inventory and Batches
+
+- Manage item names, barcodes, units, default locations, reorder points, and reorder quantities.
+- Organize household inventory through hierarchical locations and categories, with tree views for both.
+- Each receipt creates an independent batch with optional production date, expiry date, actual cost, purchase date, and purchase channel.
+- A batch may exist in several locations. Stock can be issued from a selected batch or automatically by FEFO, first expiry first out.
+- Record receipts, issues, transfers, stocktakes, and batch changes in a complete transaction history.
+- Item details bring together stock, batches, purchase records, price trends, and paginated transaction history.
+
+### Alerts and Stocktakes
+
+- Classify stock as insufficient, critical, or depleted from its reorder threshold.
+- Highlight expired and soon-to-expire batches so they can be used or handled first.
+- Filter inventory by item, location, status, and expiry; sort by receipt time or urgency.
+- Enter a physical count directly. Differences are recorded as a receipt or issue with a stocktake reason.
+
+### Purchasing
+
+- Create shopping items with a planned date, destination, purchase channel, and estimated amount; review them in a purchase calendar.
+- Linked inventory items bring along their category, unit, and default location. A selected channel can estimate cost from its latest recorded price.
+- Low stock produces dynamic replenishment suggestions. Suggestions do not create stock; they become a real shopping item only after a purchase is planned.
+- Receiving records the actual quantity, cost, and date as a new batch. The completed item leaves the active list while its purchase and finance history remain traceable.
+- Maintain purchase channels and look up products by barcode. Barcode lookup checks household data and local cache before public product sources.
+
+### Finance
+
+- Set a monthly total budget and category budgets; a future month can inherit the latest saved budget until it is changed.
+- Track actual spending, planned spending, forecast spending, remaining budget, and budget execution together.
+- Category budgets support parent and child categories: a parent cap covers descendant spending while more specific child caps can still be set.
+- Review monthly spending trends, budget comparisons, category and channel rankings, paginated purchase records, and inventory valuation.
+- Actual spending belongs to the month of stock receipt. Planned amounts affect the forecast only and never replace actual costs.
+- Item price history keeps batch-level and channel-level prices for comparing the latest, lowest, and average prices.
+
+### Multiple Homes and AI Agents
+
+- One account can create and switch between multiple homes. Inventory, locations, purchases, and finance data are isolated per home.
+- Household-scoped MCP tokens restrict an agent to one home; account-scoped tokens can select an authorized home.
+- MCP covers home status, items, locations, categories, batches, receipts, issues, transfers, stocktakes, purchasing, price history, and financial analysis.
+- Agents should obtain explicit confirmation before budget changes, deletions, or other consequential operations. Inventory writes use idempotency keys for safe retries.
+
+## What It Is Not For
+
+- Businesses, studios, stores, or other commercial settings that need approvals, supplier contracts, fulfillment, and complex role models.
+- Professional finance workflows such as bank synchronization, income, invoices, reimbursement, tax, freight allocation, coupons, double-entry bookkeeping, or currency conversion.
+- ERP, WMS, POS, or supply-chain workloads requiring bulk operations, warehouse slotting, wave picking, or compliance-grade audit controls.
+- Turning the household into a logistics center solely because a three-month-old cucumber appeared in the refrigerator. It can, however, help deal with that cucumber first.
 
 ## Deployment
 
-Build and run with Docker:
+### Docker
+
+Docker is required. The following commands build the image, start the service, and persist SQLite data in a Docker volume:
 
 ```bash
-gh repo clone RicterZ/AL1S-WMS
+git clone https://github.com/RicterZ/AL1S-WMS.git
 cd AL1S-WMS
 docker build -t al1s-wms .
 docker run -d \
@@ -32,59 +80,42 @@ docker run -d \
   al1s-wms
 ```
 
-Open `http://localhost:8080` and follow the initial setup.
+Open `http://localhost:8080` and complete the initial setup. The SQLite database is stored at `/data/al1s-wms.db` inside the container. Persist `/data`, or all household data will be lost when the container is recreated.
 
-The SQLite database is stored at `/data/al1s-wms.db`. Always persist `/data` with a Docker volume or bind mount.
-
-Set `APIZERO_API_KEY` to use an authenticated ApiZero barcode lookup; without it, AL1S WMS uses the anonymous free quota.
-
-To use a host directory:
+A host directory can be easier to integrate with an existing backup policy:
 
 ```bash
+mkdir -p /srv/al1s-wms/data
 docker run -d \
   --name al1s-wms \
   --restart unless-stopped \
   -p 8080:8080 \
-  -v /root/docker-services/data/al1s-wms:/data \
+  -v /srv/al1s-wms/data:/data \
   al1s-wms
 ```
 
-## Internationalization
+Back up `/data/al1s-wms.db` regularly. For an internet-facing deployment, place the application behind a reverse proxy with HTTPS and restrict access to its management surface.
 
-The web interface and user-facing API errors support Simplified Chinese
-(`zh-CN`) and English (`en-US`). A saved choice in Settings takes precedence;
-otherwise the browser language is used, with `zh-CN` as the fallback.
+### Optional Environment Variables
 
-Web requests send the selected locale in `Accept-Language`. API clients can send
-the same header explicitly. Response status codes, error `code` values, and
-validation details do not vary by language.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `8080` | HTTP service port. |
+| `BIND_ADDRESS` | `0.0.0.0` | HTTP listen address. |
+| `DATABASE_URL` | `/data/al1s-wms.db` in the image | SQLite database path. |
+| `STATIC_ROOT` | `/app/public` in the image | Web static asset directory. |
+| `APIZERO_API_KEY` | unset | Enables authenticated ApiZero barcode lookup; without it, AL1S WMS uses an anonymous quota and public sources. |
+| `BARCODE_USER_AGENT` | built-in value | Overrides the User-Agent used for public barcode data sources. |
 
-Names and historical business data are not translated. This includes user data,
-system category and location names, shopping channels, stock movement reasons,
-and audit records.
+## MCP and AI Agents
 
-For local verification, run:
-
-```bash
-pnpm typecheck
-pnpm test
-pnpm build
-```
-
-## MCP
-
-AL1S WMS exposes a Streamable HTTP MCP endpoint at:
+AL1S WMS exposes a Streamable HTTP MCP endpoint:
 
 ```text
 https://your-domain.example/mcp
 ```
 
-Create a Bearer Token from **Settings → MCP Access Tokens**.
-
-- A household-scoped token manages one household and does not require `homeId`.
-- An account-scoped token can manage multiple households and requires the agent to select a `homeId`.
-
-Example client configuration:
+Create a token under **Settings -> MCP Access Tokens**, then configure an MCP client:
 
 ```json
 {
@@ -99,15 +130,31 @@ Example client configuration:
 }
 ```
 
-Agents can use MCP to:
+An agent should begin with `get_home_context` and `get_home_overview`, then inspect items, locations, batches, or shopping plans for the task at hand. `get_agent_guide` describes the supported receipt, purchase, expiry-handling, and stocktake workflows.
 
-- Review household status, including replenishment needs, pending purchases, and expiring or expired batches.
-- Search and manage items, categories, and storage locations.
-- Resolve barcodes with `lookup_barcode` before creating or receiving items.
-- Record receipts, issues, transfers, and physical stock counts.
-- Create, update, delete, and receive shopping-list items.
-- Inspect batches and update batch metadata.
+- A household-scoped token needs no `homeId` and can access only its bound home.
+- An account-scoped token can access multiple homes, so the agent must select and provide a `homeId`.
+- Confirm targets and amounts before writes such as budgeting, deletion, issuing, or receiving. Every inventory write needs a unique `idempotencyKey`; reuse it only to retry the same operation.
 
-Agents should start with `get_home_context`, then call `get_home_overview`. The `get_agent_guide` tool describes the supported receipt, purchasing, expiration-handling, and stocktaking workflows.
+## Development and Verification
 
-All inventory writes require an `idempotencyKey`. Reuse a key only when retrying the exact same operation.
+The project uses a pnpm workspace. After installing dependencies:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+Run the full verification suite with:
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+## Internationalization
+
+The web interface and user-facing API errors support Simplified Chinese (`zh-CN`) and English (`en-US`). A saved choice in Settings takes precedence, then the browser language, with Simplified Chinese as the fallback.
+
+Clients send the selected locale in `Accept-Language`. Names, categories, locations, channels, and historical business data are user data and are not translated automatically.
