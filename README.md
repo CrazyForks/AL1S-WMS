@@ -21,8 +21,8 @@ AL1S WMS is a self-hosted household warehouse management system for managing inv
 Build and run with Docker:
 
 ```bash
-gh repo clone RicterZ/AL1S-ERP
-cd AL1S-ERP
+gh repo clone RicterZ/AL1S-WMS
+cd AL1S-WMS
 docker build -t al1s-erp .
 docker run -d \
   --name al1s-erp \
