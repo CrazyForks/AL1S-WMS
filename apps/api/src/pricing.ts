@@ -41,7 +41,7 @@ function budgetForMonth(db:DatabaseSync,homeId:string,month:string) {
 }
 function totalsByCategory(db:DatabaseSync,homeId:string,month:string,kind:"actual"|"planned") {
   const sql=kind==="actual"
-    ? "SELECT COALESCE(purchase_category,'其他') AS category,SUM(purchase_total_minor)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(purchased_date,1,7)=? AND purchase_total_minor IS NOT NULL GROUP BY COALESCE(purchase_category,'其他')"
+    ? "SELECT COALESCE(purchase_category,'其他') AS category,SUM(purchase_total_minor)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(received_at,1,7)=? AND purchase_total_minor IS NOT NULL GROUP BY COALESCE(purchase_category,'其他')"
     : "SELECT COALESCE(category,'其他') AS category,SUM(estimated_total_minor)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL GROUP BY COALESCE(category,'其他')";
   return db.prepare(sql).all(homeId,month) as MoneyRow[];
 }
@@ -89,7 +89,7 @@ export function saveFinancialBudget(db:DatabaseSync,homeId:string,raw:unknown) {
 export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const {month}=financialFilters.parse(raw);
   const home=requireHome(db,homeId);
-  const actual=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(purchased_date,1,7)=? AND purchase_total_minor IS NOT NULL").get(homeId,month) as {total:number}).total;
+  const actual=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(received_at,1,7)=? AND purchase_total_minor IS NOT NULL").get(homeId,month) as {total:number}).total;
   const planned=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL").get(homeId,month) as {total:number}).total;
   const budget=budgetForMonth(db,homeId,month);
   const categoryBudgets=budget.categoryBudgets;
@@ -110,11 +110,11 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const categoryDistribution=mergeDistribution(rollup(actualByCategory),rollup(plannedByCategory));
   for(const categoryBudget of categoryBudgets)if(!categoryDistribution.some(row=>row.category===categoryBudget.category))categoryDistribution.push({category:categoryBudget.category,actual:0,planned:0});
   const byCategory=categoryDistribution.map(row=>({...row,budget:categoryBudgets.find(budget=>budget.category===row.category)?.amount??null})).sort((left,right)=>(right.actual+right.planned)-(left.actual+left.planned)||left.category.localeCompare(right.category));
-  const byChannel=db.prepare("SELECT b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,SUM(b.purchase_total_minor)/100.0 AS total FROM stock_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND substr(b.purchased_date,1,7)=? AND b.purchase_total_minor IS NOT NULL GROUP BY b.channel_id,c.name ORDER BY total DESC").all(homeId,month);
-  const purchases=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,COALESCE(b.purchase_category,i.category) AS category,b.purchased_date AS purchaseDate,b.purchase_total_minor/100.0 AS totalPrice,b.purchase_currency AS currency,b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,b.shopping_item_id AS shoppingItemId,s.estimated_total_minor/100.0 AS estimatedTotal,
+  const byChannel=db.prepare("SELECT b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,SUM(b.purchase_total_minor)/100.0 AS total FROM stock_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND substr(b.received_at,1,7)=? AND b.purchase_total_minor IS NOT NULL GROUP BY b.channel_id,c.name ORDER BY total DESC").all(homeId,month);
+  const purchases=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,COALESCE(b.purchase_category,i.category) AS category,substr(b.received_at,1,10) AS receivedDate,b.purchased_date AS purchaseDate,b.purchase_total_minor/100.0 AS totalPrice,b.purchase_currency AS currency,b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,b.shopping_item_id AS shoppingItemId,s.estimated_total_minor/100.0 AS estimatedTotal,
     COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity
     FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN shopping_channels c ON c.id=b.channel_id LEFT JOIN shopping_list s ON s.id=b.shopping_item_id
-    WHERE b.home_id=? AND substr(b.purchased_date,1,7)=? AND b.purchase_total_minor IS NOT NULL ORDER BY b.purchased_date DESC,b.received_at DESC LIMIT 200`).all(homeId,month) as {batchId:string;quantity:number;totalPrice:number;estimatedTotal:number|null}[];
+    WHERE b.home_id=? AND substr(b.received_at,1,7)=? AND b.purchase_total_minor IS NOT NULL ORDER BY b.received_at DESC LIMIT 200`).all(homeId,month) as {batchId:string;quantity:number;totalPrice:number;estimatedTotal:number|null}[];
   const purchaseRecords=purchases.map(row=>({...row,unitPrice:row.quantity>0?Math.round(row.totalPrice/row.quantity*100)/100:null,variance:row.estimatedTotal==null?null:Math.round((row.totalPrice-row.estimatedTotal)*100)/100}));
   const valueRows=db.prepare(`SELECT * FROM (${batchBalanceQuery}) WHERE homeId=? AND quantity>0`).all(homeId) as {batchId:string;itemId:string;itemName:string;itemCategory:string;baseUnit:string;locationId:string|null;locationName:string|null;quantity:number;initialQuantity:number;purchaseTotalMinor:number|null;purchaseCategory:string|null}[];
   const known=new Set<string>(),unknown=new Set<string>();let inventoryValue=0;
@@ -132,7 +132,7 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const trend=[];
   for(let offset=-11;offset<=0;offset++) {
     const point=shiftMonth(month,offset);
-    const spent=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(purchased_date,1,7)=? AND purchase_total_minor IS NOT NULL").get(homeId,point) as {total:number}).total;
+    const spent=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(received_at,1,7)=? AND purchase_total_minor IS NOT NULL").get(homeId,point) as {total:number}).total;
     const pending=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL").get(homeId,point) as {total:number}).total;
     const limit=budgetForMonth(db,homeId,point);
     trend.push({month:point,actual:spent,planned:pending,budget:limit.total});

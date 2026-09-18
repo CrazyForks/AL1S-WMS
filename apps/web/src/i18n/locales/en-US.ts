@@ -563,5 +563,10 @@ export const enUS = {
   为分类预留采购额度: "Reserve a purchase allowance for a category",
   当前已分配额度: "Currently allocated",
   合计: "Total",
+  入库日期决定实际支出归属月份: "Actual spending is assigned by stock receipt date.",
+  上个月: "Previous month",
+  下个月: "Next month",
+  逾期: "Overdue",
+  入库日期: "Receipt date",
   支出明细: "Spending details",
 } as const satisfies Record<keyof typeof zhCN, string>;

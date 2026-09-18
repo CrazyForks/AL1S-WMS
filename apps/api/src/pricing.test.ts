@@ -1,11 +1,35 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { test } from "node:test";
+import { test, beforeEach, afterEach, mock } from "node:test";
 import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
 import { financialDashboard, financialSummary, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
 import { listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
 import { recordStock } from "./stock.js";
+
+beforeEach(()=>mock.timers.enable({apis:["Date"],now:new Date("2026-09-18T12:00:00Z")}));
+afterEach(()=>mock.timers.reset());
+
+test("financial spending follows receipt time, not planned or purchase dates",()=>{
+  const {db,homeId,itemId,channelId}=fixture();
+  const purchase=saveShopping(db,homeId,{itemId,quantity:2,channelId,plannedDate:"2026-08-01",estimatedTotal:100});
+  assert.equal(financialDashboard(db,homeId,{month:"2026-08"}).spendingTotal,0);
+  receiveShopping(db,homeId,purchase.id,{actualQuantity:2,totalPrice:95,purchaseDate:"2026-07-01",idempotencyKey:"late-receipt"});
+  const current=financialDashboard(db,homeId,{month:"2026-09"});
+  assert.equal(current.spendingTotal,95);
+  assert.equal(current.byCategory[0].actual,95);
+  assert.equal(current.byChannel[0].total,95);
+  assert.equal(current.purchases.length,1);
+  assert.equal(current.trend.at(-1)?.actual,95);
+  for(const month of ["2026-07","2026-08"]){
+    const previous=financialDashboard(db,homeId,{month});
+    assert.equal(previous.spendingTotal,0);
+    assert.equal(previous.purchases.length,0);
+    assert.equal(previous.estimatedTotal,0);
+  }
+  assert.equal(db.prepare("SELECT planned_date FROM shopping_list WHERE id=?").get(purchase.id)?.planned_date,"2026-08-01");
+  db.close();
+});
 
 function fixture() {
   const db=openDatabase(":memory:"),homeId=randomUUID(),locationId=randomUUID(),itemId=randomUUID();

@@ -13,6 +13,7 @@ import { BarcodeScanner } from "./BarcodeScanner.js";
 import { ItemCombobox } from "./ItemCombobox.js";
 import { ItemDetail } from "./ItemDetail.js";
 import { spendingTrendScale } from "./spendingTrend.js";
+import { adjacentMonth, isPurchaseOverdue } from "./purchaseSchedule.js";
 import { BudgetCategoryPicker, BudgetAllocationEditor, BudgetExecution } from "./BudgetCategories.js";
 import { budgetAllocations, completeBudgetTree, setBudgetAllocation, removeBudgetAllocation, type CategorySpending } from "./budgetTree.js";
 import {
@@ -205,7 +206,7 @@ type ShoppingChannel = {
   isSystem: boolean;
   sortOrder: number;
 };
-type FinancialSummary={month:string;currency:string;budgetTotal:number|null;budgetSourceMonth:string|null;budgetMode:"none"|"explicit"|"inherited";spendingTotal:number;estimatedTotal:number;forecastTotal:number;remainingBudget:number|null;variance:number;inventoryValue:number;pricedBatchCount:number;unknownBatchCount:number;categoryBudgets:{category:string;amount:number}[];categorySpending:CategorySpending[];byCategory:{category:string;actual:number;planned:number;budget:number|null}[];byChannel:{channelId:string|null;channelName:string;total:number}[];purchases:{batchId:string;itemId:string;itemName:string;category:string;purchaseDate:string;quantity:number;unitPrice:number|null;totalPrice:number;channelName:string;estimatedTotal:number|null;variance:number|null}[];trend:{month:string;actual:number;planned:number;budget:number|null}[];valuation:{byItem:{itemId:string;itemName:string;category:string;quantity:number;unit:string;locationCount:number;value:number}[];byCategory:{category:string;value:number}[];byLocation:{locationId:string|null;locationName:string;value:number}[]}};
+type FinancialSummary={month:string;currency:string;budgetTotal:number|null;budgetSourceMonth:string|null;budgetMode:"none"|"explicit"|"inherited";spendingTotal:number;estimatedTotal:number;forecastTotal:number;remainingBudget:number|null;variance:number;inventoryValue:number;pricedBatchCount:number;unknownBatchCount:number;categoryBudgets:{category:string;amount:number}[];categorySpending:CategorySpending[];byCategory:{category:string;actual:number;planned:number;budget:number|null}[];byChannel:{channelId:string|null;channelName:string;total:number}[];purchases:{batchId:string;itemId:string;itemName:string;category:string;purchaseDate:string;receivedDate:string;quantity:number;unitPrice:number|null;totalPrice:number;channelName:string;estimatedTotal:number|null;variance:number|null}[];trend:{month:string;actual:number;planned:number;budget:number|null}[];valuation:{byItem:{itemId:string;itemName:string;category:string;quantity:number;unit:string;locationCount:number;value:number}[];byCategory:{category:string;value:number}[];byLocation:{locationId:string|null;locationName:string;value:number}[]}};
 type ApiToken = {
   id: string;
   name: string;
@@ -2045,8 +2046,8 @@ export function App() {
         {activePage === "finance" && financeDashboard && (
           <div className="finance-page">
             <section className="finance-toolbar">
-              <label>{t("统计月份")}<input type="month" value={financeMonth} onChange={event=>setFinanceMonth(event.target.value)} /></label>
-              <span>{t("采购日期决定实际支出归属月份")}</span>
+              <div className="finance-month-nav"><button type="button" className="secondary" aria-label={t("上个月")} onClick={()=>setFinanceMonth(month=>adjacentMonth(month,-1))}><ArrowLeft size={16}/></button><label>{t("统计月份")}<input type="month" value={financeMonth} onChange={event=>{if(event.target.value)setFinanceMonth(event.target.value);}} /></label><button type="button" className="secondary" aria-label={t("下个月")} onClick={()=>setFinanceMonth(month=>adjacentMonth(month,1))}><ArrowRight size={16}/></button></div>
+              <span>{t("入库日期决定实际支出归属月份")}</span>
             </section>
             <section className="finance-kpis">
               {[
@@ -2077,7 +2078,7 @@ export function App() {
               <BudgetExecution key={`${getHomeId()}:${financeMonth}`} categories={categories} spending={financeDashboard.categorySpending??[]} budgets={financeDashboard.categoryBudgets} currency={financeDashboard.currency}/>
               <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("渠道支出")}</h2><p className="muted">{t("已完成采购")}</p></div></div><div className="bar-list">{financeDashboard.byChannel.length?financeDashboard.byChannel.map(row=>{const max=Math.max(1,...financeDashboard.byChannel.map(item=>item.total));return <div className="bar-row" key={row.channelId??"none"}><span>{row.channelName}</span><div><i style={{width:`${row.total/max*100}%`}} /></div><b>{formatMoney(row.total,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无渠道支出")}</p>}</div></section>
             </section>
-              <section className="panel finance-purchases"><div className="panel-head"><div><h2>{t("采购流水")}</h2><p className="muted">{t("已录入成本的入库批次")}</p></div></div><div className="table-wrap"><table><thead><tr><th>{t("日期")}</th><th>{t("物资")}</th><th>{t("分类")}</th><th>{t("渠道")}</th><th>{t("数量")}</th><th>{t("单价")}</th><th>{t("实付总价")}</th><th>{t("预计差异")}</th></tr></thead><tbody>{financeDashboard.purchases.length?financeDashboard.purchases.map(row=><tr key={row.batchId}><td>{row.purchaseDate}</td><td><button type="button" className="item-link" onClick={()=>openItemDetail(row.itemId)}>{row.itemName}</button></td><td>{row.category}</td><td>{row.channelName}</td><td>{row.quantity}</td><td>{row.unitPrice===null?t("未知"):formatMoney(row.unitPrice,financeDashboard.currency)}</td><td>{formatMoney(row.totalPrice,financeDashboard.currency)}</td><td className={row.variance!==null&&row.variance>0?"negative":""}>{row.variance===null?"-":formatMoney(row.variance,financeDashboard.currency)}</td></tr>):<tr><td colSpan={8} className="empty">{t("本月暂无采购流水")}</td></tr>}</tbody></table></div></section>
+              <section className="panel finance-purchases"><div className="panel-head"><div><h2>{t("采购流水")}</h2><p className="muted">{t("已录入成本的入库批次")}</p></div></div><div className="table-wrap"><table><thead><tr><th>{t("入库日期")}</th><th>{t("物资")}</th><th>{t("分类")}</th><th>{t("渠道")}</th><th>{t("数量")}</th><th>{t("单价")}</th><th>{t("实付总价")}</th><th>{t("预计差异")}</th></tr></thead><tbody>{financeDashboard.purchases.length?financeDashboard.purchases.map(row=><tr key={row.batchId}><td>{row.receivedDate}</td><td><button type="button" className="item-link" onClick={()=>openItemDetail(row.itemId)}>{row.itemName}</button></td><td>{row.category}</td><td>{row.channelName}</td><td>{row.quantity}</td><td>{row.unitPrice===null?t("未知"):formatMoney(row.unitPrice,financeDashboard.currency)}</td><td>{formatMoney(row.totalPrice,financeDashboard.currency)}</td><td className={row.variance!==null&&row.variance>0?"negative":""}>{row.variance===null?"-":formatMoney(row.variance,financeDashboard.currency)}</td></tr>):<tr><td colSpan={8} className="empty">{t("本月暂无采购流水")}</td></tr>}</tbody></table></div></section>
             <section className="panel finance-valuation"><div className="panel-head"><div><h2>{t("库存价值")}</h2><p className="muted">{t("按剩余数量和批次单位成本估值")}</p></div><strong>{formatMoney(financeDashboard.inventoryValue,financeDashboard.currency)}</strong></div><div className="valuation-meta"><span>{t("已计价批次")} {financeDashboard.pricedBatchCount}</span><span>{t("未知成本批次")} {financeDashboard.unknownBatchCount}</span><div className="valuation-switch" role="tablist" aria-label={t("库存价值")}><button type="button" role="tab" aria-selected={financeValuationView==="item"} className={financeValuationView==="item"?"active":""} onClick={()=>setFinanceValuationView("item")}>{t("按物资")}</button><button type="button" role="tab" aria-selected={financeValuationView==="category"} className={financeValuationView==="category"?"active":""} onClick={()=>setFinanceValuationView("category")}>{t("按分类")}</button><button type="button" role="tab" aria-selected={financeValuationView==="location"} className={financeValuationView==="location"?"active":""} onClick={()=>setFinanceValuationView("location")}>{t("按地点")}</button></div></div><div className="valuation-list">{financeValuationView==="item"?financeDashboard.valuation.byItem.map(row=><div className="valuation-row" key={row.itemId}><div><button type="button" className="item-link" onClick={()=>openItemDetail(row.itemId)}>{row.itemName}</button><small>{row.category} · {row.quantity} {displayUnit(row.unit)} · {t("{{count}} 个地点",{count:row.locationCount})}</small></div><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):(financeValuationView==="category"?financeDashboard.valuation.byCategory.map(row=><div className="valuation-row" key={row.category}><strong>{row.category}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):financeDashboard.valuation.byLocation.map(row=><div className="valuation-row" key={row.locationId??"none"}><strong>{row.locationName}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>))}</div></section>
           </div>
         )}
@@ -2557,6 +2558,7 @@ export function App() {
                               <b>{shoppingChannelName(item)}</b>
                               <small>
                                 {item.plannedDate || t("未安排日期")}
+                                {isPurchaseOverdue(item)&&<span className="purchase-overdue">{t("逾期")}</span>}
                               </small>
                             </span>
                           </td>
@@ -2737,10 +2739,10 @@ export function App() {
                         <div>
                           {entries.slice(0, 2).map((item) => (
                             <span
-                              className={item.completed ? "completed" : ""}
+                              className={item.completed ? "completed" : isPurchaseOverdue(item)?"overdue":""}
                               key={item.id}
                             >
-                              <b>{item.name}</b>
+                              <b>{item.name}{isPurchaseOverdue(item)&&<span className="purchase-overdue">{t("逾期")}</span>}</b>
                               <small>{shoppingChannelName(item)}</small>
                             </span>
                           ))}

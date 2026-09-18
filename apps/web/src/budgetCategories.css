@@ -10,6 +10,10 @@
 .budget-category-label b{font-size:12px}.budget-category-label small{font-size:10px;color:var(--aris-muted);font-weight:400}
 .category-budget-entry:has(.budget-category-label){padding-top:9px;padding-bottom:9px}
 .budget-execution-tree{min-width:0}
+.finance-month-nav{display:flex;align-items:center;gap:8px;min-width:0}
+.finance-month-nav>.secondary{display:grid;place-items:center;flex:none;width:30px;height:32px;padding:0}
+.purchase-overdue{display:inline-block;margin-left:5px;padding:1px 5px;background:#fff0dc;color:#956225;font-size:10px;font-weight:600;white-space:nowrap}
+.calendar-day .overdue{border-left:2px solid #c99a55}
 .trend-stack i.over{background:#b35a60}.trend-stack em.over{background:#e4b3b6}
 .finance-trend .trend-stack b{border-top-color:#8064ad}
 .finance-trend .chart-legend i.budget{background:#8064ad}
