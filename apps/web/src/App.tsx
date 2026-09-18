@@ -915,7 +915,7 @@ export function App() {
         priority: 0,
       };
     if (quantity === 0)
-      return { level: "empty", label: t("缺货"), priority: 2 };
+      return { level: "empty", label: t("耗尽"), priority: 2 };
     if (difference === 0)
       return { level: "warning", label: t("临界"), priority: 1 };
     return { level: "normal", label: t("正常"), priority: 3 };
@@ -3031,19 +3031,6 @@ export function App() {
                 <strong>{items.length}</strong>
               </button>
               <button
-                className={stockStatusFilter === "empty" ? "active warning" : ""}
-                onClick={() => {
-                  setStockStatusFilter("empty");
-                  setExpiryFilter("");
-                }}
-              >
-                <span className="count-summary-copy">
-                  <b>{t("缺货")}</b>
-                  <small>{t("库存为 0，无补货要求")}</small>
-                </span>
-                <strong>{emptyStockCount}</strong>
-              </button>
-              <button
                 className={
                   stockStatusFilter === "replenishment" ? "active danger" : ""
                 }
@@ -3072,6 +3059,19 @@ export function App() {
                   <small>{t("等于最低库存")}</small>
                 </span>
                 <strong>{criticalStockCount}</strong>
+              </button>
+              <button
+                className={stockStatusFilter === "empty" ? "active warning" : ""}
+                onClick={() => {
+                  setStockStatusFilter("empty");
+                  setExpiryFilter("");
+                }}
+              >
+                <span className="count-summary-copy">
+                  <b>{t("耗尽")}</b>
+                  <small>{t("当前库存为 0")}</small>
+                </span>
+                <strong>{emptyStockCount}</strong>
               </button>
               <button
                 className={expiryFilter === "expiring" ? "active" : ""}
@@ -3146,9 +3146,9 @@ export function App() {
                     }
                   >
                     <option value="">{t("全部状态")}</option>
-                    <option value="empty">{t("缺货")}</option>
                     <option value="replenishment">{t("不足")}</option>
                     <option value="warning">{t("临界")}</option>
+                    <option value="empty">{t("耗尽")}</option>
                     <option value="normal">{t("正常")}</option>
                   </select>
                 </label>
