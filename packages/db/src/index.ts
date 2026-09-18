@@ -69,6 +69,7 @@ export function openDatabase(
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'admin',
+      avatar TEXT NOT NULL DEFAULT 'user',
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS item_events (
@@ -205,6 +206,9 @@ export function openDatabase(
   const tokenColumns = db.prepare("PRAGMA table_info(api_tokens)").all() as { name: string }[];
   if (!tokenColumns.some(column => column.name === "home_id"))
     db.exec("ALTER TABLE api_tokens ADD COLUMN home_id TEXT REFERENCES homes(id)");
+  const userColumns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+  if (!userColumns.some(column => column.name === "avatar"))
+    db.exec("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT 'user'");
   const itemColumns = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
   if (!itemColumns.some(column => column.name === "icon")) db.exec("ALTER TABLE items ADD COLUMN icon TEXT");
   if (!itemColumns.some(column => column.name === "barcode")) db.exec("ALTER TABLE items ADD COLUMN barcode TEXT");

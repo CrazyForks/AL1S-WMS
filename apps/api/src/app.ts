@@ -82,7 +82,7 @@ function sessionUser(request: any) {
   if (!id) return undefined;
   return db
     .prepare(
-      "SELECT users.id, users.username, users.role FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.id = ? AND sessions.expires_at > ?",
+      "SELECT users.id, users.username, users.role, users.avatar FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.id = ? AND sessions.expires_at > ?",
     )
     .get(id, new Date().toISOString());
 }
@@ -211,6 +211,13 @@ app.get(
   async (request, reply) =>
     sessionUser(request) ?? sendCodeError(reply,localeOf(request),401,"UNAUTHENTICATED","error.unauthenticated"),
 );
+app.patch<{Body:unknown}>("/api/v1/auth/me",async(request,reply)=>{
+  const user=sessionUser(request) as {id:string}|undefined;
+  if(!user)return sendCodeError(reply,localeOf(request),401,"UNAUTHENTICATED","error.unauthenticated");
+  const input=z.object({avatar:z.enum(["user","woman","cat","dog","bot"])}).strict().parse(request.body);
+  db.prepare("UPDATE users SET avatar=? WHERE id=?").run(input.avatar,user.id);
+  return {...user,avatar:input.avatar};
+});
 app.post<{Body:unknown}>("/api/v1/auth/password",async(request,reply)=>{
   const user=sessionUser(request) as {id:string}|undefined;
   if(!user)return sendCodeError(reply,localeOf(request),401,"UNAUTHENTICATED","error.unauthenticated");

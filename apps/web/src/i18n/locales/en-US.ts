@@ -182,6 +182,13 @@ export const enUS = {
   "＋ 添加物资": "+ Add item",
   扫描条码: "Scanbarcode",
   修改密码: "Changepassword",
+  头像: "Avatar",
+  男: "Male",
+  女: "Female",
+  猫: "Cat",
+  狗: "Dog",
+  机器人: "Robot",
+  头像保存失败: "Unable to save avatar",
   验证当前密码后设置新密码:
     "Verify your current password before setting a new one",
   当前密码: "Current password",

@@ -56,6 +56,13 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal((await app.inject({method:"DELETE",url:`/api/v1/auth/tokens/${createdToken.json().id}`,headers:{cookie:`session=${sessionId}`}})).statusCode,200);
   const activeTokens=(await app.inject({method:"GET",url:"/api/v1/auth/tokens",headers:{cookie:`session=${sessionId}`}})).json() as {id:string}[];
   assert.equal(activeTokens.some(token=>token.id===createdToken.json().id),false);
+  const currentUser=(await app.inject({method:"GET",url:"/api/v1/auth/me",headers:{cookie:`session=${sessionId}`}})).json() as {avatar:string};
+  assert.equal(currentUser.avatar,"user");
+  const avatarUpdate=await app.inject({method:"PATCH",url:"/api/v1/auth/me",headers:{cookie:`session=${sessionId}`},payload:{avatar:"bot"}});
+  assert.equal(avatarUpdate.statusCode,200);
+  assert.equal(avatarUpdate.json().avatar,"bot");
+  assert.equal((await app.inject({method:"GET",url:"/api/v1/auth/me",headers:{cookie:`session=${sessionId}`}})).json().avatar,"bot");
+  assert.equal((await app.inject({method:"PATCH",url:"/api/v1/auth/me",headers:{cookie:`session=${sessionId}`},payload:{avatar:"invalid"}})).statusCode,400);
   assert.equal((await app.inject({method:"POST",url:"/api/v1/auth/password",headers:{cookie:`session=${sessionId}`},payload:{currentPassword:"wrong",newPassword:"new-password"}})).statusCode,401);
   assert.equal((await app.inject({method:"POST",url:"/api/v1/auth/password",headers:{cookie:`session=${sessionId}`},payload:{currentPassword:"old-password",newPassword:"new-password"}})).statusCode,200);
   assert.equal((await app.inject({method:"POST",url:"/api/v1/auth/login",payload:{username,password:"old-password"}})).statusCode,401);

@@ -48,6 +48,11 @@ import {
   SlidersHorizontal,
   TriangleAlert,
   Trash2,
+  UserRound,
+  Venus,
+  Cat,
+  Dog,
+  Bot,
   Wallet,
   X,
 } from "lucide-react";
@@ -62,6 +67,19 @@ const pagePaths = {
   profile: "/profile",
 } as const;
 type Page = keyof typeof pagePaths;
+type UserAvatar = "user" | "woman" | "cat" | "dog" | "bot";
+type CurrentUser = { id:string; username:string; role:string; avatar:UserAvatar };
+const avatarOptions: {value:UserAvatar;label:string;Icon:typeof UserRound}[] = [
+  {value:"user",label:"男",Icon:UserRound},
+  {value:"woman",label:"女",Icon:Venus},
+  {value:"cat",label:"猫",Icon:Cat},
+  {value:"dog",label:"狗",Icon:Dog},
+  {value:"bot",label:"机器人",Icon:Bot},
+];
+function AvatarIcon({avatar,size=16}:{avatar?:UserAvatar|null;size?:number}) {
+  const Icon=avatarOptions.find(option=>option.value===avatar)?.Icon??UserRound;
+  return <Icon size={size} aria-hidden="true"/>;
+}
 function pageFromUrl(): Page {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   return (
@@ -621,6 +639,7 @@ export function App() {
     home?: { id: string; name: string; icon?: string;defaultCurrency?:string };
   } | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
+  const [currentUser,setCurrentUser]=useState<CurrentUser|null>(null);
   const [homes, setHomes] = useState<
     { id: string; name: string; icon?: string;defaultCurrency?:string }[]
   >([]);
@@ -892,12 +911,19 @@ export function App() {
       .then((data) => {
         setSetup(data);
         if (data.complete)
-          apiFetch("/api/v1/auth/me").then((response) =>
-            setAuthenticated(response.ok),
-          );
+          apiFetch("/api/v1/auth/me").then(async(response) => {
+            setAuthenticated(response.ok);
+            if(response.ok)setCurrentUser(await response.json() as CurrentUser);
+          });
       })
       .catch(() => setSetup({ complete: false }));
   }, []);
+  useEffect(()=>{
+    if(!authenticated||currentUser)return;
+    apiFetch("/api/v1/auth/me").then(async response=>{
+      if(response.ok)setCurrentUser(await response.json() as CurrentUser);
+    }).catch(()=>undefined);
+  },[authenticated,currentUser]);
   useEffect(() => {
     if (!authenticated) return;
     apiFetch("/api/v1/homes")
@@ -1146,6 +1172,18 @@ export function App() {
       />
     );
   if (!authenticated) return <Login onLogin={() => setAuthenticated(true)} />;
+
+  async function updateAvatar(avatar:UserAvatar) {
+    if(!currentUser||avatar===currentUser.avatar)return;
+    setBusy(true);
+    try {
+      const response=await apiFetch("/api/v1/auth/me",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({avatar})});
+      if(!response.ok)throw new Error(t("头像保存失败"));
+      setCurrentUser(await response.json() as CurrentUser);
+    } catch(error) {
+      setNotice(error instanceof Error?error.message:t("头像保存失败"));
+    } finally {setBusy(false);}
+  }
 
   async function addItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2025,7 +2063,7 @@ export function App() {
             onClick={() => navigate("profile")}
             aria-label={t("账号与 MCP 令牌")}
           >
-            {t("我")}
+            <AvatarIcon avatar={currentUser?.avatar} size={17}/>
           </button>
         </div>
       </header>
@@ -2151,6 +2189,19 @@ export function App() {
             <FinancePurchases key={getHomeId()} homeId={getHomeId()} revision={financeDashboard} onOpenItem={openItemDetail}/>
             <section className="panel finance-valuation"><div className="panel-head"><div><h2>{t("库存价值")}</h2><p className="muted">{t("按剩余数量和批次单位成本估值")}</p></div><strong>{formatMoney(financeDashboard.inventoryValue,financeDashboard.currency)}</strong></div><div className="valuation-meta"><span>{t("已计价批次")} {financeDashboard.pricedBatchCount}</span><span>{t("未知成本批次")} {financeDashboard.unknownBatchCount}</span><div className="valuation-switch" role="tablist" aria-label={t("库存价值")}><button type="button" role="tab" aria-selected={financeValuationView==="item"} className={financeValuationView==="item"?"active":""} onClick={()=>setFinanceValuationView("item")}>{t("按物资")}</button><button type="button" role="tab" aria-selected={financeValuationView==="category"} className={financeValuationView==="category"?"active":""} onClick={()=>setFinanceValuationView("category")}>{t("按分类")}</button><button type="button" role="tab" aria-selected={financeValuationView==="location"} className={financeValuationView==="location"?"active":""} onClick={()=>setFinanceValuationView("location")}>{t("按地点")}</button></div></div><div className="valuation-list">{financeValuationView==="item"?financeDashboard.valuation.byItem.map(row=><div className="valuation-row" key={row.itemId}><div><button type="button" className="item-link" onClick={()=>openItemDetail(row.itemId)}>{row.itemName}</button><small>{row.category} · {row.quantity} {displayUnit(row.unit)} · {t("{{count}} 个地点",{count:row.locationCount})}</small></div><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):(financeValuationView==="category"?financeDashboard.valuation.byCategory.map(row=><div className="valuation-row" key={row.category}><strong>{row.category}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):financeDashboard.valuation.byLocation.map(row=><div className="valuation-row" key={row.locationId??"none"}><strong>{row.locationName}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>))}</div></section>
           </div>
+        )}
+        {activePage === "profile" && (
+          <section className="panel avatar-panel">
+            <div className="panel-head">
+              <div>
+                <h2>{t("头像")}</h2>
+                <p className="muted">{currentUser?.username}</p>
+              </div>
+            </div>
+            <div className="avatar-picker" role="radiogroup" aria-label={t("头像")}>
+              {avatarOptions.map(({value,label,Icon})=><button key={value} type="button" role="radio" aria-checked={currentUser?.avatar===value} className={currentUser?.avatar===value?"selected":""} disabled={busy} onClick={()=>void updateAvatar(value)} title={t(label)}><Icon size={20}/><span>{t(label)}</span></button>)}
+            </div>
+          </section>
         )}
         {activePage === "profile" && (
           <section className="panel language-panel">
