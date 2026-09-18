@@ -481,4 +481,5 @@ export const enUS = {
   默认币种: "Default currency",
   最近单价: "Latest unit price",
   "价值 {{amount}}": "Value {{amount}}",
+  默认币种已更新: "Default currency updated",
 } as const satisfies Record<keyof typeof zhCN, string>;

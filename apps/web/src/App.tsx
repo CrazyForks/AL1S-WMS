@@ -1444,6 +1444,19 @@ export function App() {
     if (response.ok) setApiTokens(await response.json());
     else setNotice(t("无法加载 MCP 令牌"));
   }
+  async function updateHomeCurrency(home:{id:string;name:string;icon?:string;defaultCurrency?:string},defaultCurrency:string) {
+    if(busy||defaultCurrency===home.defaultCurrency)return;
+    setBusy(true);setHomeNotice("");
+    try {
+      const response=await apiFetch(`/api/v1/homes/${home.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:home.name,icon:home.icon||"house",defaultCurrency})});
+      const updated=await response.json();
+      if(!response.ok)throw new Error(updated.message||t("保存失败"));
+      setHomes(previous=>previous.map(value=>value.id===updated.id?updated:value));
+      if(updated.id===setup?.home?.id)setSetup({complete:true,home:updated});
+      setHomeNotice(t("默认币种已更新"));
+    } catch(error) {setHomeNotice(error instanceof Error?error.message:t("保存失败"));}
+    finally {setBusy(false);}
+  }
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -2018,6 +2031,7 @@ export function App() {
                       {home.id === setup.home?.id ? t("当前使用") : t("可切换")}
                     </small>
                   </div>
+                  <label className="home-card-currency">{t("默认币种")}<select value={home.defaultCurrency||"CNY"} disabled={busy} onChange={event=>void updateHomeCurrency(home,event.target.value)}>{["CNY","USD","EUR","JPY","GBP","HKD"].map(currency=><option key={currency} value={currency}>{currency}</option>)}</select></label>
                   <div className="home-card-actions">
                     <button
                       className="secondary"
