@@ -2,13 +2,13 @@ export type BudgetCategory = { id: string; parentId: string | null; name: string
 export type CategorySpending = { category: string; actual: number; planned: number };
 export type BudgetAllocation = {category:string;amount:number|string};
 
-// Theme-bound teal/blue tones. Low-discrepancy sequences vary hue and lightness
-// without cycling a short palette; every group restarts at the same index.
+// Start with the theme's teal, then space hues by the golden angle for contrast.
+// Controlled saturation/lightness keep the full spectrum visually cohesive.
 export function budgetSegmentColor(index:number):string {
   const ordinal=Number.isFinite(index)?Math.max(0,Math.floor(index)):0;
-  const hue=188+((ordinal*0.61803398875)%1)*38;
-  const saturation=36+((ordinal*0.41421356237)%1)*16;
-  const lightness=38+((ordinal*0.75487766625)%1)*22;
+  const hue=(188+ordinal*137.50776405003785)%360;
+  const saturation=40+((ordinal*0.41421356237)%1)*14;
+  const lightness=42+((ordinal*0.75487766625)%1)*10;
   return `hsl(${hue.toFixed(3)} ${saturation.toFixed(3)}% ${lightness.toFixed(3)}%)`;
 }
 

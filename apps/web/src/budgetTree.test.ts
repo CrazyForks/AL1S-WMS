@@ -7,10 +7,16 @@ test("category colors support 100 distinct positions and restart consistently fo
   assert.equal(new Set(first).size,100);
   for(const color of first){
     const [hue,saturation,lightness]=color.match(/[\d.]+/g)!.map(Number);
-    assert.ok(hue>=188&&hue<=226);
-    assert.ok(saturation>=36&&saturation<=52);
-    assert.ok(lightness>=38&&lightness<=60);
+    assert.ok(hue>=0&&hue<360);
+    assert.ok(saturation>=40&&saturation<=54);
+    assert.ok(lightness>=42&&lightness<=52);
   }
+  const hues=first.map(color=>Number(color.match(/[\d.]+/)![0]));
+  for(let index=1;index<hues.length;index++){
+    const distance=Math.abs(hues[index]-hues[index-1]);
+    assert.ok(Math.min(distance,360-distance)>130);
+  }
+  assert.equal(new Set(hues.slice(0,12).map(hue=>Math.floor(hue/60))).size,6);
   assert.equal(budgetSegmentColor(Number.NaN),first[0]);
   assert.deepEqual(Array.from({length:100},(_,index)=>budgetSegmentColor(index)),first);
   assert.deepEqual(Array.from({length:2},(_,index)=>budgetSegmentColor(index)),first.slice(0,2));
