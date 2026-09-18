@@ -18,8 +18,7 @@
 .budget-spend-node details[open]>summary::before{transform:rotate(90deg)}
 .budget-tree-heading{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--aris-ink)}
 .budget-tree-heading strong{font-size:12px;overflow-wrap:anywhere}
-.budget-tree-heading small,.budget-tree-hint,.budget-direct>small{font-size:10px;color:var(--aris-muted)}
-.budget-tree-hint{display:block;margin-top:3px}
+.budget-tree-heading small,.budget-direct>small{font-size:10px;color:var(--aris-muted)}
 .budget-tree-amounts{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--aris-muted);margin:8px 0}
 .budget-tree-amounts b{font-size:11px;color:var(--aris-ink);font-weight:600}
 .budget-spend-node .category-execution-bar{margin:10px 0}

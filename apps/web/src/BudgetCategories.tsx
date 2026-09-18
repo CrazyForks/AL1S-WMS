@@ -46,7 +46,6 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     const forecast=node.actual+node.planned,remaining=(budget??0)-forecast,max=Math.max(1,budget??0,forecast);
     const content=<>
       <span className="budget-tree-heading"><strong>{node.name}</strong><small>{budget!==undefined?t("共享预算"):owner?t("共享{{category}}预算",{category:owner}):t("未分配预算")}{budget!==undefined?" "+money(budget):""}</small></span>
-      {node.children.length>0&&<small className="budget-tree-hint">{t("含子分类，不与下级重复相加")}</small>}
       {amounts(node.actual,node.planned)}
       {budget!==undefined&&<><span className="category-execution-bar"><i style={{width:node.actual/max*100+"%"}}/><em style={{width:node.planned/max*100+"%"}}/><b style={{left:(budget/max*100)+"%"}}/></span><span className={remaining<0?"budget-tree-over":"budget-tree-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</span></>}
     </>;

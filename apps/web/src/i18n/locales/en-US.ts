@@ -5,7 +5,6 @@ export const enUS = {
   "子分类已分配预算": "Descendants already have budgets",
   "覆盖全部子分类": "Covers all descendants",
   "共享预算": "Shared budget",
-  "含子分类，不与下级重复相加": "Includes descendants; do not add child totals again",
   "本分类直接支出": "Direct spending in this category",
   "展开分类查看子孙分类支出": "Expand categories to see descendant spending",
   "父分类与所有子孙分类共享额度，不重复分配；总预算留空时按分类额度合计保存。": "A category and all descendants share one budget. Overlapping allocations are excluded. Leave the total blank to use the sum of category budgets.",
