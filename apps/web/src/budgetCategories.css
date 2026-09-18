@@ -34,7 +34,10 @@
 .allocation-split{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;padding:6px 8px;font-size:10px;color:var(--aris-muted)}
 .allocation-split.invalid,.allocation-error{color:#a43e47}
 .allocation-error{display:block;padding:2px 8px 6px;font-size:10px}
-.budget-allocation-children .category-budget-entry{grid-template-columns:minmax(0,1fr) 70px 22px;gap:3px}
+.finance-budget .budget-allocation-node>.category-budget-entry{grid-template-columns:minmax(0,1fr) 112px 24px;gap:5px}
+.finance-budget .budget-allocation-node>.category-budget-entry input{min-width:0;width:100%;padding:0 4px;appearance:textfield;-moz-appearance:textfield}
+.finance-budget .budget-allocation-node>.category-budget-entry input::-webkit-inner-spin-button,.finance-budget .budget-allocation-node>.category-budget-entry input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.budget-allocation-children>.allocation-split{padding-right:41px}
 .budget-execution-tree>.budget-spend-node{border-left:2px solid #5ab7bd}
 .budget-tree-children{margin:0 8px 10px 14px;border-left:2px solid #839bc1}
 .budget-tree-children .budget-tree-children{border-left-color:#b09ab8}
