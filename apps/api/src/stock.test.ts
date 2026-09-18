@@ -70,6 +70,20 @@ test("shopping receipt creates one batch and safe retries do not duplicate stock
   db.close();
 });
 
+test("receiving an automatic suggestion materializes a completed purchase", () => {
+  const {db,homeId,itemId,locationId}=fixture();
+  db.prepare("UPDATE items SET reorder_point=3 WHERE id=?").run(itemId);
+  const received=receiveShopping(db,homeId,`auto:${itemId}`,{actualQuantity:3,idempotencyKey:"auto-purchase"});
+  assert.match(received.shoppingItemId,/^[0-9a-f-]{36}$/i);
+  const purchase=db.prepare("SELECT source,completed,item_id AS itemId,quantity FROM shopping_list WHERE id=?").get(received.shoppingItemId) as {source:string;completed:number;itemId:string;quantity:number};
+  assert.equal(purchase.source,"automatic");
+  assert.equal(purchase.completed,1);
+  assert.equal(purchase.itemId,itemId);
+  assert.equal(purchase.quantity,3);
+  assert.equal((db.prepare("SELECT shopping_item_id AS shoppingItemId FROM stock_batches WHERE item_id=?").get(itemId) as {shoppingItemId:string}).shoppingItemId,received.shoppingItemId);
+  db.close();
+});
+
 test("shopping plans validate channels and materialize automatic suggestions",()=>{
   const {db,homeId,itemId}=fixture();
   seedShoppingChannels(db,homeId);
