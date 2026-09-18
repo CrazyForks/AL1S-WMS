@@ -768,7 +768,7 @@ app.get<{ Params: { homeId: string } }>(
   async (request) => {
     const manual = db
       .prepare(
-        "SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.category,s.location_id AS locationId,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.estimated_total_minor/100.0 AS estimatedTotal,s.source,s.completed,s.created_at AS createdAt FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? ORDER BY s.completed,s.planned_date IS NULL,s.planned_date,s.created_at DESC",
+        "SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.category,s.location_id AS locationId,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.estimated_total_minor/100.0 AS estimatedTotal,s.source,s.completed,s.created_at AS createdAt FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? AND s.completed=0 ORDER BY s.planned_date IS NULL,s.planned_date,s.created_at DESC",
       )
       .all(request.params.homeId);
     const automatic = db

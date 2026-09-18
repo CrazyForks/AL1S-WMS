@@ -1081,9 +1081,11 @@ export function App() {
     ),
   ];
   while (calendarCells.length % 7) calendarCells.push(null);
-  const visibleShoppingItems = selectedShoppingDate
-    ? shoppingList.filter((item) => item.plannedDate === selectedShoppingDate)
-    : shoppingList;
+  const visibleShoppingItems = shoppingList.filter(
+    (item) =>
+      !item.completed &&
+      (!selectedShoppingDate || item.plannedDate === selectedShoppingDate),
+  );
   if (!setup)
     return <div className="loading-screen">{t("正在检查家庭设置…")}</div>;
   if (!setup.complete)
