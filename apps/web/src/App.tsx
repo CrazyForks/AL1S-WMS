@@ -68,6 +68,10 @@ function itemDetailIdFromUrl() {
   const match=window.location.pathname.match(/^\/items\/([0-9a-f-]{36})\/?$/i);
   return match?.[1]??null;
 }
+function itemDetailSourcePage():Page|null {
+  const source=window.history.state?.itemDetailSource;
+  return typeof source==="string"&&Object.keys(pagePaths).includes(source)?source as Page:null;
+}
 
 type Item = {
   icon?: string | null;
@@ -661,7 +665,7 @@ export function App() {
   const [transactionTotal, setTransactionTotal] = useState(0);
   const [transactionSnapshot, setTransactionSnapshot] = useState("");
   const [batchItem, setBatchItem] = useState<Item | null>(null);
-  const [activePage, setActivePage] = useState<Page>(()=>itemDetailIdFromUrl()?"count":pageFromUrl());
+  const [activePage, setActivePage] = useState<Page>(()=>itemDetailIdFromUrl()?itemDetailSourcePage()??"count":pageFromUrl());
   const [itemDetailId,setItemDetailId]=useState<string|null>(itemDetailIdFromUrl);
   const countView = activePage === "locations" || activePage === "categories";
   const treeMode = activePage === "categories" ? "category" : "location";
@@ -726,7 +730,7 @@ export function App() {
       ];
   const [logView, setLogView] = useState(false);
   useEffect(() => {
-    const onPopState = () => {const itemId=itemDetailIdFromUrl();setActivePage(itemId?"count":pageFromUrl());setItemDetailId(itemId);};
+    const onPopState = () => {const itemId=itemDetailIdFromUrl();setActivePage(itemId?itemDetailSourcePage()??"count":pageFromUrl());setItemDetailId(itemId);};
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -1677,11 +1681,15 @@ export function App() {
     setItemDetailId(null);
   }
   function openItemDetail(itemId:string) {
-    window.history.pushState(null,"",`/items/${itemId}`);
+    window.history.pushState({itemDetailSource:activePage},"",`/items/${itemId}`);
     setItemDetailId(itemId);
   }
   function closeItemDetail() {
-    window.history.pushState(null,"",pagePaths.count);
+    if(itemDetailSourcePage()){
+      window.history.back();
+      return;
+    }
+    window.history.replaceState(null,"",pagePaths.count);
     setActivePage("count");
     setItemDetailId(null);
   }
