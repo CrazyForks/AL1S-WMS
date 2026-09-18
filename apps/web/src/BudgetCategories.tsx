@@ -53,48 +53,55 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
   const {t,i18n}=useTranslation();
   const money=(value:number)=>new Intl.NumberFormat(i18n.language,{style:"currency",currency}).format(value);
   const tree=buildBudgetTree(categories,spending);
-  const allocations=budgetAllocations(categories,budgets);
-  const limits=new Map(allocations.rows.map(row=>[row.category,row.amount]));
-  const hasBudget=(node:BudgetNode):boolean=>limits.has(node.name)||node.children.some(hasBudget);
+  const limits=new Map(budgets.map(row=>[row.category,row.amount]));
+  const owner=(name:string)=>[...categoryPath(name,categories)].reverse().find(name=>limits.has(name));
+  const parent=(name:string)=>[...categoryPath(name,categories)].reverse().slice(1).find(name=>limits.has(name));
   const find=(nodes:BudgetNode[],name:string):BudgetNode|undefined=>{
     for(const node of nodes){if(node.name===name)return node;const found=find(node.children,name);if(found)return found;}
   };
-  const amounts=(actual:number,planned:number,remaining?:number)=><div className="budget-tree-amounts"><span>{t("已花")} <b>{money(actual)}</b></span><span>{t("待采购")} <b>{money(planned)}</b></span>{remaining!==undefined&&<span className={remaining<0?"budget-tree-over":"budget-tree-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</span>}</div>;
-  const render=(node:BudgetNode,depth:number,unbudgeted=false):React.ReactNode=>{
-    const budget=unbudgeted?undefined:limits.get(node.name);
-    const children=node.children.filter(child=>child.actual>0||child.planned>0||(!unbudgeted&&hasBudget(child)));
-    const allocation=allocations.rows.find(row=>row.category===node.name);
-    const childBudgets=allocations.rows.filter(row=>row.parent===node.name);
-    const reservedActual=childBudgets.reduce((sum,row)=>sum+(find(tree,row.category)?.actual??0),0);
-    const reservedPlanned=childBudgets.reduce((sum,row)=>sum+(find(tree,row.category)?.planned??0),0);
-    const flexibleRemaining=allocation?allocation.unallocated-(node.actual-reservedActual)-(node.planned-reservedPlanned):0;
-    const hasDetails=children.length>0;
-    const forecast=node.actual+node.planned,remaining=(budget??0)-forecast,max=Math.max(1,budget??0,forecast);
+  const hasSpending=(node:BudgetNode)=>node.actual!==0||node.planned!==0;
+  const detailLine=(name:string,actual:number,planned:number)=><span className="execution-detail-line"><span>{name}</span><span className="execution-detail-values"><b>{money(actual)}</b>{planned!==0&&<small>{t("待采购")} {money(planned)}</small>}</span></span>;
+  const renderDetail=(node:BudgetNode):React.ReactNode=>{
+    const children=node.children.filter(hasSpending);
+    return children.length?<details className="execution-detail-branch" key={node.name}>
+      <summary>{detailLine(node.name,node.actual,node.planned)}</summary>
+      <div className="execution-detail-children">
+        {(node.directActual!==0||node.directPlanned!==0)&&<div>{detailLine(node.name,node.directActual,node.directPlanned)}</div>}
+        {children.map(renderDetail)}
+      </div>
+    </details>:<div className="execution-detail-leaf" key={node.name}>{detailLine(node.name,node.actual,node.planned)}</div>;
+  };
+  const renderBudget=(budget:typeof budgets[number]):React.ReactNode=>{
+    const node=find(tree,budget.category);
+    const actual=node?.actual??0,planned=node?.planned??0;
+    const remaining=(Math.round(budget.amount*100)-Math.round(actual*100)-Math.round(planned*100))/100;
+    const scale=Math.max(1,budget.amount,actual+planned);
+    const children=budgets.filter(child=>parent(child.category)===budget.category);
+    const directTree=buildBudgetTree(categories,spending.filter(row=>owner(row.category)===budget.category));
+    const direct=find(directTree,budget.category);
+    const details=direct?.children.filter(hasSpending)??[];
+    const hasDirect=!!direct&&(direct.directActual!==0||direct.directPlanned!==0)&&(children.length>0||details.length>0);
     const content=<>
-      <span className="budget-tree-heading"><strong>{node.name}</strong>{budget!==undefined&&<small>{t("预算")} {money(budget)}</small>}</span>
-      {amounts(node.actual,node.planned,budget!==undefined?remaining:undefined)}
-      {budget!==undefined&&<span className="category-execution-bar"><i style={{width:node.actual/max*100+"%"}}/><em style={{width:node.planned/max*100+"%"}}/></span>}
-      {budget!==undefined&&childBudgets.length>0&&<div className={flexibleRemaining<0?"allocation-split invalid":"allocation-split"}><span>{node.name} {money(allocation!.unallocated)}</span><span>{flexibleRemaining<0?t("超支"):t("可用")} {money(Math.abs(flexibleRemaining))}</span></div>}
+      <span className="execution-budget-heading"><strong>{budget.category}</strong><span>{t("预算")} <b>{money(budget.amount)}</b></span></span>
+      <span className="execution-budget-amounts"><span>{t("已花")} <b>{money(actual)}</b></span><span>{t("待采购")} <b>{money(planned)}</b></span><strong className={remaining<0?"execution-over":"execution-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</strong></span>
+      <span className={remaining<0?"execution-progress over":"execution-progress"} aria-hidden="true"><i style={{width:actual/scale*100+"%"}}/><em style={{width:planned/scale*100+"%"}}/></span>
     </>;
-    return <div className="budget-spend-node" key={node.name}>
-      {hasDetails?<details open={depth===0}><summary>{content}</summary>
-        <div className="budget-tree-children">
-          {(node.directActual>0||node.directPlanned>0)&&<div className="budget-direct"><small>{t("本分类直接支出")}</small>{amounts(node.directActual,node.directPlanned)}</div>}
-          {children.map(child=>render(child,depth+1,unbudgeted))}
+    const hasContents=children.length>0||hasDirect||details.length>0;
+    return <div className="execution-budget" key={budget.category}>
+      {hasContents?<details open><summary className="execution-budget-summary">{content}</summary>
+        <div className="execution-budget-content">
+          {children.length>0&&<div className="execution-budget-children">{children.map(renderBudget)}</div>}
+          {(hasDirect||details.length>0)&&<div className="execution-details"><div className="execution-details-heading">{t("支出明细")}</div>{hasDirect&&<div className="execution-detail-leaf">{detailLine(budget.category,direct!.directActual,direct!.directPlanned)}</div>}{details.map(renderDetail)}</div>}
         </div>
-      </details>:<div className="budget-spend-leaf">{content}</div>}
+      </details>:<div className="execution-budget-summary">{content}</div>}
     </div>;
   };
-  const outside=spending.filter(row=>!allocations.rows.some(budget=>categoryPath(row.category,categories).includes(budget.category)));
-  const unbudgeted=buildBudgetTree(categories,outside).filter(node=>node.actual>0||node.planned>0);
+  const outside=buildBudgetTree(categories,spending.filter(row=>!owner(row.category))).filter(hasSpending);
   return <section className="panel finance-bars finance-category-spending">
     <div className="panel-head"><div><h2>{t("分类预算执行")}</h2></div></div>
     <div className="budget-execution-tree">
-      {budgets.length?allocations.rows.filter(row=>row.parent===null).map(budget=>{
-        const node=find(tree,budget.category)??{name:budget.category,path:[budget.category],actual:0,planned:0,directActual:0,directPlanned:0,children:[]};
-        return render(node,0);
-      }):<p className="empty">{t("尚未分配分类预算")}</p>}
-      {unbudgeted.length>0&&<div className="unbudgeted-category-group"><small>{t("计划外支出")}</small>{unbudgeted.map(node=>render(node,0,true))}</div>}
+      {budgets.length?budgets.filter(row=>!parent(row.category)).map(renderBudget):<p className="empty">{t("尚未分配分类预算")}</p>}
+      {outside.length>0&&<div className="execution-outside"><div className="execution-details-heading">{t("计划外支出")}</div>{outside.map(renderDetail)}</div>}
     </div>
   </section>;
 }

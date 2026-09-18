@@ -563,4 +563,5 @@ export const enUS = {
   为分类预留采购额度: "Reserve a purchase allowance for a category",
   当前已分配额度: "Currently allocated",
   合计: "Total",
+  支出明细: "Spending details",
 } as const satisfies Record<keyof typeof zhCN, string>;
