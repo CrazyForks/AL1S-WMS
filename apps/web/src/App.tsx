@@ -3553,6 +3553,8 @@ export function App() {
                   <option value="包">{t("包")}</option>
                   <option value="箱">{t("箱")}</option>
                   <option value="袋">{t("袋")}</option>
+                  <option value="克">{t("克")}</option>
+                  <option value="市斤">{t("市斤")}</option>
                   <option value="千克">{t("千克")}</option>
                   <option value="升">{t("升")}</option>
                   <option value="米">{t("米")}</option>
@@ -3568,7 +3570,7 @@ export function App() {
                   name="reorderPoint"
                   type="number"
                   min="0"
-                  step="0.1"
+                  step="any"
                   defaultValue={detailItem.reorderPoint}
                 />
               </label>
@@ -3725,8 +3727,8 @@ export function App() {
               <input
                 name="quantity"
                 type="number"
-                min="0.1"
-                step="0.1"
+                min="0"
+                step="any"
                 defaultValue="1"
                 autoFocus
                 required
@@ -3795,8 +3797,8 @@ export function App() {
                 <input
                   name="quantity"
                   type="number"
-                  min="0.1"
-                  step="0.1"
+                  min="0"
+                  step="any"
                   defaultValue="1"
                 />
               </label>
@@ -3814,6 +3816,8 @@ export function App() {
                   <option value="包">{t("包")}</option>
                   <option value="箱">{t("箱")}</option>
                   <option value="袋">{t("袋")}</option>
+                  <option value="克">{t("克")}</option>
+                  <option value="市斤">{t("市斤")}</option>
                   <option value="千克">{t("千克")}</option>
                   <option value="升">{t("升")}</option>
                   <option value="米">{t("米")}</option>
@@ -3927,8 +3931,8 @@ export function App() {
                 <input
                   name="quantity"
                   type="number"
-                  min="0.1"
-                  step="0.1"
+                  min="0"
+                  step="any"
                   defaultValue={editShoppingItem.quantity}
                 />
               </label>
@@ -3950,6 +3954,8 @@ export function App() {
                   <option value="包">{t("包")}</option>
                   <option value="箱">{t("箱")}</option>
                   <option value="袋">{t("袋")}</option>
+                  <option value="克">{t("克")}</option>
+                  <option value="市斤">{t("市斤")}</option>
                   <option value="千克">{t("千克")}</option>
                   <option value="升">{t("升")}</option>
                   <option value="米">{t("米")}</option>
@@ -4058,8 +4064,8 @@ export function App() {
               <input
                 name="quantity"
                 type="number"
-                min="0.1"
-                step="0.1"
+                min="0"
+                step="any"
                 defaultValue={receiveShoppingItem.quantity}
                 autoFocus
                 required
@@ -4183,6 +4189,8 @@ export function App() {
                   <option value="包">{t("包")}</option>
                   <option value="箱">{t("箱")}</option>
                   <option value="袋">{t("袋")}</option>
+                  <option value="克">{t("克")}</option>
+                  <option value="市斤">{t("市斤")}</option>
                   <option value="千克">{t("千克")}</option>
                   <option value="升">{t("升")}</option>
                   <option value="米">{t("米")}</option>
@@ -4195,7 +4203,7 @@ export function App() {
                   name="initialStock"
                   type="number"
                   min="0"
-                  step="0.1"
+                  step="any"
                   defaultValue="0"
                 />
               </label>
@@ -4206,7 +4214,7 @@ export function App() {
                 name="reorderPoint"
                 type="number"
                 min="0"
-                step="0.1"
+                step="any"
                 defaultValue="0"
               />
             </label>

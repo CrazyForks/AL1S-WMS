@@ -328,6 +328,8 @@ export const enUS = {
   包: "pack(s)",
   箱: "carton(s)",
   袋: "bag(s)",
+  克: "g",
+  市斤: "jin",
   千克: "kg",
   升: "L",
   米: "m",
