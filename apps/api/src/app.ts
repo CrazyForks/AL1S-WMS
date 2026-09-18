@@ -805,7 +805,9 @@ app.delete<{Params:{homeId:string;channelId:string}}>("/api/v1/homes/:homeId/sho
 });
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/shopping-calendar",async request=>{
   const input=z.object({month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),includeCompleted:z.enum(["true","false"]).default("false")}).strict().parse(request.query);
-  return db.prepare("SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.estimated_total_minor/100.0 AS estimatedTotal,s.completed FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? AND substr(s.planned_date,1,7)=? AND (?='true' OR s.completed=0) ORDER BY s.planned_date,c.sort_order,s.name").all(request.params.homeId,input.month,input.includeCompleted);
+  const start=`${input.month}-01`,nextMonth=new Date(`${start}T00:00:00Z`);nextMonth.setUTCMonth(nextMonth.getUTCMonth()+1);
+  const completed=input.includeCompleted==="true"?"":" AND s.completed=0";
+  return db.prepare(`SELECT s.id,s.item_id AS itemId,s.name,s.quantity,s.unit,s.channel_id AS channelId,c.name AS channelName,s.planned_date AS plannedDate,s.estimated_total_minor/100.0 AS estimatedTotal,s.completed FROM shopping_list s LEFT JOIN shopping_channels c ON c.id=s.channel_id WHERE s.home_id=? AND s.planned_date>=? AND s.planned_date<?${completed} ORDER BY s.planned_date,c.sort_order,s.name`).all(request.params.homeId,start,nextMonth.toISOString().slice(0,10));
 });
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-list",async(request,reply)=>reply.code(201).send(saveShopping(db,request.params.homeId,request.body)));
 app.patch<{Params:{homeId:string;shoppingId:string};Body:unknown}>("/api/v1/homes/:homeId/shopping-list/:shoppingId",async request=>saveShopping(db,request.params.homeId,request.body,request.params.shoppingId));

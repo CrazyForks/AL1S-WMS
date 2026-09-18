@@ -42,13 +42,23 @@ test("item history is paged by newest transaction and has supporting indexes", (
     db.prepare("UPDATE stock_transactions SET occurred_at=? WHERE idempotency_key=?").run(`2026-09-${String(index+1).padStart(2,"0")}T10:00:00.000Z`,`history-${index}:0`);
   }
   const first=listTransactions(db,homeId,{itemId,limit:10,offset:0}) as unknown as {items:{idempotencyKey:string}[];total:number;hasMore:boolean};
-  const second=listTransactions(db,homeId,{itemId,limit:10,offset:10}) as typeof first;
+  const second=listTransactions(db,homeId,{itemId,limit:10,offset:10}) as unknown as typeof first;
   assert.equal(first.total,12);
   assert.equal(first.items[0].idempotencyKey,"history-11:0");
   assert.equal(first.hasMore,true);
   assert.equal(second.items.length,2);
-  const indexes=db.prepare("PRAGMA index_list(stock_transactions)").all() as {name:string}[];
-  assert.ok(indexes.some(index=>index.name==="idx_stock_item_history"));
+  const indexNames=(table:string)=>new Set((db.prepare(`PRAGMA index_list(${table})`).all() as {name:string}[]).map(index=>index.name));
+  const expected:Record<string,string[]>={
+    stock_transactions:["idx_stock_item_history","idx_stock_batch_balance","idx_stock_batch_receipts"],
+    stock_batches:["idx_batches_item_received","idx_batches_financial_received","idx_batches_item_channel_price","idx_batches_item_price_history","idx_batches_expiry","idx_batches_shopping_item"],
+    shopping_list:["idx_shopping_pending","idx_shopping_pending_item","idx_shopping_category","idx_shopping_location"],
+    items:["idx_items_active_name","idx_items_active_category","idx_items_active_location"],
+    locations:["idx_locations_tree"],
+    item_categories:["idx_categories_tree"],
+    shopping_channels:["idx_channels_active_sort"],
+    api_tokens:["idx_api_tokens_user_active"],
+  };
+  for(const [table,names] of Object.entries(expected))for(const name of names)assert.ok(indexNames(table).has(name),`${table}.${name}`);
   db.close();
 });
 

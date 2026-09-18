@@ -33,14 +33,21 @@ function shiftMonth(month:string,offset:number) {
   const date=new Date(Date.UTC(year,value-1+offset,1));
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`;
 }
+function monthRange(month:string) {
+  return [`${month}-01`,`${shiftMonth(month,1)}-01`] as const;
+}
+function dayAfter(date:string) {
+  const next=new Date(`${date}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate()+1);
+  return next.toISOString().slice(0,10);
+}
 
 const dateSchema=z.string().date();
 const purchaseFilters=z.object({start:dateSchema,end:dateSchema,page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).strict().refine(value=>value.start<=value.end,{message:"Invalid date range"});
 export function listPurchaseRecords(db:DatabaseSync,homeId:string,raw:unknown){
   const input=purchaseFilters.parse(raw);
   const home=requireHome(db,homeId);
-  const end=new Date(`${input.end}T00:00:00Z`);end.setUTCDate(end.getUTCDate()+1);
-  const from=`${input.start}T00:00:00.000Z`,until=end.toISOString();
+  const from=`${input.start}T00:00:00.000Z`,until=`${dayAfter(input.end)}T00:00:00.000Z`;
   const totals=db.prepare("SELECT COUNT(*) AS total,COALESCE(SUM(purchase_total_minor),0)/100.0 AS amount FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,from,until) as {total:number;amount:number};
   const totalPages=Math.max(1,Math.ceil(totals.total/input.pageSize)),page=Math.min(input.page,totalPages);
   const rows=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,COALESCE(b.purchase_category,i.category) AS category,substr(b.received_at,1,10) AS receivedDate,b.purchased_date AS purchaseDate,b.purchase_total_minor/100.0 AS totalPrice,COALESCE(c.name,'未指定') AS channelName,s.estimated_total_minor/100.0 AS estimatedTotal,
@@ -57,8 +64,8 @@ export function financialTrend(db:DatabaseSync,homeId:string,raw:unknown){
   const count=(Number(end.slice(0,4))-Number(start.slice(0,4)))*12+Number(end.slice(5))-Number(start.slice(5))+1;
   if(count<1||count>36)throw new InventoryError(400,"INVALID_TREND_RANGE","error.validation");
   const home=requireHome(db,homeId);
-  const spent=db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(received_at,1,10)>=? AND substr(received_at,1,10)<=? AND purchase_total_minor IS NOT NULL");
-  const actual=(from:string,to:string)=>(spent.get(homeId,from,to) as {total:number}).total;
+  const spent=db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL");
+  const actual=(from:string,to:string)=>(spent.get(homeId,`${from}T00:00:00.000Z`,`${dayAfter(to)}T00:00:00.000Z`) as {total:number}).total;
   const today=new Date().toISOString().slice(0,10),cutoff=monthEnd(end)<today?monthEnd(end):today;
   const compare=(offset:number)=>{
     const from=`${shiftMonth(start,offset)}-01`,to=cutoff===monthEnd(end)?monthEnd(shiftMonth(end,offset)):shiftDate(cutoff,offset);
@@ -69,7 +76,8 @@ export function financialTrend(db:DatabaseSync,homeId:string,raw:unknown){
   const comparison=(value:typeof previous)=>({...value,difference:Math.round((current.actual-value.actual)*100)/100,percent:value.actual===0?null:Math.round((current.actual-value.actual)/value.actual*10000)/100});
   const points=Array.from({length:count},(_,index)=>{
     const month=shiftMonth(start,index);
-    const planned=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL").get(homeId,month) as {total:number}).total;
+    const [from,until]=monthRange(month);
+    const planned=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND planned_date>=? AND planned_date<? AND estimated_total_minor IS NOT NULL").get(homeId,from,until) as {total:number}).total;
     return {month,actual:actual(`${month}-01`,monthEnd(month)),planned,budget:budgetForMonth(db,homeId,month).total};
   });
   return {start,end,currency:home.currency,current,previous:comparison(previous),yearAgo:comparison(yearAgo),points};
@@ -81,10 +89,11 @@ function budgetForMonth(db:DatabaseSync,homeId:string,month:string) {
   return {total:budget.total,sourceMonth:budget.month,categoryBudgets};
 }
 function totalsByCategory(db:DatabaseSync,homeId:string,month:string,kind:"actual"|"planned") {
+  const [from,until]=monthRange(month);
   const sql=kind==="actual"
-    ? "SELECT COALESCE(purchase_category,'其他') AS category,SUM(purchase_total_minor)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(received_at,1,7)=? AND purchase_total_minor IS NOT NULL GROUP BY COALESCE(purchase_category,'其他')"
-    : "SELECT COALESCE(category,'其他') AS category,SUM(estimated_total_minor)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL GROUP BY COALESCE(category,'其他')";
-  return db.prepare(sql).all(homeId,month) as MoneyRow[];
+    ? "SELECT COALESCE(purchase_category,'其他') AS category,SUM(purchase_total_minor)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL GROUP BY COALESCE(purchase_category,'其他')"
+    : "SELECT COALESCE(category,'其他') AS category,SUM(estimated_total_minor)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND planned_date>=? AND planned_date<? AND estimated_total_minor IS NOT NULL GROUP BY COALESCE(category,'其他')";
+  return db.prepare(sql).all(homeId,from,until) as MoneyRow[];
 }
 function mergeDistribution(actual:MoneyRow[],planned:MoneyRow[]) {
   const values=new Map<string,{category:string;actual:number;planned:number}>();
@@ -130,8 +139,9 @@ export function saveFinancialBudget(db:DatabaseSync,homeId:string,raw:unknown) {
 export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const {month}=financialFilters.parse(raw);
   const home=requireHome(db,homeId);
-  const actual=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(received_at,1,7)=? AND purchase_total_minor IS NOT NULL").get(homeId,month) as {total:number}).total;
-  const planned=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL").get(homeId,month) as {total:number}).total;
+  const [from,until]=monthRange(month);
+  const actual=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,from,until) as {total:number}).total;
+  const planned=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND planned_date>=? AND planned_date<? AND estimated_total_minor IS NOT NULL").get(homeId,from,until) as {total:number}).total;
   const budget=budgetForMonth(db,homeId,month);
   const categoryBudgets=budget.categoryBudgets;
   const actualByCategory=totalsByCategory(db,homeId,month,"actual");
@@ -151,11 +161,11 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const categoryDistribution=mergeDistribution(rollup(actualByCategory),rollup(plannedByCategory));
   for(const categoryBudget of categoryBudgets)if(!categoryDistribution.some(row=>row.category===categoryBudget.category))categoryDistribution.push({category:categoryBudget.category,actual:0,planned:0});
   const byCategory=categoryDistribution.map(row=>({...row,budget:categoryBudgets.find(budget=>budget.category===row.category)?.amount??null})).sort((left,right)=>(right.actual+right.planned)-(left.actual+left.planned)||left.category.localeCompare(right.category));
-  const byChannel=db.prepare("SELECT b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,SUM(b.purchase_total_minor)/100.0 AS total FROM stock_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND substr(b.received_at,1,7)=? AND b.purchase_total_minor IS NOT NULL GROUP BY b.channel_id,c.name ORDER BY total DESC").all(homeId,month);
+  const byChannel=db.prepare("SELECT b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,SUM(b.purchase_total_minor)/100.0 AS total FROM stock_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND b.received_at>=? AND b.received_at<? AND b.purchase_total_minor IS NOT NULL GROUP BY b.channel_id,c.name ORDER BY total DESC").all(homeId,from,until);
   const purchases=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,COALESCE(b.purchase_category,i.category) AS category,substr(b.received_at,1,10) AS receivedDate,b.purchased_date AS purchaseDate,b.purchase_total_minor/100.0 AS totalPrice,b.purchase_currency AS currency,b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,b.shopping_item_id AS shoppingItemId,s.estimated_total_minor/100.0 AS estimatedTotal,
     COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity
     FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN shopping_channels c ON c.id=b.channel_id LEFT JOIN shopping_list s ON s.id=b.shopping_item_id
-    WHERE b.home_id=? AND substr(b.received_at,1,7)=? AND b.purchase_total_minor IS NOT NULL ORDER BY b.received_at DESC LIMIT 200`).all(homeId,month) as {batchId:string;quantity:number;totalPrice:number;estimatedTotal:number|null}[];
+    WHERE b.home_id=? AND b.received_at>=? AND b.received_at<? AND b.purchase_total_minor IS NOT NULL ORDER BY b.received_at DESC LIMIT 200`).all(homeId,from,until) as {batchId:string;quantity:number;totalPrice:number;estimatedTotal:number|null}[];
   const purchaseRecords=purchases.map(row=>({...row,unitPrice:row.quantity>0?Math.round(row.totalPrice/row.quantity*100)/100:null,variance:row.estimatedTotal==null?null:Math.round((row.totalPrice-row.estimatedTotal)*100)/100}));
   const valueRows=db.prepare(`SELECT * FROM (${batchBalanceQuery}) WHERE homeId=? AND quantity>0`).all(homeId) as {batchId:string;itemId:string;itemName:string;itemCategory:string;baseUnit:string;locationId:string|null;locationName:string|null;quantity:number;initialQuantity:number;purchaseTotalMinor:number|null;purchaseCategory:string|null}[];
   const known=new Set<string>(),unknown=new Set<string>();let inventoryValue=0;
@@ -173,8 +183,9 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const trend=[];
   for(let offset=-11;offset<=0;offset++) {
     const point=shiftMonth(month,offset);
-    const spent=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(received_at,1,7)=? AND purchase_total_minor IS NOT NULL").get(homeId,point) as {total:number}).total;
-    const pending=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL").get(homeId,point) as {total:number}).total;
+    const [pointFrom,pointUntil]=monthRange(point);
+    const spent=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,pointFrom,pointUntil) as {total:number}).total;
+    const pending=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND planned_date>=? AND planned_date<? AND estimated_total_minor IS NOT NULL").get(homeId,pointFrom,pointUntil) as {total:number}).total;
     const limit=budgetForMonth(db,homeId,point);
     trend.push({month:point,actual:spent,planned:pending,budget:limit.total});
   }

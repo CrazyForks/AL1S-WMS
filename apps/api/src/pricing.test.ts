@@ -74,6 +74,18 @@ test("financial spending follows receipt time, not planned or purchase dates",()
   db.close();
 });
 
+test("financial month ranges include receipts and plans on the final day",()=>{
+  const {db,homeId,itemId,locationId}=fixture();
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:12,idempotencyKey:"month-end"});
+  db.prepare("UPDATE stock_batches SET received_at=? WHERE item_id=?").run("2026-09-30T23:59:59.000Z",itemId);
+  saveShopping(db,homeId,{itemId,quantity:1,plannedDate:"2026-09-30",estimatedTotal:8});
+  const dashboard=financialDashboard(db,homeId,{month:"2026-09"});
+  assert.equal(dashboard.spendingTotal,12);
+  assert.equal(dashboard.estimatedTotal,8);
+  assert.equal(listPurchaseRecords(db,homeId,{start:"2026-09-30",end:"2026-09-30"}).total,1);
+  db.close();
+});
+
 function fixture() {
   const db=openDatabase(":memory:"),homeId=randomUUID(),locationId=randomUUID(),itemId=randomUUID();
   db.prepare("INSERT INTO homes(id,name,default_currency) VALUES (?,?,'CNY')").run(homeId,"家");

@@ -261,11 +261,30 @@ export function openDatabase(
     } catch(error) { db.exec("ROLLBACK"); throw error; }
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_stock_batch ON stock_transactions(home_id,item_id,batch_id,location_id);
+    CREATE INDEX IF NOT EXISTS idx_stock_batch_balance ON stock_transactions(home_id,batch_id,location_id,type);
+    CREATE INDEX IF NOT EXISTS idx_stock_batch_receipts ON stock_transactions(batch_id,type);
     CREATE INDEX IF NOT EXISTS idx_stock_history ON stock_transactions(home_id,occurred_at,id);
     CREATE INDEX IF NOT EXISTS idx_stock_item_history ON stock_transactions(home_id,item_id,occurred_at DESC,id DESC);
     CREATE INDEX IF NOT EXISTS idx_item_history ON item_events(home_id,occurred_at,id);
     CREATE INDEX IF NOT EXISTS idx_item_event_history ON item_events(home_id,item_id,occurred_at DESC,id DESC);
     CREATE INDEX IF NOT EXISTS idx_shopping_calendar ON shopping_list(home_id,planned_date,completed);
+    CREATE INDEX IF NOT EXISTS idx_shopping_pending ON shopping_list(home_id,completed,planned_date,created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_shopping_pending_item ON shopping_list(home_id,item_id,completed);
+    CREATE INDEX IF NOT EXISTS idx_shopping_category ON shopping_list(home_id,category);
+    CREATE INDEX IF NOT EXISTS idx_shopping_location ON shopping_list(home_id,location_id);
+    CREATE INDEX IF NOT EXISTS idx_batches_item_received ON stock_batches(home_id,item_id,received_at DESC,id DESC);
+    CREATE INDEX IF NOT EXISTS idx_batches_financial_received ON stock_batches(home_id,received_at DESC,id DESC) WHERE purchase_total_minor IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_batches_item_channel_price ON stock_batches(home_id,item_id,channel_id,purchased_date DESC,received_at DESC) WHERE purchase_total_minor IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_batches_item_price_history ON stock_batches(home_id,item_id,purchased_date DESC,received_at DESC) WHERE purchase_total_minor IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_batches_expiry ON stock_batches(home_id,expiry_date,received_at,id);
+    CREATE INDEX IF NOT EXISTS idx_batches_shopping_item ON stock_batches(home_id,shopping_item_id);
+    CREATE INDEX IF NOT EXISTS idx_items_active_name ON items(home_id,active,name,id);
+    CREATE INDEX IF NOT EXISTS idx_items_active_category ON items(home_id,active,category);
+    CREATE INDEX IF NOT EXISTS idx_items_active_location ON items(home_id,active,default_location_id);
+    CREATE INDEX IF NOT EXISTS idx_locations_tree ON locations(home_id,parent_id,active,name);
+    CREATE INDEX IF NOT EXISTS idx_categories_tree ON item_categories(home_id,parent_id,active,name);
+    CREATE INDEX IF NOT EXISTS idx_channels_active_sort ON shopping_channels(home_id,active,sort_order,name);
+    CREATE INDEX IF NOT EXISTS idx_api_tokens_user_active ON api_tokens(user_id,revoked_at,created_at DESC);
     DROP INDEX IF EXISTS idx_items_home_barcode;
     CREATE UNIQUE INDEX idx_items_home_barcode ON items(home_id,barcode) WHERE barcode IS NOT NULL AND active=1;`);
   // SQLite treats NULLs as distinct in UNIQUE constraints; normalize the
