@@ -43,7 +43,7 @@
 .finance-budget .budget-allocation-children .category-budget-entry{min-height:26px;padding-top:1px;padding-bottom:1px}
 .finance-budget .budget-allocation-children .category-budget-entry input{height:24px}
 .budget-execution-tree>.budget-spend-node{border-left:2px solid #5ab7bd}
-.budget-tree-children{margin:0 8px 10px 14px;border-left:2px solid #839bc1}
+.budget-tree-children{margin:0 8px 0 14px;border-left:2px solid #839bc1}
 .budget-tree-children .budget-tree-children{border-left-color:#b09ab8}
 .budget-direct{padding:10px 16px;border-top:1px dashed var(--aris-line)}
 @media(max-width:700px){.budget-tree-children{margin-left:10px}.budget-spend-node summary,.budget-spend-leaf{padding-right:10px}.budget-tree-picker{width:100%}}
