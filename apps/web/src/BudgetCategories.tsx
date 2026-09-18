@@ -54,7 +54,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
   const money=(value:number)=>new Intl.NumberFormat(i18n.language,{style:"currency",currency}).format(value);
   const tree=buildBudgetTree(categories,spending);
   const limits=new Map(budgets.map(row=>[row.category,row.amount]));
-  const palette=["#347e8b","#7785bb","#bd8957","#769960","#ac769c","#5d9fa8","#b87969"];
+  const palette=["#7785bb","#bd8957","#769960","#ac769c","#5d9fa8","#b87969"];
   const colorNames=[...new Set([...categories.map(row=>row.name),...spending.map(row=>row.category)])].sort();
   const color=(name:string)=>palette[Math.max(0,colorNames.indexOf(name))%palette.length];
   const owner=(name:string)=>[...categoryPath(name,categories)].reverse().find(name=>limits.has(name));
@@ -92,7 +92,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
         const value=segment[kind];
         if(value<=0)return [];
         const label=`${segment.name} · ${kind==="actual"?t("已花"):t("待采购")} ${money(value)}`;
-        return [<span key={`${segment.name}-${kind}`} className={`execution-segment ${kind}`} style={{width:value/scale*100+"%",backgroundColor:color(segment.name)}} tabIndex={0} role="img" aria-label={label} data-tooltip={label} onClick={event=>event.preventDefault()} onKeyDown={event=>{if(event.key==="Enter"||event.key===" ")event.preventDefault();}}/>];
+        return [<span key={`${segment.name}-${kind}`} className={`execution-segment ${kind}`} style={{width:value/scale*100+"%",backgroundColor:segment.name===budget.category?"#347e8b":color(segment.name)}} tabIndex={0} role="img" aria-label={label} data-tooltip={label} onClick={event=>event.preventDefault()} onKeyDown={event=>{if(event.key==="Enter"||event.key===" ")event.preventDefault();}}/>];
       }))}</span>
     </>;
     const hasContents=children.length>0||hasDirect||details.length>0;
