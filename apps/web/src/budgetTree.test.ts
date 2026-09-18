@@ -5,6 +5,13 @@ import { buildBudgetTree, budgetAllocations, budgetSegmentColor, categoryPath, s
 test("category colors support 100 distinct positions and restart consistently for each group",()=>{
   const first=Array.from({length:100},(_,index)=>budgetSegmentColor(index));
   assert.equal(new Set(first).size,100);
+  for(const color of first){
+    const [hue,saturation,lightness]=color.match(/[\d.]+/g)!.map(Number);
+    assert.ok(hue>=188&&hue<=226);
+    assert.ok(saturation>=36&&saturation<=52);
+    assert.ok(lightness>=38&&lightness<=60);
+  }
+  assert.equal(budgetSegmentColor(Number.NaN),first[0]);
   assert.deepEqual(Array.from({length:100},(_,index)=>budgetSegmentColor(index)),first);
   assert.deepEqual(Array.from({length:2},(_,index)=>budgetSegmentColor(index)),first.slice(0,2));
   assert.equal(budgetSegmentColor(100),budgetSegmentColor(100));

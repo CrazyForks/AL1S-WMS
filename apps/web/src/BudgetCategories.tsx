@@ -97,7 +97,11 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
         const value=segment[kind];
         if(value<=0)return [];
         const label=`${segment.name} · ${kind==="actual"?t("已花"):t("待采购")} ${money(value)}`;
-        return [<span key={`${segment.name}-${kind}`} className={`execution-segment ${kind}`} style={{width:value/scale*100+"%",backgroundColor:colors.get(segment.name)??budgetSegmentColor(0)}} tabIndex={0} role="img" aria-label={label} data-tooltip={label} onClick={event=>event.preventDefault()} onKeyDown={event=>{if(event.key==="Enter"||event.key===" ")event.preventDefault();}}/>];
+        const limit=limits.get(segment.name);
+        const totals=limit===undefined?segment:find(tree,segment.name)??segment;
+        const left=limit===undefined?undefined:(Math.round(limit*100)-Math.round(totals.actual*100)-Math.round(totals.planned*100))/100;
+        const tooltip=[label,...(limit===undefined?[]:[`${t("预算")} ${money(limit)}`]),...(kind!=="actual"||totals.actual!==value?[`${t("已花")} ${money(totals.actual)}`]:[]),...(totals.planned>0&&(kind!=="planned"||totals.planned!==value)?[`${t("待采购")} ${money(totals.planned)}`]:[]),...(left===undefined?[]:[`${left<0?t("超支"):t("剩余")} ${money(Math.abs(left))}`])].join("\n");
+        return [<span key={`${segment.name}-${kind}`} className={`execution-segment ${kind}`} style={{width:value/scale*100+"%",backgroundColor:colors.get(segment.name)??budgetSegmentColor(0)}} tabIndex={0} role="img" aria-label={tooltip} data-tooltip={tooltip} onClick={event=>event.preventDefault()} onKeyDown={event=>{if(event.key==="Enter"||event.key===" ")event.preventDefault();}}/>];
       }))}</span>
     </>;
     const hasContents=children.length>0||hasDirect||details.length>0;
