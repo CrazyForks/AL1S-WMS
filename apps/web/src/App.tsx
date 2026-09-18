@@ -1180,7 +1180,7 @@ export function App() {
                 purchaseDate:data.get("purchaseDate")||null,
                 channelId:data.get("channelId")||null,
               }
-            : { batchId: data.get("batchId") || undefined }),
+            : { batchId: data.get("batchId") || undefined,issueReason:data.get("issueReason") || "used" }),
         }),
       },
     );
@@ -3742,6 +3742,7 @@ export function App() {
               />
             ) : null}
             {stockAction.type==="receipt"&&<fieldset className="purchase-cost"><legend>{t("采购成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue=""><option value="">{t("未指定")}</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label></div></fieldset>}
+            {stockAction.type==="issue"&&<label>{t("领用类型")}<select name="issueReason" defaultValue="used"><option value="used">{t("正常使用")}</option><option value="expired">{t("过期报废")}</option><option value="damaged">{t("损坏")}</option></select></label>}
             <label>
               {t("数量")}
               <input
