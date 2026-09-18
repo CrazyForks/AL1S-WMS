@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
 import { getHomeOverview, listBatches, listItems, listTransactions } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
-import { InventoryError, reconcileStock, recordStock } from "./stock.js";
+import { exhaustOpenedConsumable, InventoryError, listOpenedConsumables, reconcileStock, recordStock } from "./stock.js";
 
 function fixture() {
   const db = openDatabase(":memory:");
@@ -32,6 +32,23 @@ test("item query includes the most recent receipt time", () => {
   db.prepare("UPDATE stock_batches SET received_at=? WHERE item_id=?").run("2026-09-18T12:00:00.000Z",itemId);
   const item=listItems(db,homeId,{}) as {latestReceivedAt:string|null}[];
   assert.equal(item[0].latestReceivedAt,"2026-09-18T12:00:00.000Z");
+  db.close();
+});
+
+test("long-term consumables open before they are exhausted", () => {
+  const {db,homeId,itemId,locationId}=fixture();
+  db.prepare("UPDATE items SET consumption_type='long_term_consumable',opened_shelf_life_days=5 WHERE id=?").run(itemId);
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:2,expiryDate:"2099-01-01",idempotencyKey:"long-term-receipt"});
+  const opened=recordStock(db,homeId,"issue",{itemId,locationId,quantity:1,idempotencyKey:"long-term-open"});
+  assert.equal(opened.action,"opened");
+  assert.equal(opened.afterQuantity,2);
+  assert.equal(listOpenedConsumables(db,homeId).length,1);
+  assert.ok(listOpenedConsumables(db,homeId)[0]!.openedExpiryDate);
+  assert.throws(()=>recordStock(db,homeId,"issue",{itemId,locationId,quantity:2,idempotencyKey:"open-too-many"}),error=>error instanceof InventoryError&&error.code==="INSUFFICIENT_UNOPENED_STOCK");
+  const record=listOpenedConsumables(db,homeId)[0]!;
+  const exhausted=exhaustOpenedConsumable(db,homeId,{id:record.id,idempotencyKey:"long-term-exhaust"});
+  assert.equal(exhausted.afterQuantity,1);
+  assert.equal(listOpenedConsumables(db,homeId).length,0);
   db.close();
 });
 

@@ -40,7 +40,6 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
-  Coins,
   Package,
   Pencil,
   Plus,
@@ -89,6 +88,8 @@ type Item = {
   name: string;
   category: string;
   baseUnit: string;
+  consumptionType: "non_consumable" | "consumable" | "long_term_consumable";
+  openedShelfLifeDays?:number|null;
   reorderPoint: number;
   reorderQuantity: number;
   active: boolean;
@@ -102,6 +103,7 @@ type Item = {
 };
 type LocationScopedItem=Item&{treeQuantity?:number};
 type Stock = { itemId: string; locationId: string; quantity: number; latestReceivedAt?:string|null };
+type OpenedConsumable={id:string;itemId:string;itemName:string;baseUnit:string;locationId:string;locationName:string|null;batchId:string;batchLabel:string|null;manufacturedDate:string|null;expiryDate:string|null;openedExpiryDate:string|null;quantity:number;openedAt:string};
 type Location = {
   id: string;
   homeId: string;
@@ -312,6 +314,11 @@ async function getStock() {
   const response = await apiFetch(`/api/v1/homes/${getHomeId()}/stock`);
   if (!response.ok) throw new Error(t("无法加载库存"));
   return response.json() as Promise<Stock[]>;
+}
+async function getOpenedConsumables() {
+  const response=await apiFetch(`/api/v1/homes/${getHomeId()}/opened-consumables`);
+  if(!response.ok)throw new Error(t("无法加载已开封消耗品"));
+  return response.json() as Promise<OpenedConsumable[]>;
 }
 async function getLocations() {
   const response = await apiFetch(`/api/v1/homes/${getHomeId()}/locations`);
@@ -626,6 +633,7 @@ export function App() {
   } | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [stock, setStock] = useState<Stock[]>([]);
+  const [openedConsumables,setOpenedConsumables]=useState<OpenedConsumable[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
@@ -797,6 +805,7 @@ export function App() {
     Promise.all([
       getItems(),
       getStock(),
+      getOpenedConsumables(),
       getLocations(),
       getTransactions(
         transactionPage,
@@ -811,6 +820,7 @@ export function App() {
         ([
           nextItems,
           nextStock,
+          nextOpenedConsumables,
           nextLocations,
           nextTransactions,
           nextShoppingList,
@@ -820,6 +830,7 @@ export function App() {
         ]) => {
           setItems(nextItems);
           setStock(nextStock);
+          setOpenedConsumables(nextOpenedConsumables);
           setLocations(nextLocations);
           setTransactions(nextTransactions.items);
           setTransactionTotal(nextTransactions.total);
@@ -1146,6 +1157,8 @@ export function App() {
         icon: data.get("icon") || null,
         category: data.get("category"),
         baseUnit: data.get("baseUnit"),
+        consumptionType:data.get("consumptionType") || "consumable",
+        openedShelfLifeDays:data.get("openedShelfLifeDays")===""?null:Number(data.get("openedShelfLifeDays")),
         locationId: data.get("locationId") || undefined,
         reorderPoint: Number(data.get("reorderPoint") || 0),
         reorderQuantity: 0,
@@ -1208,6 +1221,15 @@ export function App() {
     } else setNotice(t("操作失败，可能是库存不足"));
   }
 
+  async function exhaustOpened(opened:OpenedConsumable) {
+    if(busy)return;
+    setBusy(true);
+    const response=await apiFetch(`/api/v1/homes/${getHomeId()}/opened-consumables/${opened.id}/exhaust`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idempotencyKey:newIdempotencyKey()})});
+    setBusy(false);
+    if(!response.ok){setNotice(t("用尽操作失败"));return;}
+    load();
+  }
+
   async function updateItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!detailItem) return;
@@ -1222,6 +1244,8 @@ export function App() {
           icon: data.get("icon") || null,
           barcode: data.get("barcode") || null,
           category: data.get("category"),
+          consumptionType:data.get("consumptionType"),
+          openedShelfLifeDays:data.get("openedShelfLifeDays")===""?null:Number(data.get("openedShelfLifeDays")),
           syncPurchaseCategory: data.get("syncPurchaseCategory") === "on",
           baseUnit: data.get("baseUnit"),
           reorderPoint: Number(data.get("reorderPoint") || 0),
@@ -2819,6 +2843,10 @@ export function App() {
                 <span className="summary-foot">{t("未来 30 天")}</span>
               </div>
             </div>
+            <div className="summary-card">
+              <span className="summary-icon"><Package size={18}/></span>
+              <div><span className="summary-label">{t("已开封")}</span><strong>{openedConsumables.length}</strong><button type="button" className="summary-foot text-button" onClick={()=>navigate("count")}>{t("查看开封物品")}</button></div>
+            </div>
             <div className="summary-card shopping">
               <span className="summary-icon">
                 <ShoppingCart size={18} />
@@ -2832,10 +2860,6 @@ export function App() {
             <div className="summary-card">
               <span className="summary-icon"><Wallet size={18}/></span>
               <div><span className="summary-label">{t("本月支出")}</span><strong className="money-value">{formatMoney(financialSummary?.spendingTotal??0,financialSummary?.currency)}</strong><span className="summary-foot">{t("实际采购成本")}</span></div>
-            </div>
-            <div className="summary-card">
-              <span className="summary-icon"><Coins size={18}/></span>
-              <div><span className="summary-label">{t("库存价值")}</span><strong className="money-value">{formatMoney(financialSummary?.inventoryValue??0,financialSummary?.currency)}</strong><span className="summary-foot">{financialSummary?.unknownBatchCount?t("{{count}} 个批次成本未知",{count:financialSummary.unknownBatchCount}):t("已计价库存")}</span></div>
             </div>
           </section>
         )}
@@ -2994,6 +3018,12 @@ export function App() {
                     )}
                   </div>
                 </section>
+                <section className="panel dashboard-opened">
+                  <div className="panel-head"><div><h2>{t("已开封")}</h2><p className="muted">{t("等待用尽扣减的长期消耗品")}</p></div><button className="text-button" onClick={()=>navigate("count")}>{t("查看全部")}</button></div>
+                  <div className="dashboard-list">
+                    {openedConsumables.length===0?<p className="empty compact">{t("暂无已开封消耗品")}</p>:openedConsumables.slice(0,4).map(opened=><button type="button" className="dashboard-list-row" key={opened.id} onClick={()=>openItemDetail(opened.itemId)}><span><strong>{opened.itemName}</strong><small>{opened.locationName||t("未指定")}{opened.openedExpiryDate?` · ${t("开封后到期")} ${opened.openedExpiryDate}`:""}</small></span><b>{opened.quantity} {displayUnit(opened.baseUnit)}</b></button>)}
+                  </div>
+                </section>
                 <section className="panel dashboard-categories">
                   <div className="panel-head">
                     <div>
@@ -3125,6 +3155,10 @@ export function App() {
                 <strong>{expiringItems.length}</strong>
               </button>
             </div>
+            <section className="panel opened-consumables-panel">
+              <div className="panel-head"><div><h2>{t("已开封消耗品")}</h2><p className="muted">{t("开封后仍计入库存，用尽后才扣减")}</p></div><strong>{openedConsumables.length}</strong></div>
+              {openedConsumables.length===0?<p className="empty">{t("暂无已开封消耗品")}</p>:<div className="table-wrap"><table><thead><tr><th>{t("物资")}</th><th>{t("数量")}</th><th>{t("地点")}</th><th>{t("批次")}</th><th>{t("开封后到期")}</th><th>{t("保质期")}</th><th>{t("开封时间")}</th><th>{t("操作")}</th></tr></thead><tbody>{openedConsumables.map(opened=><tr key={opened.id}><td><button type="button" className="item-link" onClick={()=>openItemDetail(opened.itemId)}>{opened.itemName}</button></td><td>{opened.quantity} {displayUnit(opened.baseUnit)}</td><td>{opened.locationName||t("未指定")}</td><td>{opened.batchLabel||opened.batchId.slice(0,8)}</td><td>{opened.openedExpiryDate||t("未设置")}</td><td>{opened.expiryDate||t("未设置")}</td><td>{new Date(opened.openedAt).toLocaleString(localeForDates(),{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td><button type="button" className="text-button" disabled={busy} onClick={()=>exhaustOpened(opened)}>{t("用尽")}</button></td></tr>)}</tbody></table></div>}
+            </section>
             <div className="panel inventory-panel count-inventory">
               <div className="panel-head">
                 <div>
@@ -3591,6 +3625,18 @@ export function App() {
                 ))}
               </select>
             </label>
+            <label>
+              {t("消耗类型")}
+              <select name="consumptionType" defaultValue={detailItem.consumptionType||"consumable"}>
+                <option value="consumable">{t("消耗品")}</option>
+                <option value="long_term_consumable">{t("长期消耗品")}</option>
+                <option value="non_consumable">{t("非消耗品")}</option>
+              </select>
+            </label>
+            <label>
+              {t("开封后保质期（天）")}
+              <input name="openedShelfLifeDays" type="number" min="1" step="1" defaultValue={detailItem.openedShelfLifeDays??""} placeholder={t("可选")}/>
+            </label>
             <label className="batch-toggle">
               <input name="syncPurchaseCategory" type="checkbox" />
               <span aria-hidden="true" />
@@ -3737,7 +3783,7 @@ export function App() {
                 <h2>
                   {stockAction.type === "receipt"
                     ? t("入库物资")
-                    : t("领用物资")}
+                    : stockAction.item.consumptionType==="long_term_consumable" ? t("开封物资") : t("领用物资")}
                 </h2>
                 <p className="muted">{stockAction.item.name}</p>
               </div>
@@ -3775,7 +3821,7 @@ export function App() {
               />
             ) : null}
             {stockAction.type==="receipt"&&<fieldset className="purchase-cost"><legend>{t("采购成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue=""><option value="">{t("未指定")}</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label></div></fieldset>}
-            {stockAction.type==="issue"&&<label>{t("领用类型")}<select name="issueReason" defaultValue="used"><option value="used">{t("正常使用")}</option><option value="expired">{t("过期报废")}</option><option value="damaged">{t("损坏")}</option></select></label>}
+            {stockAction.type==="issue"&&stockAction.item.consumptionType!=="long_term_consumable"&&<label>{t("领用类型")}<select name="issueReason" defaultValue={stockAction.item.consumptionType==="non_consumable"?"damaged":"used"}>{stockAction.item.consumptionType!=="non_consumable"&&<option value="used">{t("正常使用")}</option>}<option value="expired">{t("过期报废")}</option><option value="damaged">{t("损坏")}</option></select></label>}
             <label>
               {t("数量")}
               <input
@@ -3797,7 +3843,7 @@ export function App() {
                 ? t("处理中…")
                 : t("确认{{action}}", {
                     action:
-                      stockAction.type === "receipt" ? t("入库") : t("领用"),
+                      stockAction.type === "receipt" ? t("入库") : stockAction.item.consumptionType==="long_term_consumable" ? t("开封") : t("领用"),
                   })}
             </button>
           </form>
@@ -4210,6 +4256,18 @@ export function App() {
                   </option>
                 ))}
               </select>
+            </label>
+            <label>
+              {t("消耗类型")}
+              <select name="consumptionType" defaultValue="consumable">
+                <option value="consumable">{t("消耗品")}</option>
+                <option value="long_term_consumable">{t("长期消耗品")}</option>
+                <option value="non_consumable">{t("非消耗品")}</option>
+              </select>
+            </label>
+            <label>
+              {t("开封后保质期（天）")}
+              <input name="openedShelfLifeDays" type="number" min="1" step="1" placeholder={t("可选")}/>
             </label>
             <div className="form-row">
               <label>

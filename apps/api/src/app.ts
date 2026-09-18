@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import { z } from "zod";
 import { listItems, listTransactions, listBatches, getHomeOverview } from "./queries.js";
-import { atomic, batchDates, batchBalanceQuery, InventoryError, moneySchema, reconcileStock, recordItemEvent, recordStock, refreshItemDates, requireStockTarget, transferStock, validateDates } from "./stock.js";
+import { atomic, batchDates, batchBalanceQuery, exhaustOpenedConsumable, InventoryError, listOpenedConsumables, moneySchema, reconcileStock, recordItemEvent, recordStock, refreshItemDates, requireStockTarget, transferStock, validateDates } from "./stock.js";
 import { saveShopping, receiveShopping } from "./shopping.js";
 import { lookupBarcode, normalizeBarcode } from "./barcodes.js";
 import { financialDashboard, financialSummary, financialTrend, listPurchaseRecords, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
@@ -388,7 +388,7 @@ app.get<{ Params: { homeId: string; itemId: string } }>(
   async (request, reply) => {
     const item = db
       .prepare(
-        "SELECT items.icon, items.id, items.home_id AS homeId, items.sku, items.barcode, items.name, items.category, items.base_unit AS baseUnit, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1",
+        "SELECT items.icon, items.id, items.home_id AS homeId, items.sku, items.barcode, items.name, items.category, items.base_unit AS baseUnit, items.consumption_type AS consumptionType, items.opened_shelf_life_days AS openedShelfLifeDays, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1",
       )
       .get(request.params.homeId, request.params.itemId);
     return item ?? sendCodeError(reply,localeOf(request),404,"ITEM_NOT_FOUND","error.itemNotFound");
@@ -400,7 +400,7 @@ app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:h
   if(changes.barcode)changes.barcode=normalizeBarcode(changes.barcode);
   requireStockTarget(db,homeId,itemId,changes.locationId??undefined);
   const current=db.prepare("SELECT * FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as Record<string,any>;
-  const columns:Record<string,string>={baseUnit:"base_unit",reorderPoint:"reorder_point",locationId:"default_location_id"};
+  const columns:Record<string,string>={baseUnit:"base_unit",consumptionType:"consumption_type",openedShelfLifeDays:"opened_shelf_life_days",reorderPoint:"reorder_point",locationId:"default_location_id"};
   if(changes.barcode&&db.prepare("SELECT 1 FROM items WHERE home_id=? AND barcode=? AND id!=? AND active=1").get(homeId,changes.barcode,itemId))
     throw new InventoryError(409,"BARCODE_EXISTS","error.barcodeExists");
   if(changes.baseUnit && changes.baseUnit!==current.base_unit && db.prepare("SELECT 1 FROM stock_transactions WHERE home_id=? AND item_id=? LIMIT 1").get(homeId,itemId))
@@ -424,10 +424,14 @@ app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:h
     }
     const other=fields.filter(([key])=>!["category","locationId"].includes(key));
     if(other.length) {
-      const labels:Record<string,string>={name:"名称",icon:"图标",barcode:"条码",baseUnit:"单位",reorderPoint:"最低库存"};
-      recordItemEvent(db,homeId,itemId,"update",other.map(([key,value])=>`${labels[key]??key}：${current[columns[key]??key]??"自动"} → ${value??"自动"}`).join("；"));
+      const labels:Record<string,string>={name:"名称",icon:"图标",barcode:"条码",baseUnit:"单位",consumptionType:"消耗类型",openedShelfLifeDays:"开封后保质期（天）",reorderPoint:"最低库存"};
+      const consumptionLabels:Record<string,string>={non_consumable:"非消耗品",consumable:"消耗品",long_term_consumable:"长期消耗品"};
+      recordItemEvent(db,homeId,itemId,"update",other.map(([key,value])=>{
+        const before=current[columns[key]??key]??"自动",after=value??"自动";
+        return `${labels[key]??key}：${key==="consumptionType"?(consumptionLabels[String(before)]??before):before} → ${key==="consumptionType"?(consumptionLabels[String(after)]??after):after}`;
+      }).join("；"));
     }
-    return db.prepare("SELECT id,icon,barcode,name,category,base_unit AS baseUnit,reorder_point AS reorderPoint,default_location_id AS locationId FROM items WHERE id=? AND home_id=?").get(itemId,homeId);
+    return db.prepare("SELECT id,icon,barcode,name,category,base_unit AS baseUnit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,reorder_point AS reorderPoint,default_location_id AS locationId FROM items WHERE id=? AND home_id=?").get(itemId,homeId);
   });
 });
 
@@ -666,6 +670,10 @@ for (const [resource, kind] of [["items", "item"], ["categories", "category"], [
 }
 
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/transactions", async request => listTransactions(db,request.params.homeId,request.query,localeOf(request)));
+app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/opened-consumables", async request => listOpenedConsumables(db,request.params.homeId));
+app.post<{ Params: { homeId: string; openedId: string }; Body: unknown }>("/api/v1/homes/:homeId/opened-consumables/:openedId/exhaust", async request =>
+  exhaustOpenedConsumable(db,request.params.homeId,{...(request.body&&typeof request.body==="object"?request.body:{}),id:request.params.openedId}),
+);
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/transfers",async request => transferStock(db,request.params.homeId,request.body));
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/reconcile",async request => reconcileStock(db,request.params.homeId,request.body));
 
@@ -732,7 +740,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
     db.exec("BEGIN");
     try {
       db.prepare(
-        "INSERT INTO items (id, home_id, sku, barcode, name, category, base_unit, reorder_point, reorder_quantity, default_location_id, manufactured_date, expiry_date, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO items (id, home_id, sku, barcode, name, category, base_unit, consumption_type, opened_shelf_life_days, reorder_point, reorder_quantity, default_location_id, manufactured_date, expiry_date, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).run(
         item.id,
         item.homeId,
@@ -741,6 +749,8 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
         item.name,
         item.category,
         item.baseUnit,
+        item.consumptionType,
+        item.openedShelfLifeDays??null,
         item.reorderPoint,
         item.reorderQuantity,
         locationId,

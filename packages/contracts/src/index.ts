@@ -3,6 +3,7 @@ import { z } from "zod";
 export const homeIdSchema = z.string().uuid();
 export const barcodeSchema = z.string().trim().regex(/^\d{8,14}$/, "条码必须为 8 到 14 位数字");
 export const itemIconSchema = z.enum(["package", "apple", "carrot", "beef", "fish", "egg", "milk", "coffee", "wine", "cooking", "sandwich", "cookie", "spray", "laundry", "shirt", "pill", "health", "wrench", "cable", "battery", "book", "pet", "bath", "leaf", "wheat", "bean", "nut", "candy", "icecream", "water", "utensils", "refrigerator", "microwave", "lightbulb", "smartphone", "laptop", "scissors", "storage", "baby", "flower", "umbrella", "glasses"]);
+export const consumptionTypeSchema = z.enum(["non_consumable", "consumable", "long_term_consumable"]);
 
 export const itemSchema = z.object({
   id: z.string().uuid(),
@@ -13,6 +14,8 @@ export const itemSchema = z.object({
   category: z.string().min(1),
   icon: itemIconSchema.nullable().optional(),
   baseUnit: z.string().min(1),
+  consumptionType: consumptionTypeSchema.default("consumable"),
+  openedShelfLifeDays: z.number().int().positive().nullable().optional(),
   reorderPoint: z.number().nonnegative(),
   reorderQuantity: z.number().nonnegative(),
   manufacturedDate: z.string().date().nullable().optional(),
@@ -37,6 +40,8 @@ export const updateItemSchema = z.object({
   category: z.string().min(1).optional(),
   syncPurchaseCategory: z.boolean().optional(),
   baseUnit: z.string().min(1).optional(),
+  consumptionType: consumptionTypeSchema.optional(),
+  openedShelfLifeDays: z.number().int().positive().nullable().optional(),
   reorderPoint: z.number().nonnegative().optional(),
   locationId: z.string().uuid().nullable().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0);

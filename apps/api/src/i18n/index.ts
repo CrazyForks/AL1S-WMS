@@ -32,6 +32,9 @@ const messages = {
     "error.locationNotInHome": "地点不存在或不属于当前家庭",
     "error.insufficientStock": "该地点库存不足，可用 {available}",
     "error.insufficientBatchStock": "该地点的指定批次库存不足，可用 {available}",
+    "error.insufficientUnopenedStock": "可开封库存不足，可用 {available}",
+    "error.openedConsumableNotFound": "已开封消耗品不存在",
+    "error.openedConsumableQuantity": "用尽数量超过已开封数量",
     "error.idempotencyConflict": "该操作编号已用于其他参数，请使用新的编号",
     "error.receiptExistingBatch": "每次入库创建独立批次，不可指定已有批次",
     "error.issueBatchDates": "领用不能修改批次日期",
@@ -82,6 +85,7 @@ const messages = {
     "reason.fefoIssue": "按到期顺序领用",
     "reason.stocktakeGain": "盘点盘盈",
     "reason.stocktakeLoss": "盘点盘亏",
+    "reason.openLongTermConsumable": "开封长期消耗品",
   },
   "en-US": {
     "error.childBudgetExceedsParent": "Child budgets exceed the budget for {category}",
@@ -111,6 +115,9 @@ const messages = {
     "error.locationNotInHome": "Location not found or does not belong to this home",
     "error.insufficientStock": "Insufficient stock at this location; available: {available}",
     "error.insufficientBatchStock": "Insufficient stock in the specified batch at this location; available: {available}",
+    "error.insufficientUnopenedStock": "Only {available} unopened stock is available",
+    "error.openedConsumableNotFound": "Opened consumable not found",
+    "error.openedConsumableQuantity": "The exhausted quantity exceeds the opened quantity",
     "error.idempotencyConflict": "This operation key was used with different parameters; use a new key",
     "error.receiptExistingBatch": "Each receipt creates a new batch; an existing batch cannot be specified",
     "error.issueBatchDates": "Batch dates cannot be changed when issuing stock",
@@ -161,6 +168,7 @@ const messages = {
     "reason.fefoIssue": "Issue by earliest expiry",
     "reason.stocktakeGain": "Stocktake gain",
     "reason.stocktakeLoss": "Stocktake loss",
+    "reason.openLongTermConsumable": "Opened long-term consumable",
   },
 } as const;
 
@@ -168,6 +176,7 @@ export type TranslationKey = keyof (typeof messages)["zh-CN"];
 type TranslationParams = {
   "error.insufficientStock": { available: number };
   "error.insufficientBatchStock": { available: number };
+  "error.insufficientUnopenedStock": { available: number };
   "action.expired": { itemName: unknown; expiryDate: unknown };
   "action.expiring": { itemName: unknown; expiryDate: unknown };
   "action.buyPending": { name: unknown; quantity: unknown; unit: unknown };
@@ -297,6 +306,7 @@ const legacyReasons:Record<string,TranslationKey>={
   "初始库存":"reason.initialStock","采购入库":"reason.purchaseReceipt","入库新批次":"reason.newBatch",
   "领用指定批次":"reason.specifiedBatchIssue","按到期顺序领用":"reason.fefoIssue",
   "盘点盘盈":"reason.stocktakeGain","盘点盘亏":"reason.stocktakeLoss",
+  "开封长期消耗品":"reason.openLongTermConsumable",
 };
 export function localizeReason(locale:Locale,reason:unknown) {
   const value=String(reason??"");

@@ -29,6 +29,7 @@ export const batchBalanceQuery = `SELECT b.id AS batchId,b.home_id AS homeId,b.i
   FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN stock_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
   LEFT JOIN locations l ON l.id=t.location_id LEFT JOIN shopping_channels c ON c.id=b.channel_id GROUP BY b.id,t.location_id`;
 export type BatchBalance = {batchId:string;itemId:string;locationId:string;quantity:number;expiryDate:string|null;manufacturedDate:string|null;purchaseTotalMinor:number|null;purchaseCurrency:string|null;purchasedDate:string|null;channelId:string|null;channelName:string|null;initialQuantity:number};
+export type OpenedConsumable = {id:string;itemId:string;itemName:string;baseUnit:string;locationId:string;locationName:string;batchId:string;batchLabel:string|null;manufacturedDate:string|null;expiryDate:string|null;openedExpiryDate:string|null;quantity:number;openedAt:string};
 export function atomic<T>(db:DatabaseSync, fn:()=>T):T {
   const key = `sp_${randomUUID().replaceAll("-","")}`;
   db.exec(`SAVEPOINT ${key}`);
@@ -70,6 +71,32 @@ export function allocate(db:DatabaseSync,homeId:string,itemId:string,locationId:
   for(const row of rows) { const used=Math.min(row.quantity,remaining); if(used>1e-9) parts.push({batchId:row.batchId,quantity:used});remaining-=used; }
   return parts;
 }
+function allocateUnopened(db:DatabaseSync,homeId:string,itemId:string,locationId:string,quantity:number,batchId?:string) {
+  const rows=db.prepare(`SELECT * FROM (${batchBalanceQuery}) WHERE homeId=? AND itemId=? AND locationId=? AND quantity>0 ${batchId?"AND batchId=?":""} ORDER BY expiryDate IS NULL,expiryDate,receivedAt,batchId`).all(...[homeId,itemId,locationId,...(batchId?[batchId]:[])]) as BatchBalance[];
+  const opened=db.prepare("SELECT batch_id AS batchId,COALESCE(SUM(quantity),0) AS quantity FROM opened_consumables WHERE home_id=? AND item_id=? AND location_id=? GROUP BY batch_id").all(homeId,itemId,locationId) as {batchId:string;quantity:number}[];
+  const openedByBatch=new Map(opened.map(row=>[row.batchId,row.quantity]));
+  const available=rows.reduce((sum,row)=>sum+Math.max(0,row.quantity-(openedByBatch.get(row.batchId)??0)),0);
+  if(available+1e-9<quantity)throw new InventoryError(409,"INSUFFICIENT_UNOPENED_STOCK","error.insufficientUnopenedStock",{available});
+  let remaining=quantity; const parts:{batchId:string;quantity:number}[]=[];
+  for(const row of rows) { const usable=Math.max(0,row.quantity-(openedByBatch.get(row.batchId)??0)); const used=Math.min(usable,remaining); if(used>1e-9)parts.push({batchId:row.batchId,quantity:used}); remaining-=used; }
+  return parts;
+}
+export function listOpenedConsumables(db:DatabaseSync,homeId:string):OpenedConsumable[] {
+  return db.prepare(`SELECT o.id,o.item_id AS itemId,i.name AS itemName,i.base_unit AS baseUnit,o.location_id AS locationId,l.name AS locationName,o.batch_id AS batchId,b.label AS batchLabel,b.manufactured_date AS manufacturedDate,b.expiry_date AS expiryDate,o.opened_expiry_date AS openedExpiryDate,o.quantity,o.opened_at AS openedAt FROM opened_consumables o JOIN items i ON i.id=o.item_id JOIN stock_batches b ON b.id=o.batch_id LEFT JOIN locations l ON l.id=o.location_id WHERE o.home_id=? ORDER BY o.opened_at DESC,o.id DESC`).all(homeId) as OpenedConsumable[];
+}
+export function exhaustOpenedConsumable(db:DatabaseSync,homeId:string,raw:unknown) {
+  const input=z.object({id:z.string().uuid(),quantity:z.number().positive().finite().optional(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional()}).strict().parse(raw);
+  return withStockOperation(db,homeId,input.idempotencyKey,{type:"exhaust-opened",...input},()=>{
+    const opened=db.prepare("SELECT * FROM opened_consumables WHERE id=? AND home_id=?").get(input.id,homeId) as {id:string;item_id:string;location_id:string;batch_id:string;quantity:number}|undefined;
+    if(!opened)throw new InventoryError(404,"OPENED_CONSUMABLE_NOT_FOUND","error.openedConsumableNotFound");
+    const quantity=input.quantity??opened.quantity;
+    if(quantity>opened.quantity+1e-9)throw new InventoryError(409,"OPENED_CONSUMABLE_QUANTITY","error.openedConsumableQuantity");
+    const result=recordStock(db,homeId,"issue",{itemId:opened.item_id,locationId:opened.location_id,batchId:opened.batch_id,quantity,idempotencyKey:`opened-exhaust:${input.idempotencyKey}`,reason:input.reason,issueReason:"used",forceDirectIssue:true});
+    if(Math.abs(quantity-opened.quantity)<1e-9)db.prepare("DELETE FROM opened_consumables WHERE id=?").run(opened.id);
+    else db.prepare("UPDATE opened_consumables SET quantity=quantity-? WHERE id=?").run(quantity,opened.id);
+    return {...result,openedId:opened.id,action:"exhausted"};
+  });
+}
 export function withStockOperation<T>(db:DatabaseSync,homeId:string,key:string,payload:unknown,fn:()=>T):T {
   return atomic(db,()=>{
     const serialized=JSON.stringify(payload);
@@ -81,7 +108,8 @@ export function withStockOperation<T>(db:DatabaseSync,homeId:string,key:string,p
   });
 }
 export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue",raw:unknown) {
-  const input=stockInput.parse(raw);
+  const {forceDirectIssue=false,...inputRaw}=(raw&&typeof raw==="object"?raw:{}) as Record<string,unknown>;
+  const input=stockInput.parse(inputRaw);
   const {itemId,locationId,quantity,idempotencyKey,reason}=input;
   const issueReason:IssueReason|null=type==="issue"?input.issueReason??"used":null;
   return withStockOperation(db,homeId,idempotencyKey,{type,...input},()=>{
@@ -100,7 +128,20 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
       const purchaseCategory=(db.prepare("SELECT category FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as {category:string}).category;
       db.prepare("INSERT INTO stock_batches(id,home_id,item_id,manufactured_date,expiry_date,received_at,purchase_total_minor,purchase_currency,purchased_date,channel_id,shopping_item_id,purchase_category) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run(batchId,homeId,itemId,input.manufacturedDate??null,input.expiryDate??null,new Date().toISOString(),input.totalPrice===undefined?null:Math.round(input.totalPrice*100),input.totalPrice===undefined?null:currency,recordedPurchaseDate,input.channelId??null,input.shoppingItemId??null,purchaseCategory);
       parts=[{batchId,quantity}];
-    } else parts=allocate(db,homeId,itemId,locationId,quantity,input.batchId);
+    } else {
+      const item=db.prepare("SELECT consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as {consumptionType:"non_consumable"|"consumable"|"long_term_consumable";openedShelfLifeDays:number|null};
+      if(item.consumptionType==="long_term_consumable" && !forceDirectIssue) {
+        parts=allocateUnopened(db,homeId,itemId,locationId,quantity,input.batchId);
+        const openedAt=new Date().toISOString();
+        const expiryByBatch=new Map((db.prepare(`SELECT batchId,expiryDate FROM (${batchBalanceQuery}) WHERE homeId=? AND itemId=? AND locationId=?`).all(homeId,itemId,locationId) as {batchId:string;expiryDate:string|null}[]).map(row=>[row.batchId,row.expiryDate]));
+        const calculatedExpiry=item.openedShelfLifeDays===null?null:new Date(Date.now()+item.openedShelfLifeDays*86400000).toISOString().slice(0,10);
+        const opened=parts.map(part=>({id:randomUUID(),...part,quantity:part.quantity,openedAt,openedExpiryDate:calculatedExpiry&&expiryByBatch.get(part.batchId)?(calculatedExpiry<expiryByBatch.get(part.batchId)!?calculatedExpiry:expiryByBatch.get(part.batchId)!):calculatedExpiry}));
+        for(const part of opened) db.prepare("INSERT INTO opened_consumables(id,home_id,item_id,location_id,batch_id,quantity,opened_at,opened_expiry_date) VALUES (?,?,?,?,?,?,?,?)").run(part.id,homeId,itemId,locationId,part.batchId,part.quantity,openedAt,part.openedExpiryDate);
+        for(const part of opened) recordItemEvent(db,homeId,itemId,"update","reason.openLongTermConsumable",locationId,part.quantity,part.batchId);
+        return {homeId,itemId,locationId,type,quantity,issueReason,totalPrice:null,purchaseDate:null,channelId:null,beforeQuantity,afterQuantity:beforeQuantity,difference:0,action:"opened",opened,transactions:[]};
+      }
+      parts=allocate(db,homeId,itemId,locationId,quantity,input.batchId);
+    }
     const defaultReason = type === "receipt"
       ? "reason.newBatch"
       : input.batchId ? "reason.specifiedBatchIssue" : "reason.fefoIssue";
@@ -117,7 +158,8 @@ export function transferStock(db:DatabaseSync,homeId:string,raw:unknown) {
     requireStockTarget(db,homeId,itemId,sourceLocationId); requireStockTarget(db,homeId,itemId,targetLocationId);
     if(sourceLocationId===targetLocationId) throw new InventoryError(400,"SAME_LOCATION","error.sameLocation");
     const sourceBefore=stockAt(db,homeId,itemId,sourceLocationId),targetBefore=stockAt(db,homeId,itemId,targetLocationId);
-    const parts=allocate(db,homeId,itemId,sourceLocationId,quantity,batchId);
+    const item=db.prepare("SELECT consumption_type AS consumptionType FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as {consumptionType:"non_consumable"|"consumable"|"long_term_consumable"};
+    const parts=item.consumptionType==="long_term_consumable"?allocateUnopened(db,homeId,itemId,sourceLocationId,quantity,batchId):allocate(db,homeId,itemId,sourceLocationId,quantity,batchId);
     const source=db.prepare("SELECT name FROM locations WHERE id=?").get(sourceLocationId) as {name:string};
     const target=db.prepare("SELECT name FROM locations WHERE id=?").get(targetLocationId) as {name:string};
     const reason=input.reason||`库存调拨：${source.name} → ${target.name}`;
@@ -146,6 +188,7 @@ export function reconcileStock(db:DatabaseSync,homeId:string,raw:unknown) {
       idempotencyKey:`reconcile:${input.idempotencyKey}`,
       reason:input.reason||(difference>0?"reason.stocktakeGain":"reason.stocktakeLoss"),
       ...(difference>0?{manufacturedDate:input.manufacturedDate,expiryDate:input.expiryDate}:{batchId:input.batchId,issueReason:"adjustment"}),
+      ...(difference<0?{forceDirectIssue:true}:{}),
     });
     return {homeId,itemId:input.itemId,locationId:input.locationId,beforeQuantity,afterQuantity:result.afterQuantity,difference,action,transactions:result.transactions};
   });

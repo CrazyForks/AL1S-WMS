@@ -73,6 +73,11 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   const issue=tools.tools.find(tool=>tool.name==="record_issue")!;
   assert.equal("issueReason" in (issue.inputSchema.properties??{}),true);
   assert.equal((issue.inputSchema.required??[]).includes("issueReason"),true);
+  const createItem=tools.tools.find(tool=>tool.name==="create_item")!;
+  assert.equal("consumptionType" in (createItem.inputSchema.properties??{}),true);
+  assert.match(String(((createItem.inputSchema.properties??{}).consumptionType as {description?:string}|undefined)?.description),/long_term_consumable/);
+  assert.ok(tools.tools.some(tool=>tool.name==="list_opened_consumables"));
+  assert.ok(tools.tools.some(tool=>tool.name==="exhaust_opened_consumable"));
   assert.equal("reason" in (tools.tools.find(tool=>tool.name==="transfer_stock")!.inputSchema.properties??{}),false);
   const context=parseTool(await client.callTool({name:"get_home_context",arguments:{}}));
   assert.equal(context.scope,"home");

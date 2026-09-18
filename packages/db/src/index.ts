@@ -32,6 +32,8 @@ export function openDatabase(
       name TEXT NOT NULL,
       category TEXT NOT NULL DEFAULT '其他',
       base_unit TEXT NOT NULL,
+      consumption_type TEXT NOT NULL DEFAULT 'consumable',
+      opened_shelf_life_days INTEGER,
       reorder_point REAL NOT NULL DEFAULT 0,
       reorder_quantity REAL NOT NULL DEFAULT 1,
       default_location_id TEXT,
@@ -206,6 +208,8 @@ export function openDatabase(
   const itemColumns = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
   if (!itemColumns.some(column => column.name === "icon")) db.exec("ALTER TABLE items ADD COLUMN icon TEXT");
   if (!itemColumns.some(column => column.name === "barcode")) db.exec("ALTER TABLE items ADD COLUMN barcode TEXT");
+  if (!itemColumns.some(column => column.name === "consumption_type")) db.exec("ALTER TABLE items ADD COLUMN consumption_type TEXT NOT NULL DEFAULT 'consumable'");
+  if (!itemColumns.some(column => column.name === "opened_shelf_life_days")) db.exec("ALTER TABLE items ADD COLUMN opened_shelf_life_days INTEGER");
   const eventDefinition = db.prepare("SELECT sql FROM sqlite_master WHERE name='item_events'").get() as { sql: string };
   if (!eventDefinition.sql.includes("'update'")) {
     db.exec("BEGIN IMMEDIATE");
@@ -233,7 +237,14 @@ export function openDatabase(
     image_url TEXT,
     provider TEXT,
     fetched_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS opened_consumables (
+    id TEXT PRIMARY KEY, home_id TEXT NOT NULL REFERENCES homes(id), item_id TEXT NOT NULL REFERENCES items(id),
+    location_id TEXT NOT NULL REFERENCES locations(id), batch_id TEXT NOT NULL REFERENCES stock_batches(id),
+    quantity REAL NOT NULL CHECK(quantity > 0), opened_at TEXT NOT NULL, opened_expiry_date TEXT
   );`);
+  const openedColumns=db.prepare("PRAGMA table_info(opened_consumables)").all() as {name:string}[];
+  if(!openedColumns.some(column=>column.name==="opened_expiry_date"))db.exec("ALTER TABLE opened_consumables ADD COLUMN opened_expiry_date TEXT");
   const batchColumns=db.prepare("PRAGMA table_info(stock_batches)").all() as {name:string}[];
   if(!batchColumns.some(column=>column.name==="purchase_total_minor"))db.exec("ALTER TABLE stock_batches ADD COLUMN purchase_total_minor INTEGER");
   if(!batchColumns.some(column=>column.name==="purchase_currency"))db.exec("ALTER TABLE stock_batches ADD COLUMN purchase_currency TEXT");
@@ -267,6 +278,8 @@ export function openDatabase(
     CREATE INDEX IF NOT EXISTS idx_stock_item_history ON stock_transactions(home_id,item_id,occurred_at DESC,id DESC);
     CREATE INDEX IF NOT EXISTS idx_item_history ON item_events(home_id,occurred_at,id);
     CREATE INDEX IF NOT EXISTS idx_item_event_history ON item_events(home_id,item_id,occurred_at DESC,id DESC);
+    CREATE INDEX IF NOT EXISTS idx_opened_consumables_home_opened ON opened_consumables(home_id,opened_at DESC,id DESC);
+    CREATE INDEX IF NOT EXISTS idx_opened_consumables_batch ON opened_consumables(home_id,item_id,location_id,batch_id);
     CREATE INDEX IF NOT EXISTS idx_shopping_calendar ON shopping_list(home_id,planned_date,completed);
     CREATE INDEX IF NOT EXISTS idx_shopping_pending ON shopping_list(home_id,completed,planned_date,created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_shopping_pending_item ON shopping_list(home_id,item_id,completed);
