@@ -92,6 +92,7 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal(savedBudget.budgetTotal,30);
   const receivedShopping=parseTool(await client.callTool({name:"receive_shopping_item",arguments:{shoppingItemId:plannedId,actualQuantity:1,totalPrice:4,purchaseDate:"2026-10-08",idempotencyKey:"mcp-shopping-receipt"}}));
   assert.equal(receivedShopping.completed,true);
+  db.prepare("UPDATE stock_batches SET received_at='2026-10-08T10:00:00.000Z' WHERE shopping_item_id=?").run(plannedId);
   const activeShopping=parseTool(await client.callTool({name:"list_shopping_items",arguments:{}})) as {id:string}[];
   assert.equal(activeShopping.some(item=>item.id===plannedId),false);
   const dashboard=parseTool(await client.callTool({name:"get_financial_dashboard",arguments:{month:"2026-10"}}));
@@ -99,6 +100,11 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal(dashboard.purchases[0].shoppingItemId,plannedId);
   const mcpCalendar=parseTool(await client.callTool({name:"get_shopping_calendar",arguments:{month:"2026-10",includeCompleted:true}}));
   assert.equal(mcpCalendar[0].channelName,channels[0].name);
+  const updateUrl=`/api/v1/homes/${homeId}/items/${itemId}`;
+  assert.equal((await request(homeToken,"PATCH",updateUrl,{category:"饮品"})).status,200);
+  assert.equal(db.prepare("SELECT purchase_category FROM stock_batches WHERE item_id=?").get(itemId)?.purchase_category,"食品");
+  assert.equal((await request(homeToken,"PATCH",updateUrl,{category:"乳品",syncPurchaseCategory:true})).status,200);
+  assert.equal(db.prepare("SELECT purchase_category FROM stock_batches WHERE item_id=?").get(itemId)?.purchase_category,"乳品");
   await client.close();await server.close();
 
   const accountServer=createMcpServer((method,url,body)=>request(accountToken,method,url,body));

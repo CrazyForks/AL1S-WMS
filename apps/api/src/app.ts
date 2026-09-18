@@ -396,7 +396,7 @@ app.get<{ Params: { homeId: string; itemId: string } }>(
 );
 
 app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:homeId/items/:itemId", async request => {
-  const changes=updateItemSchema.parse(request.body),{homeId,itemId}=request.params;
+  const {syncPurchaseCategory=false,...changes}=updateItemSchema.parse(request.body),{homeId,itemId}=request.params;
   if(changes.barcode)changes.barcode=normalizeBarcode(changes.barcode);
   requireStockTarget(db,homeId,itemId,changes.locationId??undefined);
   const current=db.prepare("SELECT * FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as Record<string,any>;
@@ -418,7 +418,10 @@ app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:h
       }
       if(!moved) recordItemEvent(db,homeId,itemId,"move","更改默认存放地点",changes.locationId);
     }
-    if(changes.category && changes.category!==current.category) recordItemEvent(db,homeId,itemId,"reclassify",`分类变更：${current.category} → ${changes.category}`);
+    if(changes.category && changes.category!==current.category) {
+      if(syncPurchaseCategory) db.prepare("UPDATE stock_batches SET purchase_category=? WHERE home_id=? AND item_id=?").run(changes.category,homeId,itemId);
+      recordItemEvent(db,homeId,itemId,"reclassify",`分类变更：${current.category} → ${changes.category}`);
+    }
     const other=fields.filter(([key])=>!["category","locationId"].includes(key));
     if(other.length) {
       const labels:Record<string,string>={name:"名称",icon:"图标",barcode:"条码",baseUnit:"单位",reorderPoint:"最低库存"};

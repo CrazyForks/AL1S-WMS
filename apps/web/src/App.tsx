@@ -1205,6 +1205,7 @@ export function App() {
           icon: data.get("icon") || null,
           barcode: data.get("barcode") || null,
           category: data.get("category"),
+          syncPurchaseCategory: data.get("syncPurchaseCategory") === "on",
           baseUnit: data.get("baseUnit"),
           reorderPoint: Number(data.get("reorderPoint") || 0),
           locationId: data.get("locationId") || null,
@@ -3538,6 +3539,11 @@ export function App() {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="batch-toggle">
+              <input name="syncPurchaseCategory" type="checkbox" />
+              <span aria-hidden="true" />
+              <b>{t("同步更新历史采购流水分类")}</b>
             </label>
             <div className="form-row">
               <label>

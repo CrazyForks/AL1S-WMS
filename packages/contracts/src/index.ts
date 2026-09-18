@@ -35,6 +35,7 @@ export const updateItemSchema = z.object({
   barcode: barcodeSchema.nullable().optional(),
   name: z.string().min(1).optional(),
   category: z.string().min(1).optional(),
+  syncPurchaseCategory: z.boolean().optional(),
   baseUnit: z.string().min(1).optional(),
   reorderPoint: z.number().nonnegative().optional(),
   locationId: z.string().uuid().nullable().optional(),
