@@ -17,10 +17,10 @@ importers:
 
   apps/api:
     dependencies:
-      '@family-erp/contracts':
+      '@al1s-wms/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@family-erp/db':
+      '@al1s-wms/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@fastify/static':

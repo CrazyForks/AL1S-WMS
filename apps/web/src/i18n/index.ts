@@ -5,7 +5,7 @@ import { zhCN } from "./locales/zh-CN.js";
 
 export const supportedLocales = ["zh-CN", "en-US"] as const;
 export type Locale = (typeof supportedLocales)[number];
-export const localeStorageKey = "family-erp-locale";
+export const localeStorageKey = "al1s-wms-locale";
 
 function normalizeLocale(value?: string | null): Locale | null {
   if (!value) return null;

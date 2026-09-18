@@ -19,14 +19,14 @@ RUN pnpm install --frozen-lockfile
 COPY apps ./apps
 COPY packages ./packages
 RUN pnpm build \
-  && pnpm --filter @family-erp/api deploy --prod --legacy /app/runtime
+  && pnpm --filter @al1s-wms/api deploy --prod --legacy /app/runtime
 
 FROM node:24-alpine AS runtime
 
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV BIND_ADDRESS=0.0.0.0
-ENV DATABASE_URL=/data/family-erp.db
+ENV DATABASE_URL=/data/al1s-wms.db
 ENV STATIC_ROOT=/app/public
 
 WORKDIR /app

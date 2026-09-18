@@ -10,7 +10,7 @@ export function seedShoppingChannels(db:DatabaseSync,homeId:string) {
 }
 
 export function openDatabase(
-  filename = process.env.DATABASE_URL ?? "./data/family-erp.db",
+  filename = process.env.DATABASE_URL ?? "./data/al1s-wms.db",
 ) {
   mkdirSync(dirname(filename), { recursive: true });
   const db = new DatabaseSync(filename);

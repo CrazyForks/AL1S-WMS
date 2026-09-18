@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { barcodeSchema, itemIconSchema } from "@family-erp/contracts";
+import { barcodeSchema, itemIconSchema } from "@al1s-wms/contracts";
 import { z } from "zod";
 
 export type ApiCall = (method: "GET" | "POST" | "PATCH" | "DELETE", url: string, body?: Record<string, unknown>) => Promise<{ status: number; body: unknown }>;

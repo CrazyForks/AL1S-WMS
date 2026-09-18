@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
-import { openDatabase } from "@family-erp/db";
+import { openDatabase } from "@al1s-wms/db";
 import { buildApp } from "../app.js";
 import { displayUnit, localizeReason, parseAcceptLanguage, translate } from "./index.js";
 

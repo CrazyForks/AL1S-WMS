@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
-import { openDatabase } from "@family-erp/db";
+import { openDatabase } from "@al1s-wms/db";
 import { lookupBarcode, normalizeBarcode } from "./barcodes.js";
 import { InventoryError } from "./stock.js";
 

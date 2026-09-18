@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
-import { openDatabase, seedShoppingChannels } from "@family-erp/db";
+import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
 import { financialSummary, itemPriceHistory } from "./pricing.js";
 import { listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";

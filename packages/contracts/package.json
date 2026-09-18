@@ -1,5 +1,5 @@
 {
-  "name": "@family-erp/contracts",
+  "name": "@al1s-wms/contracts",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",

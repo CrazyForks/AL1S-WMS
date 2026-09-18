@@ -1,5 +1,5 @@
 {
-  "name": "@family-erp/db",
+  "name": "@al1s-wms/db",
   "private": true,
   "type": "module",
   "exports": {

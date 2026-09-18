@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { barcodeSchema } from "@family-erp/contracts";
+import { barcodeSchema } from "@al1s-wms/contracts";
 import { InventoryError } from "./stock.js";
 
 type Fetcher = typeof fetch;

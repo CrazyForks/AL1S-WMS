@@ -252,7 +252,7 @@ function summarizeHierarchy<
 const fallbackHomeId = "11111111-1111-4111-8111-111111111111";
 const locationId = "22222222-2222-4222-8222-222222222222";
 const getHomeId = () =>
-  localStorage.getItem("family-erp-home-id") ?? fallbackHomeId;
+  localStorage.getItem("al1s-wms-home-id") ?? fallbackHomeId;
 const itemCategories = [
   "食品",
   "饮品",
@@ -378,8 +378,8 @@ function Setup({
       setError(data.message ?? t("初始化失败，请检查输入"));
       return;
     }
-    localStorage.setItem("family-erp-home-id", data.home.id);
-    localStorage.setItem("family-erp-home-emoji", homeEmoji);
+    localStorage.setItem("al1s-wms-home-id", data.home.id);
+    localStorage.setItem("al1s-wms-home-emoji", homeEmoji);
     onComplete(data.home);
   };
   return (
@@ -811,7 +811,7 @@ export function App() {
           available.find((home) => home.id === getHomeId()) ?? available[0];
         setHomes(available);
         if (current) {
-          localStorage.setItem("family-erp-home-id", current.id);
+          localStorage.setItem("al1s-wms-home-id", current.id);
           setSetup({ complete: true, home: current });
           await load();
         }
@@ -1796,7 +1796,7 @@ export function App() {
               aria-label={t("切换家庭")}
               value={setup.home?.id ?? ""}
               onChange={(event) => {
-                localStorage.setItem("family-erp-home-id", event.target.value);
+                localStorage.setItem("al1s-wms-home-id", event.target.value);
                 window.location.reload();
               }}
             >
@@ -2034,7 +2034,7 @@ export function App() {
                         className="text-button"
                         disabled={busy}
                         onClick={() => {
-                          localStorage.setItem("family-erp-home-id", home.id);
+                          localStorage.setItem("al1s-wms-home-id", home.id);
                           window.location.reload();
                         }}
                       >
@@ -2081,7 +2081,7 @@ export function App() {
                     );
                     if (home.id === setup.home?.id) {
                       setSetup({ complete: true, home });
-                      localStorage.setItem("family-erp-home-emoji", home.icon);
+                      localStorage.setItem("al1s-wms-home-emoji", home.icon);
                     }
                     setEditingHome(null);
                     setHomeNotice(

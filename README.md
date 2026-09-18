@@ -34,7 +34,7 @@ docker run -d \
 
 Open `http://localhost:8080` and follow the initial setup.
 
-The SQLite database is stored at `/data/family-erp.db`. Always persist `/data` with a Docker volume or bind mount.
+The SQLite database is stored at `/data/al1s-wms.db`. Always persist `/data` with a Docker volume or bind mount.
 
 Set `APIZERO_API_KEY` to use an authenticated ApiZero barcode lookup; without it, AL1S WMS uses the anonymous free quota.
 
@@ -45,7 +45,7 @@ docker run -d \
   --name al1s-erp \
   --restart unless-stopped \
   -p 8080:8080 \
-  -v /root/docker-services/data/al1s-erp:/data \
+  -v /root/docker-services/data/al1s-wms:/data \
   al1s-erp
 ```
 

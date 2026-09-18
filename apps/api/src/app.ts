@@ -19,8 +19,8 @@ import {
   createItemSchema,
   updateItemSchema,
   type Item,
-} from "@family-erp/contracts";
-import { openDatabase, seedShoppingChannels } from "@family-erp/db";
+} from "@al1s-wms/contracts";
+import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
 import { handleMcpRequest } from "./mcp.js";
 import { deleteInventoryEntity, DeleteError } from "./inventory-delete.js";
 import { parseAcceptLanguage, sendCodeError, sendError } from "./i18n/index.js";

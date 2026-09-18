@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID, scryptSync } from "node:crypto";
 import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { openDatabase } from "@family-erp/db";
+import { openDatabase } from "@al1s-wms/db";
 import { buildApp } from "./app.js";
 import { createMcpServer } from "./mcp.js";
 

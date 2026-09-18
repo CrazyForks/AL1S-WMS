@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { test } from "node:test";
-import { openDatabase } from "@family-erp/db";
+import { openDatabase } from "@al1s-wms/db";
 import { deleteInventoryEntity, transactionQuery } from "./inventory-delete.js";
 import { createMcpServer } from "./mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
