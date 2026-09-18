@@ -59,7 +59,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
   const find=(nodes:BudgetNode[],name:string):BudgetNode|undefined=>{
     for(const node of nodes){if(node.name===name)return node;const found=find(node.children,name);if(found)return found;}
   };
-  const amounts=(actual:number,planned:number)=><div className="budget-tree-amounts"><span>{t("已花")} <b>{money(actual)}</b></span><span>{t("待采购")} <b>{money(planned)}</b></span></div>;
+  const amounts=(actual:number,planned:number,remaining?:number)=><div className="budget-tree-amounts"><span>{t("已花")} <b>{money(actual)}</b></span><span>{t("待采购")} <b>{money(planned)}</b></span>{remaining!==undefined&&<span className={remaining<0?"budget-tree-over":"budget-tree-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</span>}</div>;
   const render=(node:BudgetNode,depth:number,unbudgeted=false):React.ReactNode=>{
     const budget=unbudgeted?undefined:limits.get(node.name);
     const children=node.children.filter(child=>child.actual>0||child.planned>0||(!unbudgeted&&hasBudget(child)));
@@ -72,8 +72,8 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     const forecast=node.actual+node.planned,remaining=(budget??0)-forecast,max=Math.max(1,budget??0,forecast);
     const content=<>
       <span className="budget-tree-heading"><strong>{node.name}</strong>{budget!==undefined&&<small>{t("预算")} {money(budget)}</small>}</span>
-      {amounts(node.actual,node.planned)}
-      {budget!==undefined&&<><span className="category-execution-bar"><i style={{width:node.actual/max*100+"%"}}/><em style={{width:node.planned/max*100+"%"}}/></span><span className={remaining<0?"budget-tree-over":"budget-tree-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</span></>}
+      {amounts(node.actual,node.planned,budget!==undefined?remaining:undefined)}
+      {budget!==undefined&&<span className="category-execution-bar"><i style={{width:node.actual/max*100+"%"}}/><em style={{width:node.planned/max*100+"%"}}/></span>}
       {budget!==undefined&&childBudgets.length>0&&<div className={flexibleRemaining<0?"allocation-split invalid":"allocation-split"}><span>{node.name} {money(allocation!.unallocated)}</span><span>{flexibleRemaining<0?t("超支"):t("可用")} {money(Math.abs(flexibleRemaining))}</span></div>}
     </>;
     return <div className="budget-spend-node" key={node.name}>
