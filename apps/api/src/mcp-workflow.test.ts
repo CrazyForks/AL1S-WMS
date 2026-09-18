@@ -6,6 +6,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { openDatabase } from "@al1s-wms/db";
 import { buildApp } from "./app.js";
 import { createMcpServer } from "./mcp.js";
+import { recordStock } from "./stock.js";
 
 const parseTool = (result:unknown) =>
   JSON.parse(((result as {content:{type:string;text:string}[]}).content)[0].text);
@@ -105,6 +106,13 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal(db.prepare("SELECT purchase_category FROM stock_batches WHERE item_id=?").get(itemId)?.purchase_category,"食品");
   assert.equal((await request(homeToken,"PATCH",updateUrl,{category:"乳品",syncPurchaseCategory:true})).status,200);
   assert.equal(db.prepare("SELECT purchase_category FROM stock_batches WHERE item_id=?").get(itemId)?.purchase_category,"乳品");
+  const secondLocationId=randomUUID();
+  db.prepare("INSERT INTO locations(id,home_id,name) VALUES (?,?,?)").run(secondLocationId,homeId,"客厅储物架");
+  recordStock(db,homeId,"receipt",{itemId,locationId:secondLocationId,quantity:3,idempotencyKey:"recent-location-receipt"});
+  db.prepare("UPDATE stock_transactions SET occurred_at='2026-09-18T18:00:00.000Z' WHERE item_id=? AND location_id=?").run(itemId,locationId);
+  db.prepare("UPDATE stock_transactions SET occurred_at='2026-09-18T19:00:00.000Z' WHERE item_id=? AND location_id=?").run(itemId,secondLocationId);
+  const stockRows=(await request(homeToken,"GET",`/api/v1/homes/${homeId}/stock?itemId=${itemId}`)).body as {locationId:string;latestReceivedAt:string}[];
+  assert.deepEqual(new Map(stockRows.map(row=>[row.locationId,row.latestReceivedAt])),new Map([[locationId,"2026-09-18T18:00:00.000Z"],[secondLocationId,"2026-09-18T19:00:00.000Z"]]));
   await client.close();await server.close();
 
   const accountServer=createMcpServer((method,url,body)=>request(accountToken,method,url,body));

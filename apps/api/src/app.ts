@@ -435,7 +435,7 @@ app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/stock", async request =
   const filters=z.object({itemId:z.string().uuid().optional(),locationId:z.string().uuid().optional(),batchId:z.string().uuid().optional()}).parse(request.query);
   const where=["home_id=?"],params:string[]=[request.params.homeId];
   for(const [key,column] of [["itemId","item_id"],["locationId","location_id"],["batchId","batch_id"]] as const) if(filters[key]) {where.push(`${column}=?`);params.push(filters[key]!);}
-  return db.prepare(`SELECT item_id AS itemId,location_id AS locationId,SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END) AS quantity FROM stock_transactions WHERE ${where.join(" AND ")} GROUP BY item_id,location_id`).all(...params);
+  return db.prepare(`SELECT item_id AS itemId,location_id AS locationId,SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END) AS quantity,MAX(CASE WHEN type='receipt' THEN occurred_at END) AS latestReceivedAt FROM stock_transactions WHERE ${where.join(" AND ")} GROUP BY item_id,location_id`).all(...params);
 });
 
 app.get<{ Params: { homeId: string } }>(

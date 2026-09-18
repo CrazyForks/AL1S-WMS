@@ -96,7 +96,7 @@ type Item = {
   currency?:string|null;
 };
 type LocationScopedItem=Item&{treeQuantity?:number};
-type Stock = { itemId: string; locationId: string; quantity: number };
+type Stock = { itemId: string; locationId: string; quantity: number; latestReceivedAt?:string|null };
 type Location = {
   id: string;
   homeId: string;
@@ -895,6 +895,7 @@ export function App() {
       ...item,locationId:row.locationId,
       locationName:locations.find(location=>location.id===row.locationId)?.name??"未指定",
       treeQuantity:row.quantity,
+      latestReceivedAt:row.latestReceivedAt??null,
     }));
     return [{...item,treeQuantity:0}];
   }),[items,stock,locations]);
