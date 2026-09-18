@@ -4,7 +4,7 @@ import { listItems, listTransactions, listBatches, getHomeOverview } from "./que
 import { atomic, batchDates, batchBalanceQuery, InventoryError, moneySchema, reconcileStock, recordItemEvent, recordStock, refreshItemDates, requireStockTarget, transferStock, validateDates } from "./stock.js";
 import { saveShopping, receiveShopping } from "./shopping.js";
 import { lookupBarcode, normalizeBarcode } from "./barcodes.js";
-import { financialSummary, itemPriceHistory } from "./pricing.js";
+import { financialDashboard, financialSummary, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
 import fastifyStatic from "@fastify/static";
 import {
   createHash,
@@ -376,6 +376,8 @@ app.post("/api/v1/auth/logout", async (request, reply) => {
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/items", async request => listItems(db,request.params.homeId,request.query));
 app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/overview", async request => getHomeOverview(db,request.params.homeId,request.query,localeOf(request)));
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/financial-summary",async request=>financialSummary(db,request.params.homeId,request.query));
+app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/financial-dashboard",async request=>financialDashboard(db,request.params.homeId,request.query));
+app.patch<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/financial-budget",async request=>saveFinancialBudget(db,request.params.homeId,request.body));
 app.get<{Params:{homeId:string;itemId:string}}>("/api/v1/homes/:homeId/items/:itemId/price-history",async request=>itemPriceHistory(db,request.params.homeId,request.params.itemId));
 app.get<{Params:{homeId:string;barcode:string}}>("/api/v1/homes/:homeId/barcodes/:barcode",async request=>lookupBarcode(db,request.params.homeId,request.params.barcode));
 

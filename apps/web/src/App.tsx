@@ -44,6 +44,7 @@ const pagePaths = {
   home: "/",
   count: "/count",
   shopping: "/shopping",
+  finance: "/finance",
   locations: "/locations",
   categories: "/categories",
   profile: "/profile",
@@ -189,7 +190,7 @@ type ShoppingChannel = {
   isSystem: boolean;
   sortOrder: number;
 };
-type FinancialSummary={month:string;currency:string;spendingTotal:number;estimatedTotal:number;variance:number;inventoryValue:number;pricedBatchCount:number;unknownBatchCount:number;byChannel:{channelId:string|null;channelName:string|null;total:number}[]};
+type FinancialSummary={month:string;currency:string;budgetTotal:number|null;spendingTotal:number;estimatedTotal:number;forecastTotal:number;remainingBudget:number|null;variance:number;inventoryValue:number;pricedBatchCount:number;unknownBatchCount:number;categoryBudgets:{category:string;amount:number}[];byCategory:{category:string;actual:number;planned:number;budget:number|null}[];byChannel:{channelId:string|null;channelName:string;total:number}[];purchases:{batchId:string;itemId:string;itemName:string;category:string;purchaseDate:string;quantity:number;unitPrice:number|null;totalPrice:number;channelName:string;estimatedTotal:number|null;variance:number|null}[];trend:{month:string;actual:number;planned:number;budget:number|null}[];valuation:{category:string;locationId:string|null;locationName:string;value:number}[]};
 type ApiToken = {
   id: string;
   name: string;
@@ -321,7 +322,7 @@ async function getShoppingCalendar(month: string, includeCompleted = false) {
   return response.json() as Promise<ShoppingItem[]>;
 }
 async function getFinancialSummary(month:string) {
-  const response=await apiFetch(`/api/v1/homes/${getHomeId()}/financial-summary?month=${month}`);
+  const response=await apiFetch(`/api/v1/homes/${getHomeId()}/financial-dashboard?month=${month}`);
   if(!response.ok)throw new Error(t("无法加载价格统计"));
   return response.json() as Promise<FinancialSummary>;
 }
@@ -674,6 +675,9 @@ export function App() {
   const [newChannelName, setNewChannelName] = useState("");
   const [financialSummary,setFinancialSummary]=useState<FinancialSummary|null>(null);
   const [calendarFinancial,setCalendarFinancial]=useState<FinancialSummary|null>(null);
+  const [financeMonth,setFinanceMonth]=useState(() => new Date().toISOString().slice(0,7));
+  const [financeDashboard,setFinanceDashboard]=useState<FinancialSummary|null>(null);
+  const [financeSaving,setFinanceSaving]=useState(false);
   const [showShoppingForm, setShowShoppingForm] = useState(false);
   const [shoppingItemId, setShoppingItemId] = useState("");
   const [editShoppingItemId, setEditShoppingItemId] = useState("");
@@ -789,6 +793,10 @@ export function App() {
       .catch((error) => setNotice(error.message));
     getFinancialSummary(shoppingMonth).then(setCalendarFinancial).catch(error=>setNotice(error.message));
   }, [authenticated, shoppingMonth, calendarIncludeCompleted, shoppingList]);
+  useEffect(() => {
+    if (!authenticated || activePage !== "finance") return;
+    getFinancialSummary(financeMonth).then(setFinanceDashboard).catch(error=>setNotice(error.message));
+  }, [authenticated, activePage, financeMonth]);
   useEffect(() => {
     apiFetch("/api/v1/setup/status")
       .then((response) => response.json())
@@ -1579,6 +1587,26 @@ export function App() {
       setBarcodeBusy(false);
     }
   }
+  async function saveFinanceBudget(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (financeSaving) return;
+    const data=new FormData(event.currentTarget);
+    const totalValue=String(data.get("total")??"").trim();
+    const categoryBudgets=[...data.entries()].flatMap(([key,value])=>{
+      if(!key.startsWith("category:"))return [];
+      const amount=String(value).trim();
+      return amount===""?[]:[{category:key.slice(9),amount:Number(amount)}];
+    });
+    setFinanceSaving(true);
+    try {
+      const response=await apiFetch(`/api/v1/homes/${getHomeId()}/financial-budget`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({month:financeMonth,total:totalValue===""?null:Number(totalValue),categoryBudgets})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.message||t("保存失败"));
+      setFinanceDashboard(result);
+      setNotice(t("预算已保存"));
+    } catch(error) {setNotice(error instanceof Error?error.message:t("保存失败"));}
+    finally {setFinanceSaving(false);}
+  }
   function navigate(page: Page) {
     if (window.location.pathname !== pagePaths[page])
       window.history.pushState(null, "", pagePaths[page]);
@@ -1633,6 +1661,10 @@ export function App() {
         parentId: null,
         depth: 0,
       }));
+  const financeBudgetCategories=[...new Set([
+    ...categories.map(category=>category.name),
+    ...(financeDashboard?.categoryBudgets.map(budget=>budget.category)??[]),
+  ])].sort((left,right)=>left.localeCompare(right,localeForDates()));
   const renderTreeNode = (node: TreeNode, depth = 0) => {
     const open = expandedLocations[node.id] ?? true;
     const children = treeNodes.filter((child) => child.parentId === node.id);
@@ -1790,6 +1822,12 @@ export function App() {
             {t("采购")}
           </button>
           <button
+            className={activePage === "finance" ? "active" : ""}
+            onClick={() => navigate("finance")}
+          >
+            {t("财务")}
+          </button>
+          <button
             className={activePage === "locations" ? "active" : ""}
             onClick={() => navigate("locations")}
           >
@@ -1844,6 +1882,8 @@ export function App() {
                       ? t("分类")
                       : activePage === "shopping"
                         ? t("采购清单")
+                        : activePage === "finance"
+                          ? t("财务")
                         : t("我的设置")}
             </h1>
             <p className="muted">
@@ -1857,6 +1897,8 @@ export function App() {
                       ? t("维护物资分类和分类树。")
                       : activePage === "shopping"
                         ? t("管理自动建议和手动采购项。")
+                        : activePage === "finance"
+                          ? t("查看预算、采购支出和库存价值。")
                         : t("管理家庭、Agent 访问令牌与登录会话。")}
             </p>
           </div>
@@ -1916,6 +1958,40 @@ export function App() {
             <button onClick={() => setNotice("")} aria-label={t("关闭")}>
               ×
             </button>
+          </div>
+        )}
+        {activePage === "finance" && financeDashboard && (
+          <div className="finance-page">
+            <section className="finance-toolbar">
+              <label>{t("统计月份")}<input type="month" value={financeMonth} onChange={event=>setFinanceMonth(event.target.value)} /></label>
+              <span>{t("采购日期决定实际支出归属月份")}</span>
+            </section>
+            <section className="finance-kpis">
+              {[
+                [t("月度预算"),financeDashboard.budgetTotal],
+                [t("实际支出"),financeDashboard.spendingTotal],
+                [t("待采购预计"),financeDashboard.estimatedTotal],
+                [t("预测支出"),financeDashboard.forecastTotal],
+                [t("剩余预算"),financeDashboard.remainingBudget],
+              ].map(([label,value])=><div className={`finance-kpi ${label===t("剩余预算")&&typeof value==="number"&&value<0?"over": ""}`} key={String(label)}><small>{label}</small><strong>{value===null?t("未设置"):formatMoney(Number(value),financeDashboard.currency)}</strong></div>)}
+            </section>
+            <section className="finance-layout">
+              <section className="panel finance-trend">
+                <div className="panel-head"><div><h2>{t("支出趋势")}</h2><p className="muted">{t("实际支出、待采购预计与月度预算")}</p></div></div>
+                <div className="trend-chart" aria-label={t("过去 12 个月支出趋势")}>
+                  {financeDashboard.trend.map(point=>{const max=Math.max(1,...financeDashboard.trend.flatMap(row=>[row.actual+row.planned,row.budget??0]));return <div className="trend-column" key={point.month} title={`${point.month}: ${formatMoney(point.actual,financeDashboard.currency)}`}><div className="trend-stack"><i style={{height:`${point.actual/max*100}%`}} /><em style={{height:`${point.planned/max*100}%`}} />{point.budget!==null&&<b style={{bottom:`${point.budget/max*100}%`}} />}</div><small>{point.month.slice(5)}</small></div>;})}
+                </div>
+                <div className="chart-legend"><span><i className="actual" />{t("实际支出")}</span><span><i className="planned" />{t("待采购预计")}</span><span><i className="budget" />{t("月度预算")}</span></div>
+              </section>
+              <form className="panel finance-budget" onSubmit={saveFinanceBudget}>
+                <div className="panel-head"><div><h2>{t("预算设置")}</h2><p className="muted">{t("分类预算合计不得超过总预算")}</p></div></div>
+                <div className="finance-budget-body"><label>{t("月度总预算")}<input name="total" type="number" min="0" step="0.01" defaultValue={financeDashboard.budgetTotal??""} placeholder="0.00" /></label><div className="category-budget-list">{financeBudgetCategories.map(category=><label key={category}>{category}<input name={`category:${category}`} type="number" min="0" step="0.01" defaultValue={financeDashboard.categoryBudgets.find(budget=>budget.category===category)?.amount??""} placeholder="-" /></label>)}</div><button className="primary" disabled={financeSaving}>{financeSaving?t("保存中…"):t("保存预算")}</button></div>
+              </form>
+              <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("分类支出")}</h2><p className="muted">{t("实际与待采购预计")}</p></div></div><div className="bar-list">{financeDashboard.byCategory.length?financeDashboard.byCategory.map(row=>{const max=Math.max(1,...financeDashboard.byCategory.map(item=>item.actual+item.planned));return <div className="bar-row" key={row.category}><span>{row.category}</span><div><i style={{width:`${row.actual/max*100}%`}} /><em style={{width:`${row.planned/max*100}%`}} /></div><b>{formatMoney(row.actual+row.planned,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无分类支出")}</p>}</div></section>
+              <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("渠道支出")}</h2><p className="muted">{t("已完成采购")}</p></div></div><div className="bar-list">{financeDashboard.byChannel.length?financeDashboard.byChannel.map(row=>{const max=Math.max(1,...financeDashboard.byChannel.map(item=>item.total));return <div className="bar-row" key={row.channelId??"none"}><span>{row.channelName}</span><div><i style={{width:`${row.total/max*100}%`}} /></div><b>{formatMoney(row.total,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无渠道支出")}</p>}</div></section>
+            </section>
+            <section className="panel finance-purchases"><div className="panel-head"><div><h2>{t("采购流水")}</h2><p className="muted">{t("已录入成本的入库批次")}</p></div></div><div className="table-wrap"><table><thead><tr><th>{t("日期")}</th><th>{t("物资")}</th><th>{t("分类")}</th><th>{t("渠道")}</th><th>{t("数量")}</th><th>{t("单价")}</th><th>{t("实付总价")}</th><th>{t("预计差异")}</th></tr></thead><tbody>{financeDashboard.purchases.length?financeDashboard.purchases.map(row=><tr key={row.batchId}><td>{row.purchaseDate}</td><td>{row.itemName}</td><td>{row.category}</td><td>{row.channelName}</td><td>{row.quantity}</td><td>{row.unitPrice===null?t("未知"):formatMoney(row.unitPrice,financeDashboard.currency)}</td><td>{formatMoney(row.totalPrice,financeDashboard.currency)}</td><td className={row.variance!==null&&row.variance>0?"negative":""}>{row.variance===null?"-":formatMoney(row.variance,financeDashboard.currency)}</td></tr>):<tr><td colSpan={8} className="empty">{t("本月暂无采购流水")}</td></tr>}</tbody></table></div></section>
+            <section className="panel finance-valuation"><div className="panel-head"><div><h2>{t("库存价值")}</h2><p className="muted">{t("按剩余数量和批次单位成本估值")}</p></div><strong>{formatMoney(financeDashboard.inventoryValue,financeDashboard.currency)}</strong></div><div className="valuation-meta"><span>{t("已计价批次")} {financeDashboard.pricedBatchCount}</span><span>{t("未知成本批次")} {financeDashboard.unknownBatchCount}</span></div><div className="valuation-grid">{financeDashboard.valuation.map(row=><div key={`${row.category}:${row.locationId}`}><small>{row.category} · {row.locationName}</small><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>)}</div></section>
           </div>
         )}
         {activePage === "profile" && (

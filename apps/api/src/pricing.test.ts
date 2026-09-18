@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
-import { financialSummary, itemPriceHistory } from "./pricing.js";
+import { financialDashboard, financialSummary, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
 import { listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
 import { recordStock } from "./stock.js";
@@ -53,5 +53,22 @@ test("shopping receipt inherits channel and records actual total on its batch",(
   assert.equal(batch?.purchaseCategory,"饮品");
   const suggested=saveShopping(db,homeId,{itemId,quantity:2,channelId,plannedDate:"2026-10-01"});
   assert.equal(suggested.estimatedTotal,5.6);
+  db.close();
+});
+
+test("financial dashboard combines budgets, plans, purchases, and valuation",()=>{
+  const {db,homeId,locationId,itemId,channelId}=fixture();
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:4,totalPrice:12,purchaseDate:"2026-09-04",channelId,idempotencyKey:"dashboard-receipt"});
+  saveShopping(db,homeId,{itemId,quantity:2,plannedDate:"2026-09-18",estimatedTotal:8});
+  saveFinancialBudget(db,homeId,{month:"2026-09",total:30,categoryBudgets:[{category:"饮品",amount:20}]});
+  const dashboard=financialDashboard(db,homeId,{month:"2026-09"});
+  assert.equal(dashboard.budgetTotal,30);
+  assert.equal(dashboard.forecastTotal,20);
+  assert.equal(dashboard.remainingBudget,10);
+  assert.equal(dashboard.byCategory[0].budget,20);
+  assert.equal(dashboard.purchases[0].variance,null);
+  assert.equal(dashboard.valuation[0].value,12);
+  assert.equal(dashboard.trend.length,12);
+  assert.throws(()=>saveFinancialBudget(db,homeId,{month:"2026-09",total:10,categoryBudgets:[{category:"饮品",amount:11}]}));
   db.close();
 });
