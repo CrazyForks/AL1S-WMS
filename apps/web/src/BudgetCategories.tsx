@@ -60,16 +60,17 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     for(const node of nodes){if(node.name===name)return node;const found=find(node.children,name);if(found)return found;}
   };
   const hasSpending=(node:BudgetNode)=>node.actual!==0||node.planned!==0;
-  const detailLine=(name:string,actual:number,planned:number)=><span className="execution-detail-line"><span>{name}</span><span className="execution-detail-values"><b>{money(actual)}</b>{planned!==0&&<small>{t("待采购")} {money(planned)}</small>}</span></span>;
-  const renderDetail=(node:BudgetNode):React.ReactNode=>{
+  const dot=(color?:string)=>color?<i className="execution-color-dot" style={{backgroundColor:color}} aria-hidden="true"/>:null;
+  const detailLine=(name:string,actual:number,planned:number,color?:string)=><span className="execution-detail-line"><span>{dot(color)}{name}</span><span className="execution-detail-values"><b>{money(actual)}</b>{planned!==0&&<small>{t("待采购")} {money(planned)}</small>}</span></span>;
+  const renderDetail=(node:BudgetNode,colors?:Map<string,string>):React.ReactNode=>{
     const children=node.children.filter(hasSpending);
     return children.length?<details className="execution-detail-branch" key={node.name}>
-      <summary>{detailLine(node.name,node.actual,node.planned)}</summary>
+      <summary>{detailLine(node.name,node.actual,node.planned,colors?.get(node.name))}</summary>
       <div className="execution-detail-children">
-        {(node.directActual!==0||node.directPlanned!==0)&&<div>{detailLine(node.name,node.directActual,node.directPlanned)}</div>}
-        {children.map(renderDetail)}
+        {(node.directActual!==0||node.directPlanned!==0)&&<div>{detailLine(node.name,node.directActual,node.directPlanned,colors?.get(node.name))}</div>}
+        {children.map(child=>renderDetail(child,colors))}
       </div>
-    </details>:<div className="execution-detail-leaf" key={node.name}>{detailLine(node.name,node.actual,node.planned)}</div>;
+    </details>:<div className="execution-detail-leaf" key={node.name}>{detailLine(node.name,node.actual,node.planned,colors?.get(node.name))}</div>;
   };
   const renderBudget=(budget:typeof budgets[number],groupColors?:Map<string,string>):React.ReactNode=>{
     const node=find(tree,budget.category);
@@ -90,7 +91,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     const details=direct?.children.filter(hasSpending)??[];
     const hasDirect=!!direct&&(direct.directActual!==0||direct.directPlanned!==0)&&(children.length>0||details.length>0);
     const content=<>
-      <span className="execution-budget-heading"><strong>{budget.category}</strong><span>{t("预算")} <b>{money(budget.amount)}</b></span></span>
+      <span className="execution-budget-heading"><strong>{groupColors&&dot(colors.get(budget.category))}{budget.category}</strong><span>{t("预算")} <b>{money(budget.amount)}</b></span></span>
       <span className="execution-budget-amounts"><span>{t("已花")} <b>{money(actual)}</b></span><span>{t("待采购")} <b>{money(planned)}</b></span><strong className={remaining<0?"execution-over":"execution-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</strong></span>
       <span className="execution-progress">{segments.flatMap(segment=>(["actual","planned"] as const).flatMap(kind=>{
         const value=segment[kind];
@@ -101,10 +102,10 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     </>;
     const hasContents=children.length>0||hasDirect||details.length>0;
     return <div className="execution-budget" key={budget.category}>
-      {hasContents?<details open><summary className="execution-budget-summary">{content}</summary>
+      {hasContents?<details open={!groupColors}><summary className="execution-budget-summary">{content}</summary>
         <div className="execution-budget-content">
           {children.length>0&&<div className="execution-budget-children">{children.map(child=>renderBudget(child,colors))}</div>}
-          {(hasDirect||details.length>0)&&<div className="execution-details"><div className="execution-details-heading">{t("支出明细")}</div>{hasDirect&&<div className="execution-detail-leaf">{detailLine(budget.category,direct!.directActual,direct!.directPlanned)}</div>}{details.map(renderDetail)}</div>}
+          {(hasDirect||details.length>0)&&<div className="execution-details">{hasDirect&&<div className="execution-detail-leaf">{detailLine(budget.category,direct!.directActual,direct!.directPlanned,colors.get(budget.category))}</div>}{details.map(child=>renderDetail(child,colors))}</div>}
         </div>
       </details>:<div className="execution-budget-summary">{content}</div>}
     </div>;
@@ -114,7 +115,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     <div className="panel-head"><div><h2>{t("分类预算执行")}</h2></div></div>
     <div className="budget-execution-tree">
       {budgets.length?budgets.filter(row=>!parent(row.category)).map(row=>renderBudget(row)):<p className="empty">{t("尚未分配分类预算")}</p>}
-      {outside.length>0&&<div className="execution-outside"><div className="execution-details-heading">{t("计划外支出")}</div>{outside.map(renderDetail)}</div>}
+      {outside.length>0&&<div className="execution-outside"><div className="execution-details-heading">{t("计划外支出")}</div>{outside.map(node=>renderDetail(node))}</div>}
     </div>
   </section>;
 }
