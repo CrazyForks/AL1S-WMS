@@ -7,9 +7,9 @@
   "theme_color": "#f6f7f8",
   "icons": [
     {
-      "src": "/alice.gif",
-      "sizes": "200x200",
-      "type": "image/gif",
+      "src": "/app-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
       "purpose": "any"
     }
   ]
