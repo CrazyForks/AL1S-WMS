@@ -185,6 +185,7 @@ function TransactionRow({ transaction,onOpenItem }: { transaction: Transaction;o
       </b>
       <time>
         {new Date(transaction.occurredAt).toLocaleString(localeForDates(), {
+          year: "numeric",
           month: "numeric",
           day: "numeric",
           hour: "2-digit",
@@ -1103,6 +1104,7 @@ export function App() {
     (item, location) => item.locationId === location.id,
   );
   const currentDateLabel = new Intl.DateTimeFormat(localeForDates(), {
+    year: "numeric",
     month: "long",
     day: "numeric",
     weekday: "short",
@@ -3157,7 +3159,7 @@ export function App() {
             </div>
             <section className="panel opened-consumables-panel">
               <div className="panel-head"><div><h2>{t("已开封消耗品")}</h2><p className="muted">{t("开封后仍计入库存，用尽后才扣减")}</p></div><strong>{openedConsumables.length}</strong></div>
-              {openedConsumables.length===0?<p className="empty">{t("暂无已开封消耗品")}</p>:<div className="table-wrap"><table><thead><tr><th>{t("物资")}</th><th>{t("数量")}</th><th>{t("地点")}</th><th>{t("批次")}</th><th>{t("开封后到期")}</th><th>{t("保质期")}</th><th>{t("开封时间")}</th><th>{t("操作")}</th></tr></thead><tbody>{openedConsumables.map(opened=><tr key={opened.id}><td><button type="button" className="item-link" onClick={()=>openItemDetail(opened.itemId)}>{opened.itemName}</button></td><td>{opened.quantity} {displayUnit(opened.baseUnit)}</td><td>{opened.locationName||t("未指定")}</td><td>{opened.batchLabel||opened.batchId.slice(0,8)}</td><td>{opened.openedExpiryDate||t("未设置")}</td><td>{opened.expiryDate||t("未设置")}</td><td>{new Date(opened.openedAt).toLocaleString(localeForDates(),{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td><button type="button" className="text-button" disabled={busy} onClick={()=>exhaustOpened(opened)}>{t("用尽")}</button></td></tr>)}</tbody></table></div>}
+              {openedConsumables.length===0?<p className="empty">{t("暂无已开封消耗品")}</p>:<div className="table-wrap"><table><thead><tr><th>{t("物资")}</th><th>{t("数量")}</th><th>{t("地点")}</th><th>{t("批次")}</th><th>{t("开封后到期")}</th><th>{t("保质期")}</th><th>{t("开封时间")}</th><th>{t("操作")}</th></tr></thead><tbody>{openedConsumables.map(opened=><tr key={opened.id}><td><button type="button" className="item-link" onClick={()=>openItemDetail(opened.itemId)}>{opened.itemName}</button></td><td>{opened.quantity} {displayUnit(opened.baseUnit)}</td><td>{opened.locationName||t("未指定")}</td><td>{opened.batchLabel||opened.batchId.slice(0,8)}</td><td>{opened.openedExpiryDate||t("未设置")}</td><td>{opened.expiryDate||t("未设置")}</td><td>{new Date(opened.openedAt).toLocaleString(localeForDates(),{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td><button type="button" className="text-button" disabled={busy} onClick={()=>exhaustOpened(opened)}>{t("用尽")}</button></td></tr>)}</tbody></table></div>}
             </section>
             <div className="panel inventory-panel count-inventory">
               <div className="panel-head">
