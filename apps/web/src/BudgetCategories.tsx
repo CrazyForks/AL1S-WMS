@@ -15,7 +15,7 @@ export function BudgetCategoryPicker({categories,entries,value,onChange}:{catego
     return <div key={node.name}>
       <button type="button" disabled={disabled} style={{paddingLeft:12+depth*16}} title={node.path.join(" / ")} onClick={()=>{onChange(node.name);if(dropdown.current)dropdown.current.open=false;}}>
         <span>{depth>0?"└ ":""}{node.name}</span>
-        <small>{owner?t("共享{{category}}预算",{category:owner.category}):descendant?t("子分类已分配预算"):t("可分配")}</small>
+        {!owner&&<small>{descendant?t("子分类已分配预算"):t("可分配")}</small>}
       </button>
       {node.children.map(child=>render(child,depth+1))}
     </div>;
@@ -45,7 +45,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     const hasDetails=children.length>0;
     const forecast=node.actual+node.planned,remaining=(budget??0)-forecast,max=Math.max(1,budget??0,forecast);
     const content=<>
-      <span className="budget-tree-heading"><strong>{node.name}</strong><small>{budget!==undefined?t("共享预算"):owner?t("共享{{category}}预算",{category:owner}):t("未分配预算")}{budget!==undefined?" "+money(budget):""}</small></span>
+      <span className="budget-tree-heading"><strong>{node.name}</strong>{budget!==undefined?<small>{t("预算")} {money(budget)}</small>:!owner&&<small>{t("未分配预算")}</small>}</span>
       {amounts(node.actual,node.planned)}
       {budget!==undefined&&<><span className="category-execution-bar"><i style={{width:node.actual/max*100+"%"}}/><em style={{width:node.planned/max*100+"%"}}/><b style={{left:(budget/max*100)+"%"}}/></span><span className={remaining<0?"budget-tree-over":"budget-tree-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</span></>}
     </>;
