@@ -23,13 +23,13 @@ Build and run with Docker:
 ```bash
 gh repo clone RicterZ/AL1S-WMS
 cd AL1S-WMS
-docker build -t al1s-erp .
+docker build -t al1s-wms .
 docker run -d \
-  --name al1s-erp \
+  --name al1s-wms \
   --restart unless-stopped \
   -p 8080:8080 \
-  -v al1s-erp-data:/data \
-  al1s-erp
+  -v al1s-wms-data:/data \
+  al1s-wms
 ```
 
 Open `http://localhost:8080` and follow the initial setup.
@@ -42,11 +42,11 @@ To use a host directory:
 
 ```bash
 docker run -d \
-  --name al1s-erp \
+  --name al1s-wms \
   --restart unless-stopped \
   -p 8080:8080 \
   -v /root/docker-services/data/al1s-wms:/data \
-  al1s-erp
+  al1s-wms
 ```
 
 ## Internationalization
@@ -89,7 +89,7 @@ Example client configuration:
 ```json
 {
   "mcpServers": {
-    "al1s-erp": {
+    "al1s-wms": {
       "url": "https://your-domain.example/mcp",
       "headers": {
         "Authorization": "Bearer al1s_REPLACE_WITH_YOUR_TOKEN"
