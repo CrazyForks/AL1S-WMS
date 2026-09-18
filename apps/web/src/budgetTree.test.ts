@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildBudgetTree, budgetAllocations, categoryPath, setBudgetAllocation, removeBudgetAllocation } from "./budgetTree.js";
+import { buildBudgetTree, budgetAllocations, budgetSegmentColor, categoryPath, setBudgetAllocation, removeBudgetAllocation } from "./budgetTree.js";
+
+test("category colors support 100 distinct positions and restart consistently for each group",()=>{
+  const first=Array.from({length:100},(_,index)=>budgetSegmentColor(index));
+  assert.equal(new Set(first).size,100);
+  assert.deepEqual(Array.from({length:100},(_,index)=>budgetSegmentColor(index)),first);
+  assert.deepEqual(Array.from({length:2},(_,index)=>budgetSegmentColor(index)),first.slice(0,2));
+  assert.equal(budgetSegmentColor(100),budgetSegmentColor(100));
+  assert.notEqual(budgetSegmentColor(100),first[0]);
+});
 
 test("tree totals preserve direct costs without double counting descendants",()=>{
   const categories=[

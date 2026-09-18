@@ -2,6 +2,15 @@ export type BudgetCategory = { id: string; parentId: string | null; name: string
 export type CategorySpending = { category: string; actual: number; planned: number };
 export type BudgetAllocation = {category:string;amount:number|string};
 
+// Golden-angle spacing avoids cycling a short palette; each group starts at zero.
+export function budgetSegmentColor(index:number):string {
+  const ordinal=Math.max(0,Math.floor(index));
+  const hue=(190+ordinal*137.50776405003785)%360;
+  const saturation=44+(ordinal%3)*7;
+  const lightness=40+(Math.floor(ordinal/3)%3)*5;
+  return `hsl(${hue.toFixed(3)} ${saturation}% ${lightness}%)`;
+}
+
 // Materialize missing ancestors so every allocation has a place in the tree.
 export function completeBudgetTree(categories:BudgetCategory[],entries:BudgetAllocation[]):BudgetAllocation[] {
   const values=new Map(entries.map(entry=>[entry.category,Math.round((Number(entry.amount)||0)*100)]));

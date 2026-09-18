@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { buildBudgetTree, budgetAllocations, categoryPath, type BudgetCategory, type BudgetNode, type CategorySpending } from "./budgetTree.js";
+import { buildBudgetTree, budgetAllocations, budgetSegmentColor, categoryPath, type BudgetCategory, type BudgetNode, type CategorySpending } from "./budgetTree.js";
 import "./budgetCategories.css";
 
 type Allocation = {category:string;amount: number|string};
@@ -54,9 +54,6 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
   const money=(value:number)=>new Intl.NumberFormat(i18n.language,{style:"currency",currency}).format(value);
   const tree=buildBudgetTree(categories,spending);
   const limits=new Map(budgets.map(row=>[row.category,row.amount]));
-  const palette=["#7785bb","#bd8957","#769960","#ac769c","#5d9fa8","#b87969"];
-  const colorNames=[...new Set([...categories.map(row=>row.name),...spending.map(row=>row.category)])].sort();
-  const color=(name:string)=>palette[Math.max(0,colorNames.indexOf(name))%palette.length];
   const owner=(name:string)=>[...categoryPath(name,categories)].reverse().find(name=>limits.has(name));
   const parent=(name:string)=>[...categoryPath(name,categories)].reverse().slice(1).find(name=>limits.has(name));
   const find=(nodes:BudgetNode[],name:string):BudgetNode|undefined=>{
@@ -74,8 +71,15 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
       </div>
     </details>:<div className="execution-detail-leaf" key={node.name}>{detailLine(node.name,node.actual,node.planned)}</div>;
   };
-  const renderBudget=(budget:typeof budgets[number]):React.ReactNode=>{
+  const renderBudget=(budget:typeof budgets[number],groupColors?:Map<string,string>):React.ReactNode=>{
     const node=find(tree,budget.category);
+    const colors=groupColors??new Map<string,string>();
+    if(!groupColors&&node){
+      const assign=(branch:BudgetNode,color:string)=>{colors.set(branch.name,color);branch.children.forEach(child=>assign(child,color));};
+      const visibleBranches=node.children.filter(child=>hasSpending(child)||budgets.some(row=>categoryPath(row.category,categories).includes(child.name)));
+      visibleBranches.forEach((child,index)=>assign(child,budgetSegmentColor(index)));
+      colors.set(node.name,visibleBranches.length?"#899ba5":budgetSegmentColor(0));
+    }
     const actual=node?.actual??0,planned=node?.planned??0;
     const remaining=(Math.round(budget.amount*100)-Math.round(actual*100)-Math.round(planned*100))/100;
     const scale=Math.max(1,budget.amount,actual+planned);
@@ -92,14 +96,14 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
         const value=segment[kind];
         if(value<=0)return [];
         const label=`${segment.name} · ${kind==="actual"?t("已花"):t("待采购")} ${money(value)}`;
-        return [<span key={`${segment.name}-${kind}`} className={`execution-segment ${kind}`} style={{width:value/scale*100+"%",backgroundColor:segment.name===budget.category?"#347e8b":color(segment.name)}} tabIndex={0} role="img" aria-label={label} data-tooltip={label} onClick={event=>event.preventDefault()} onKeyDown={event=>{if(event.key==="Enter"||event.key===" ")event.preventDefault();}}/>];
+        return [<span key={`${segment.name}-${kind}`} className={`execution-segment ${kind}`} style={{width:value/scale*100+"%",backgroundColor:colors.get(segment.name)??budgetSegmentColor(0)}} tabIndex={0} role="img" aria-label={label} data-tooltip={label} onClick={event=>event.preventDefault()} onKeyDown={event=>{if(event.key==="Enter"||event.key===" ")event.preventDefault();}}/>];
       }))}</span>
     </>;
     const hasContents=children.length>0||hasDirect||details.length>0;
     return <div className="execution-budget" key={budget.category}>
       {hasContents?<details open><summary className="execution-budget-summary">{content}</summary>
         <div className="execution-budget-content">
-          {children.length>0&&<div className="execution-budget-children">{children.map(renderBudget)}</div>}
+          {children.length>0&&<div className="execution-budget-children">{children.map(child=>renderBudget(child,colors))}</div>}
           {(hasDirect||details.length>0)&&<div className="execution-details"><div className="execution-details-heading">{t("支出明细")}</div>{hasDirect&&<div className="execution-detail-leaf">{detailLine(budget.category,direct!.directActual,direct!.directPlanned)}</div>}{details.map(renderDetail)}</div>}
         </div>
       </details>:<div className="execution-budget-summary">{content}</div>}
@@ -109,7 +113,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
   return <section className="panel finance-bars finance-category-spending">
     <div className="panel-head"><div><h2>{t("分类预算执行")}</h2></div></div>
     <div className="budget-execution-tree">
-      {budgets.length?budgets.filter(row=>!parent(row.category)).map(renderBudget):<p className="empty">{t("尚未分配分类预算")}</p>}
+      {budgets.length?budgets.filter(row=>!parent(row.category)).map(row=>renderBudget(row)):<p className="empty">{t("尚未分配分类预算")}</p>}
       {outside.length>0&&<div className="execution-outside"><div className="execution-details-heading">{t("计划外支出")}</div>{outside.map(renderDetail)}</div>}
     </div>
   </section>;
