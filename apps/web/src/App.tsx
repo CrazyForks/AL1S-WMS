@@ -3019,7 +3019,7 @@ export function App() {
                 <strong>{items.length}</strong>
               </button>
               <button
-                className={stockStatusFilter === "empty" ? "active danger" : ""}
+                className={stockStatusFilter === "empty" ? "active warning" : ""}
                 onClick={() => {
                   setStockStatusFilter("empty");
                   setExpiryFilter("");
@@ -3033,7 +3033,7 @@ export function App() {
               </button>
               <button
                 className={
-                  stockStatusFilter === "replenishment" ? "active warning" : ""
+                  stockStatusFilter === "replenishment" ? "active danger" : ""
                 }
                 onClick={() => {
                   setStockStatusFilter("replenishment");
