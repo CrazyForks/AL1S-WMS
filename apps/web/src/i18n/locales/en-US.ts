@@ -526,4 +526,7 @@ export const enUS = {
   可分配: "Available to allocate",
   分类预算: "Category budgets",
   按分类预留本月采购额度: "Reserve this month's purchasing allowance by category",
+  添加分类预算: "Add category budget",
+  为分类预留采购额度: "Reserve a purchase allowance for a category",
+  当前已分配额度: "Currently allocated",
 } as const satisfies Record<keyof typeof zhCN, string>;
