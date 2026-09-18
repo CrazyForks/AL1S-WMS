@@ -60,12 +60,13 @@ test("financial dashboard combines budgets, plans, purchases, and valuation",()=
   const {db,homeId,locationId,itemId,channelId}=fixture();
   recordStock(db,homeId,"receipt",{itemId,locationId,quantity:4,totalPrice:12,purchaseDate:"2026-09-04",channelId,idempotencyKey:"dashboard-receipt"});
   saveShopping(db,homeId,{itemId,quantity:2,plannedDate:"2026-09-18",estimatedTotal:8});
-  saveFinancialBudget(db,homeId,{month:"2026-09",total:30,categoryBudgets:[{category:"饮品",amount:20}]});
+  saveFinancialBudget(db,homeId,{month:"2026-09",total:30,categoryBudgets:[{category:"饮品",amount:20},{category:"食品",amount:5}]});
   const dashboard=financialDashboard(db,homeId,{month:"2026-09"});
   assert.equal(dashboard.budgetTotal,30);
   assert.equal(dashboard.forecastTotal,20);
   assert.equal(dashboard.remainingBudget,10);
   assert.equal(dashboard.byCategory[0].budget,20);
+  assert.deepEqual(dashboard.byCategory.find(row=>row.category==="食品"),{category:"食品",actual:0,planned:0,budget:5});
   assert.equal(dashboard.purchases[0].variance,null);
   assert.equal(dashboard.valuation.byItem[0].itemName,"乌龙茶");
   assert.equal(dashboard.valuation.byItem[0].value,12);
