@@ -1951,7 +1951,7 @@ export function App() {
       </header>
       <main>
         {itemDetailId&&<ItemDetail homeId={getHomeId()} item={items.find(item=>item.id===itemDetailId)??{id:itemDetailId,name:t("物资"),sku:"",category:t("未分类"),baseUnit:t("个"),reorderPoint:0,reorderQuantity:0}} currency={financialSummary?.currency??"CNY"} onBack={closeItemDetail} onEdit={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)setDetailItem(item);}}/>}
-        <div hidden={Boolean(itemDetailId)}>
+        <div className="page-content" hidden={Boolean(itemDetailId)}>
         <section className="welcome">
           <div>
             <p className="eyebrow">{currentDateLabel}</p>
