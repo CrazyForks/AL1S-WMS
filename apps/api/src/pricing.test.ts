@@ -69,6 +69,10 @@ test("financial dashboard combines budgets, plans, purchases, and valuation",()=
   assert.equal(dashboard.purchases[0].variance,null);
   assert.equal(dashboard.valuation[0].value,12);
   assert.equal(dashboard.trend.length,12);
+  const inherited=financialDashboard(db,homeId,{month:"2026-10"});
+  assert.equal(inherited.budgetTotal,30);
+  assert.equal(inherited.budgetMode,"inherited");
+  assert.equal(inherited.budgetSourceMonth,"2026-09");
   assert.throws(()=>saveFinancialBudget(db,homeId,{month:"2026-09",total:10,categoryBudgets:[{category:"饮品",amount:11}]}));
   db.close();
 });

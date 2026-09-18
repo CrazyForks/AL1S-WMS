@@ -18,6 +18,12 @@ function shiftMonth(month:string,offset:number) {
   const date=new Date(Date.UTC(year,value-1+offset,1));
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`;
 }
+function budgetForMonth(db:DatabaseSync,homeId:string,month:string) {
+  const budget=db.prepare("SELECT month,total_minor/100.0 AS total FROM finance_budgets WHERE home_id=? AND month<=? ORDER BY month DESC LIMIT 1").get(homeId,month) as {month:string;total:number}|undefined;
+  if(!budget)return {total:null,sourceMonth:null,categoryBudgets:[] as {category:string;amount:number}[]};
+  const categoryBudgets=db.prepare("SELECT category,amount_minor/100.0 AS amount FROM finance_category_budgets WHERE home_id=? AND month=? ORDER BY category").all(homeId,budget.month) as {category:string;amount:number}[];
+  return {total:budget.total,sourceMonth:budget.month,categoryBudgets};
+}
 function totalsByCategory(db:DatabaseSync,homeId:string,month:string,kind:"actual"|"planned") {
   const sql=kind==="actual"
     ? "SELECT COALESCE(purchase_category,'其他') AS category,SUM(purchase_total_minor)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(purchased_date,1,7)=? AND purchase_total_minor IS NOT NULL GROUP BY COALESCE(purchase_category,'其他')"
@@ -62,8 +68,8 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const home=requireHome(db,homeId);
   const actual=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(purchased_date,1,7)=? AND purchase_total_minor IS NOT NULL").get(homeId,month) as {total:number}).total;
   const planned=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL").get(homeId,month) as {total:number}).total;
-  const budget=db.prepare("SELECT total_minor/100.0 AS total FROM finance_budgets WHERE home_id=? AND month=?").get(homeId,month) as {total:number}|undefined;
-  const categoryBudgets=db.prepare("SELECT category,amount_minor/100.0 AS amount FROM finance_category_budgets WHERE home_id=? AND month=? ORDER BY category").all(homeId,month) as {category:string;amount:number}[];
+  const budget=budgetForMonth(db,homeId,month);
+  const categoryBudgets=budget.categoryBudgets;
   const actualByCategory=totalsByCategory(db,homeId,month,"actual");
   const plannedByCategory=totalsByCategory(db,homeId,month,"planned");
   const byCategory=mergeDistribution(actualByCategory,plannedByCategory).map(row=>({...row,budget:categoryBudgets.find(budget=>budget.category===row.category)?.amount??null}));
@@ -88,11 +94,11 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
     const point=shiftMonth(month,offset);
     const spent=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(purchased_date,1,7)=? AND purchase_total_minor IS NOT NULL").get(homeId,point) as {total:number}).total;
     const pending=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL").get(homeId,point) as {total:number}).total;
-    const limit=db.prepare("SELECT total_minor/100.0 AS total FROM finance_budgets WHERE home_id=? AND month=?").get(homeId,point) as {total:number}|undefined;
-    trend.push({month:point,actual:spent,planned:pending,budget:limit?.total??null});
+    const limit=budgetForMonth(db,homeId,point);
+    trend.push({month:point,actual:spent,planned:pending,budget:limit.total});
   }
   const forecast=actual+planned;
-  return {month,currency:home.currency,budgetTotal:budget?.total??null,categoryBudgets,spendingTotal:actual,estimatedTotal:planned,forecastTotal:forecast,remainingBudget:budget?Math.round((budget.total-forecast)*100)/100:null,variance:actual-planned,inventoryValue:Math.round(inventoryValue*100)/100,pricedBatchCount:known.size,unknownBatchCount:unknown.size,byCategory,byChannel,purchases:purchaseRecords,trend,valuation:[...valuation.values()].sort((a,b)=>b.value-a.value)};
+  return {month,currency:home.currency,budgetTotal:budget.total,budgetSourceMonth:budget.sourceMonth,budgetMode:budget.sourceMonth===null?"none":budget.sourceMonth===month?"explicit":"inherited",categoryBudgets,spendingTotal:actual,estimatedTotal:planned,forecastTotal:forecast,remainingBudget:budget.total===null?null:Math.round((budget.total-forecast)*100)/100,variance:actual-planned,inventoryValue:Math.round(inventoryValue*100)/100,pricedBatchCount:known.size,unknownBatchCount:unknown.size,byCategory,byChannel,purchases:purchaseRecords,trend,valuation:[...valuation.values()].sort((a,b)=>b.value-a.value)};
 }
 
 export const financialSummary=financialDashboard;

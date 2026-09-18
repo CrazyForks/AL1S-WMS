@@ -513,4 +513,11 @@ export const enUS = {
   按剩余数量和批次单位成本估值: "Valued from remaining quantity and batch unit cost",
   已计价批次: "Priced batches",
   未知成本批次: "Unknown-cost batches",
+  "当前沿用 {{month}} 的预算，保存后将创建本月版本": "Using {{month}}'s budget. Saving creates a version for this month.",
+  本月已有独立预算: "This month has an independent budget.",
+  "尚未设置预算，可保存为本月版本": "No budget yet. Save to create a version for this month.",
+  选择分类: "Select category",
+  分类预算金额: "Category budget amount",
+  "移除{{name}}": "Remove {{name}}",
+  尚未添加分类预算: "No category budgets added",
 } as const satisfies Record<keyof typeof zhCN, string>;

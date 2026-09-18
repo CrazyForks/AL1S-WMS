@@ -190,7 +190,7 @@ type ShoppingChannel = {
   isSystem: boolean;
   sortOrder: number;
 };
-type FinancialSummary={month:string;currency:string;budgetTotal:number|null;spendingTotal:number;estimatedTotal:number;forecastTotal:number;remainingBudget:number|null;variance:number;inventoryValue:number;pricedBatchCount:number;unknownBatchCount:number;categoryBudgets:{category:string;amount:number}[];byCategory:{category:string;actual:number;planned:number;budget:number|null}[];byChannel:{channelId:string|null;channelName:string;total:number}[];purchases:{batchId:string;itemId:string;itemName:string;category:string;purchaseDate:string;quantity:number;unitPrice:number|null;totalPrice:number;channelName:string;estimatedTotal:number|null;variance:number|null}[];trend:{month:string;actual:number;planned:number;budget:number|null}[];valuation:{category:string;locationId:string|null;locationName:string;value:number}[]};
+type FinancialSummary={month:string;currency:string;budgetTotal:number|null;budgetSourceMonth:string|null;budgetMode:"none"|"explicit"|"inherited";spendingTotal:number;estimatedTotal:number;forecastTotal:number;remainingBudget:number|null;variance:number;inventoryValue:number;pricedBatchCount:number;unknownBatchCount:number;categoryBudgets:{category:string;amount:number}[];byCategory:{category:string;actual:number;planned:number;budget:number|null}[];byChannel:{channelId:string|null;channelName:string;total:number}[];purchases:{batchId:string;itemId:string;itemName:string;category:string;purchaseDate:string;quantity:number;unitPrice:number|null;totalPrice:number;channelName:string;estimatedTotal:number|null;variance:number|null}[];trend:{month:string;actual:number;planned:number;budget:number|null}[];valuation:{category:string;locationId:string|null;locationName:string;value:number}[]};
 type ApiToken = {
   id: string;
   name: string;
@@ -678,6 +678,10 @@ export function App() {
   const [financeMonth,setFinanceMonth]=useState(() => new Date().toISOString().slice(0,7));
   const [financeDashboard,setFinanceDashboard]=useState<FinancialSummary|null>(null);
   const [financeSaving,setFinanceSaving]=useState(false);
+  const [financeBudgetTotal,setFinanceBudgetTotal]=useState("");
+  const [financeBudgetEntries,setFinanceBudgetEntries]=useState<{category:string;amount:string}[]>([]);
+  const [financeCategorySelection,setFinanceCategorySelection]=useState("");
+  const [financeCategoryAmount,setFinanceCategoryAmount]=useState("");
   const [showShoppingForm, setShowShoppingForm] = useState(false);
   const [shoppingItemId, setShoppingItemId] = useState("");
   const [editShoppingItemId, setEditShoppingItemId] = useState("");
@@ -795,7 +799,13 @@ export function App() {
   }, [authenticated, shoppingMonth, calendarIncludeCompleted, shoppingList]);
   useEffect(() => {
     if (!authenticated || activePage !== "finance") return;
-    getFinancialSummary(financeMonth).then(setFinanceDashboard).catch(error=>setNotice(error.message));
+    getFinancialSummary(financeMonth).then(data=>{
+      setFinanceDashboard(data);
+      setFinanceBudgetTotal(data.budgetTotal?.toString()??"");
+      setFinanceBudgetEntries(data.categoryBudgets.map(budget=>({category:budget.category,amount:budget.amount.toString()})));
+      setFinanceCategorySelection("");
+      setFinanceCategoryAmount("");
+    }).catch(error=>setNotice(error.message));
   }, [authenticated, activePage, financeMonth]);
   useEffect(() => {
     apiFetch("/api/v1/setup/status")
@@ -1590,22 +1600,25 @@ export function App() {
   async function saveFinanceBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (financeSaving) return;
-    const data=new FormData(event.currentTarget);
-    const totalValue=String(data.get("total")??"").trim();
-    const categoryBudgets=[...data.entries()].flatMap(([key,value])=>{
-      if(!key.startsWith("category:"))return [];
-      const amount=String(value).trim();
-      return amount===""?[]:[{category:key.slice(9),amount:Number(amount)}];
-    });
+    const totalValue=financeBudgetTotal.trim();
+    const categoryBudgets=financeBudgetEntries.flatMap(entry=>entry.amount.trim()===""?[]:[{category:entry.category,amount:Number(entry.amount)}]);
     setFinanceSaving(true);
     try {
       const response=await apiFetch(`/api/v1/homes/${getHomeId()}/financial-budget`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({month:financeMonth,total:totalValue===""?null:Number(totalValue),categoryBudgets})});
       const result=await response.json();
       if(!response.ok)throw new Error(result.message||t("保存失败"));
       setFinanceDashboard(result);
+      setFinanceBudgetTotal(result.budgetTotal?.toString()??"");
+      setFinanceBudgetEntries(result.categoryBudgets.map((budget:{category:string;amount:number})=>({category:budget.category,amount:budget.amount.toString()})));
       setNotice(t("预算已保存"));
     } catch(error) {setNotice(error instanceof Error?error.message:t("保存失败"));}
     finally {setFinanceSaving(false);}
+  }
+  function addFinanceCategoryBudget() {
+    if(!financeCategorySelection||financeCategoryAmount.trim()===""||Number(financeCategoryAmount)<0)return;
+    setFinanceBudgetEntries(entries=>[...entries,{category:financeCategorySelection,amount:financeCategoryAmount}]);
+    setFinanceCategorySelection("");
+    setFinanceCategoryAmount("");
   }
   function navigate(page: Page) {
     if (window.location.pathname !== pagePaths[page])
@@ -1661,10 +1674,7 @@ export function App() {
         parentId: null,
         depth: 0,
       }));
-  const financeBudgetCategories=[...new Set([
-    ...categories.map(category=>category.name),
-    ...(financeDashboard?.categoryBudgets.map(budget=>budget.category)??[]),
-  ])].sort((left,right)=>left.localeCompare(right,localeForDates()));
+  const financeCategoryOptions=categoryOptions.filter(category=>!financeBudgetEntries.some(entry=>entry.category===category.name));
   const renderTreeNode = (node: TreeNode, depth = 0) => {
     const open = expandedLocations[node.id] ?? true;
     const children = treeNodes.filter((child) => child.parentId === node.id);
@@ -1984,8 +1994,8 @@ export function App() {
                 <div className="chart-legend"><span><i className="actual" />{t("实际支出")}</span><span><i className="planned" />{t("待采购预计")}</span><span><i className="budget" />{t("月度预算")}</span></div>
               </section>
               <form className="panel finance-budget" onSubmit={saveFinanceBudget}>
-                <div className="panel-head"><div><h2>{t("预算设置")}</h2><p className="muted">{t("分类预算合计不得超过总预算")}</p></div></div>
-                <div className="finance-budget-body"><label>{t("月度总预算")}<input name="total" type="number" min="0" step="0.01" defaultValue={financeDashboard.budgetTotal??""} placeholder="0.00" /></label><div className="category-budget-list">{financeBudgetCategories.map(category=><label key={category}>{category}<input name={`category:${category}`} type="number" min="0" step="0.01" defaultValue={financeDashboard.categoryBudgets.find(budget=>budget.category===category)?.amount??""} placeholder="-" /></label>)}</div><button className="primary" disabled={financeSaving}>{financeSaving?t("保存中…"):t("保存预算")}</button></div>
+                <div className="panel-head"><div><h2>{t("预算设置")}</h2><p className="muted">{financeDashboard.budgetMode==="inherited"?t("当前沿用 {{month}} 的预算，保存后将创建本月版本",{month:financeDashboard.budgetSourceMonth}):financeDashboard.budgetMode==="explicit"?t("本月已有独立预算"):t("尚未设置预算，可保存为本月版本")}</p></div></div>
+                <div className="finance-budget-body"><label>{t("月度总预算")}<input value={financeBudgetTotal} onChange={event=>setFinanceBudgetTotal(event.target.value)} type="number" min="0" step="0.01" placeholder="0.00" /></label><div className="budget-category-picker"><select value={financeCategorySelection} onChange={event=>setFinanceCategorySelection(event.target.value)}><option value="">{t("选择分类")}</option>{financeCategoryOptions.map(category=><option key={category.id} value={category.name}>{"　".repeat(category.depth)}{category.name}</option>)}</select><input value={financeCategoryAmount} onChange={event=>setFinanceCategoryAmount(event.target.value)} type="number" min="0" step="0.01" placeholder={t("分类预算金额")} /><button type="button" className="secondary" disabled={!financeCategorySelection||financeCategoryAmount.trim()===""} onClick={addFinanceCategoryBudget}>{t("添加")}</button></div><div className="category-budget-list">{financeBudgetEntries.length?financeBudgetEntries.map((entry,index)=><div className="category-budget-entry" key={entry.category}><span>{entry.category}</span><input value={entry.amount} onChange={event=>setFinanceBudgetEntries(entries=>entries.map((value,current)=>current===index?{...value,amount:event.target.value}:value))} type="number" min="0" step="0.01" /><button type="button" aria-label={t("移除{{name}}",{name:entry.category})} onClick={()=>setFinanceBudgetEntries(entries=>entries.filter((_,current)=>current!==index))}><X size={14}/></button></div>):<p className="muted">{t("尚未添加分类预算")}</p>}</div><button className="primary" disabled={financeSaving}>{financeSaving?t("保存中…"):t("保存预算")}</button></div>
               </form>
               <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("分类支出")}</h2><p className="muted">{t("实际与待采购预计")}</p></div></div><div className="bar-list">{financeDashboard.byCategory.length?financeDashboard.byCategory.map(row=>{const max=Math.max(1,...financeDashboard.byCategory.map(item=>item.actual+item.planned));return <div className="bar-row" key={row.category}><span>{row.category}</span><div><i style={{width:`${row.actual/max*100}%`}} /><em style={{width:`${row.planned/max*100}%`}} /></div><b>{formatMoney(row.actual+row.planned,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无分类支出")}</p>}</div></section>
               <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("渠道支出")}</h2><p className="muted">{t("已完成采购")}</p></div></div><div className="bar-list">{financeDashboard.byChannel.length?financeDashboard.byChannel.map(row=>{const max=Math.max(1,...financeDashboard.byChannel.map(item=>item.total));return <div className="bar-row" key={row.channelId??"none"}><span>{row.channelName}</span><div><i style={{width:`${row.total/max*100}%`}} /></div><b>{formatMoney(row.total,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无渠道支出")}</p>}</div></section>
