@@ -11,6 +11,11 @@
 .category-budget-entry:has(.budget-category-label){padding-top:9px;padding-bottom:9px}
 .budget-execution-tree{min-width:0}
 .trend-stack i.over{background:#b35a60}.trend-stack em.over{background:#e4b3b6}
+.finance-trend .trend-stack b{border-top-color:var(--aris-blue-dark)}
+.finance-trend .chart-legend i.budget{background:var(--aris-blue-dark)}
+.finance-trend .trend-chart{position:relative}
+.trend-column::after{content:attr(data-tooltip);display:none;position:absolute;z-index:5;right:12px;top:8px;max-width:calc(100% - 24px);padding:9px 12px;background:var(--aris-ink);color:white;white-space:pre-line;text-align:left;font-size:11px;line-height:1.7;pointer-events:none;box-shadow:0 2px 8px #20334320}
+.trend-column:hover::after,.trend-column:focus-visible::after{display:block}
 .execution-budget{min-width:0;border-top:1px solid var(--aris-line)}
 .execution-budget-summary{display:block;position:relative;padding:14px 16px 12px 28px;list-style:none;background:var(--aris-surface-soft)}
 .budget-execution-tree>.execution-budget>.execution-budget-summary,.budget-execution-tree>.execution-budget>details>.execution-budget-summary{box-shadow:inset 2px 0 0 var(--aris-cyan)}
