@@ -737,6 +737,11 @@ export function App() {
         "其他",
       ];
   const [logView, setLogView] = useState(false);
+  const calendarCompletedPreferenceKey=(homeId:string)=>`al1s-wms-calendar-include-completed:${homeId}`;
+  const updateCalendarIncludeCompleted=(value:boolean)=>{
+    setCalendarIncludeCompleted(value);
+    localStorage.setItem(calendarCompletedPreferenceKey(getHomeId()),String(value));
+  };
   useEffect(() => {
     const onPopState = () => {const itemId=itemDetailIdFromUrl();setActivePage(itemId?itemDetailSourcePage()??"count":pageFromUrl());setItemDetailId(itemId);};
     window.addEventListener("popstate", onPopState);
@@ -883,6 +888,7 @@ export function App() {
         setHomes(available);
         if (current) {
           localStorage.setItem("al1s-wms-home-id", current.id);
+          setCalendarIncludeCompleted(localStorage.getItem(calendarCompletedPreferenceKey(current.id)) === "true");
           setSetup({ complete: true, home: current });
           await load();
         }
@@ -2676,9 +2682,7 @@ export function App() {
                     <input
                       type="checkbox"
                       checked={calendarIncludeCompleted}
-                      onChange={(event) =>
-                        setCalendarIncludeCompleted(event.target.checked)
-                      }
+                      onChange={(event) => updateCalendarIncludeCompleted(event.target.checked)}
                     />
                     {t("显示已完成")}
                   </label>
