@@ -47,6 +47,8 @@ test("saved locale wins, browser English is detected, and API locale follows", a
   assert.equal(locale.displayUnit("瓶"), "瓶");
   await locale.setLocale("en-US");
   assert.equal(locale.displayUnit("瓶"), "bottle(s)");
+  assert.equal(locale.displayUnit("根"), "piece(s)");
+  assert.equal(locale.displayUnit("毫升"), "mL");
   assert.equal(locale.displayUnit("自定义单位"), "自定义单位");
 
   let sentHeaders: Headers | undefined;

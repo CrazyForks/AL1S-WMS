@@ -23,6 +23,8 @@ test("translate requires catalog keys and interpolates values", () => {
     "Insufficient stock at this location; available: 2",
   );
   assert.equal(displayUnit("en-US", "瓶"), "bottle(s)");
+  assert.equal(displayUnit("en-US", "根"), "piece(s)");
+  assert.equal(displayUnit("en-US", "克"), "g");
   assert.equal(displayUnit("zh-CN", "瓶"), "瓶");
   assert.equal(localizeReason("en-US","reason.initialStock"),"Initial stock");
   assert.equal(localizeReason("en-US","初始库存"),"Initial stock");

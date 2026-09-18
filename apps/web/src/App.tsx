@@ -7,6 +7,10 @@ import i18n, {
 } from "./i18n/index.js";
 import { apiFetch } from "./i18n/apiFetch.js";
 const t = i18n.t.bind(i18n);
+const unitOptions = ["个","瓶","盒","包","箱","袋","罐","桶","卷","支","根","条","片","张","块","颗","把","双","套","份","克","市斤","千克","毫升","升","厘米","米","其他"] as const;
+function UnitOptions() {
+  return <>{unitOptions.map(unit=><option key={unit} value={unit}>{displayUnit(unit)}</option>)}</>;
+}
 import { BatchFields } from "./BatchFields.js";
 import { Batches, BatchSelect } from "./Batches.js";
 import { BarcodeScanner } from "./BarcodeScanner.js";
@@ -3567,18 +3571,7 @@ export function App() {
                   required
                   defaultValue={detailItem.baseUnit}
                 >
-                  <option value="个">{t("个")}</option>
-                  <option value="瓶">{t("瓶")}</option>
-                  <option value="盒">{t("盒")}</option>
-                  <option value="包">{t("包")}</option>
-                  <option value="箱">{t("箱")}</option>
-                  <option value="袋">{t("袋")}</option>
-                  <option value="克">{t("克")}</option>
-                  <option value="市斤">{t("市斤")}</option>
-                  <option value="千克">{t("千克")}</option>
-                  <option value="升">{t("升")}</option>
-                  <option value="米">{t("米")}</option>
-                  <option value="其他">{t("其他")}</option>
+                  <UnitOptions />
                 </select>
                 <small className="form-hint">
                   {t("已有库存流水后不可更改单位")}
@@ -3831,18 +3824,7 @@ export function App() {
                   defaultValue={linkedShoppingItem?.baseUnit || "个"}
                   disabled={Boolean(linkedShoppingItem)}
                 >
-                  <option value="个">{t("个")}</option>
-                  <option value="瓶">{t("瓶")}</option>
-                  <option value="盒">{t("盒")}</option>
-                  <option value="包">{t("包")}</option>
-                  <option value="箱">{t("箱")}</option>
-                  <option value="袋">{t("袋")}</option>
-                  <option value="克">{t("克")}</option>
-                  <option value="市斤">{t("市斤")}</option>
-                  <option value="千克">{t("千克")}</option>
-                  <option value="升">{t("升")}</option>
-                  <option value="米">{t("米")}</option>
-                  <option value="其他">{t("其他")}</option>
+                  <UnitOptions />
                 </select>
               </label>
             </div>
@@ -3969,18 +3951,7 @@ export function App() {
                   }
                   disabled={Boolean(linkedEditShoppingItem)}
                 >
-                  <option value="个">{t("个")}</option>
-                  <option value="瓶">{t("瓶")}</option>
-                  <option value="盒">{t("盒")}</option>
-                  <option value="包">{t("包")}</option>
-                  <option value="箱">{t("箱")}</option>
-                  <option value="袋">{t("袋")}</option>
-                  <option value="克">{t("克")}</option>
-                  <option value="市斤">{t("市斤")}</option>
-                  <option value="千克">{t("千克")}</option>
-                  <option value="升">{t("升")}</option>
-                  <option value="米">{t("米")}</option>
-                  <option value="其他">{t("其他")}</option>
+                  <UnitOptions />
                 </select>
               </label>
             </div>
@@ -4204,18 +4175,7 @@ export function App() {
               <label>
                 {t("单位")}
                 <select name="baseUnit" defaultValue={prefillUnit}>
-                  <option value="个">{t("个")}</option>
-                  <option value="瓶">{t("瓶")}</option>
-                  <option value="盒">{t("盒")}</option>
-                  <option value="包">{t("包")}</option>
-                  <option value="箱">{t("箱")}</option>
-                  <option value="袋">{t("袋")}</option>
-                  <option value="克">{t("克")}</option>
-                  <option value="市斤">{t("市斤")}</option>
-                  <option value="千克">{t("千克")}</option>
-                  <option value="升">{t("升")}</option>
-                  <option value="米">{t("米")}</option>
-                  <option value="其他">{t("其他")}</option>
+                  <UnitOptions />
                 </select>
               </label>
               <label>
