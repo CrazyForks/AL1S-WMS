@@ -1,6 +1,7 @@
 import type { zhCN } from "./zh-CN.js";
 
 export const enUS = {
+  "父分类与所有子孙分类共享额度，不重复分配；总预算留空时按分类额度合计保存。": "A category and all descendants share one budget. Overlapping allocations are excluded. Leave the total blank to use the sum of category budgets.",
   "物资将从清单移除，剩余库存清零并记录删除流水。历史记录保留，关联采购项转为独立采购项。":
     "The item will be removed, its remaining stock cleared, and a deletion recorded. History is retained and linked purchases become standalone entries.",
   "连接地址为当前站点的 /mcp，认证方式为 Bearer Token。默认仅管理所选家庭。":

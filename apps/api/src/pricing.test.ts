@@ -17,6 +17,34 @@ function fixture() {
   return {db,homeId,locationId,itemId,channelId};
 }
 
+test("category-only budgets persist and descendants share their ancestor budget",()=>{
+  const {db,homeId,locationId,itemId}=fixture();
+  const root=randomUUID(),child=randomUUID(),grandchild=randomUUID();
+  const insert=db.prepare("INSERT INTO item_categories(id,home_id,name,parent_id) VALUES (?,?,?,?)");
+  insert.run(root,homeId,"食品",null);
+  insert.run(child,homeId,"饮品",root);
+  insert.run(grandchild,homeId,"茶饮",child);
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:120,purchaseDate:"2026-09-03",idempotencyKey:"child"});
+  db.prepare("UPDATE items SET category='茶饮' WHERE id=?").run(itemId);
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:100,purchaseDate:"2026-09-04",idempotencyKey:"grandchild"});
+  saveShopping(db,homeId,{itemId,quantity:1,plannedDate:"2026-09-20",estimatedTotal:90});
+  saveFinancialBudget(db,homeId,{month:"2026-09",total:null,categoryBudgets:[{category:"食品",amount:300}]});
+  const result=financialDashboard(db,homeId,{month:"2026-09"});
+  assert.equal(result.budgetTotal,300);
+  assert.equal(result.remainingBudget,-10);
+  assert.deepEqual(result.byCategory,[{category:"食品",actual:220,planned:90,budget:300}]);
+  assert.deepEqual(result.categoryBudgets.map(row=>({...row})),[{category:"食品",amount:300}]);
+  assert.equal(financialDashboard(db,homeId,{month:"2026-10"}).budgetTotal,300);
+  assert.throws(()=>saveFinancialBudget(db,homeId,{month:"2026-09",total:500,categoryBudgets:[{category:"食品",amount:300},{category:"茶饮",amount:100}]}));
+  assert.equal(financialDashboard(db,homeId,{month:"2026-09"}).budgetTotal,300);
+  db.prepare("UPDATE items SET category='清洁用品' WHERE id=?").run(itemId);
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:15,purchaseDate:"2026-09-05",idempotencyKey:"outside"});
+  const updated=financialDashboard(db,homeId,{month:"2026-09"});
+  assert.deepEqual(updated.byCategory.find(row=>row.category==="清洁用品"),{category:"清洁用品",actual:15,planned:0,budget:null});
+  assert.equal(updated.spendingTotal,235);
+  db.close();
+});
+
 test("batch costs produce price history, spending, budget, and remaining inventory value",()=>{
   const {db,homeId,locationId,itemId,channelId}=fixture();
   recordStock(db,homeId,"receipt",{itemId,locationId,quantity:10,totalPrice:20,purchaseDate:"2026-09-03",expiryDate:"2027-01-01",channelId,idempotencyKey:"priced"});

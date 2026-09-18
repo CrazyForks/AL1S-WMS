@@ -8,6 +8,21 @@ const money=z.number().nonnegative().finite().max(1_000_000_000);
 const budgetInput=z.object({month:monthSchema,total:money.nullable(),categoryBudgets:z.array(z.object({category:z.string().trim().min(1).max(100),amount:money})).max(100)}).strict();
 type MoneyRow={category:string|null;total:number};
 
+function categoryAncestors(db:DatabaseSync,homeId:string) {
+  const rows=db.prepare("SELECT id,name,parent_id AS parentId FROM item_categories WHERE home_id=?").all(homeId) as {id:string;name:string;parentId:string|null}[];
+  const byId=new Map(rows.map(row=>[row.id,row]));
+  return (name:string)=>{
+    const names=[name],seen=new Set<string>();
+    let row=rows.find(row=>row.name===name);
+    while(row&&!seen.has(row.id)) {
+      seen.add(row.id);
+      row=row.parentId?byId.get(row.parentId):undefined;
+      if(row)names.push(row.name);
+    }
+    return names;
+  };
+}
+
 function requireHome(db:DatabaseSync,homeId:string) {
   const home=db.prepare("SELECT default_currency AS currency FROM homes WHERE id=? AND active=1").get(homeId) as {currency:string}|undefined;
   if(!home)throw new InventoryError(404,"HOME_NOT_FOUND","error.homeNotFound");
@@ -46,14 +61,20 @@ export function saveFinancialBudget(db:DatabaseSync,homeId:string,raw:unknown) {
     categories.add(budget.category);
   }
   const categoryTotal=input.categoryBudgets.reduce((total,budget)=>total+budget.amount,0);
+  const ancestors=categoryAncestors(db,homeId);
+  for(const category of categories) {
+    if(ancestors(category).slice(1).some(parent=>categories.has(parent)))
+      throw new InventoryError(400,"OVERLAPPING_CATEGORY_BUDGET","error.validation");
+  }
+  const total=input.total??(input.categoryBudgets.length?categoryTotal:null);
   if(input.total!==null&&categoryTotal>input.total+1e-9)throw new InventoryError(400,"CATEGORY_BUDGET_EXCEEDS_TOTAL","error.validation");
   db.exec("BEGIN IMMEDIATE");
   try {
-    if(input.total===null) {
+    if(total===null) {
       db.prepare("DELETE FROM finance_category_budgets WHERE home_id=? AND month=?").run(homeId,input.month);
       db.prepare("DELETE FROM finance_budgets WHERE home_id=? AND month=?").run(homeId,input.month);
     } else {
-      db.prepare("INSERT INTO finance_budgets(home_id,month,total_minor,currency,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(home_id,month) DO UPDATE SET total_minor=excluded.total_minor,currency=excluded.currency,updated_at=excluded.updated_at").run(homeId,input.month,Math.round(input.total*100),home.currency,new Date().toISOString());
+      db.prepare("INSERT INTO finance_budgets(home_id,month,total_minor,currency,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(home_id,month) DO UPDATE SET total_minor=excluded.total_minor,currency=excluded.currency,updated_at=excluded.updated_at").run(homeId,input.month,Math.round(total*100),home.currency,new Date().toISOString());
       db.prepare("DELETE FROM finance_category_budgets WHERE home_id=? AND month=?").run(homeId,input.month);
       const insert=db.prepare("INSERT INTO finance_category_budgets(home_id,month,category,amount_minor) VALUES (?,?,?,?)");
       for(const budget of input.categoryBudgets)insert.run(homeId,input.month,budget.category,Math.round(budget.amount*100));
@@ -72,7 +93,19 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const categoryBudgets=budget.categoryBudgets;
   const actualByCategory=totalsByCategory(db,homeId,month,"actual");
   const plannedByCategory=totalsByCategory(db,homeId,month,"planned");
-  const categoryDistribution=mergeDistribution(actualByCategory,plannedByCategory);
+  const ancestors=categoryAncestors(db,homeId);
+  const budgetNames=new Set(categoryBudgets.map(row=>row.category));
+  const rollup=(rows:MoneyRow[])=>{
+    const totals=new Map<string,number>();
+    for(const row of rows) {
+      const path=ancestors(row.category??"其他");
+      // The outermost budget owns the whole subtree, including legacy overlaps.
+      const category=[...path].reverse().find(name=>budgetNames.has(name))??path[0];
+      totals.set(category,(totals.get(category)??0)+row.total);
+    }
+    return [...totals].map(([category,total])=>({category,total}));
+  };
+  const categoryDistribution=mergeDistribution(rollup(actualByCategory),rollup(plannedByCategory));
   for(const categoryBudget of categoryBudgets)if(!categoryDistribution.some(row=>row.category===categoryBudget.category))categoryDistribution.push({category:categoryBudget.category,actual:0,planned:0});
   const byCategory=categoryDistribution.map(row=>({...row,budget:categoryBudgets.find(budget=>budget.category===row.category)?.amount??null})).sort((left,right)=>(right.actual+right.planned)-(left.actual+left.planned)||left.category.localeCompare(right.category));
   const byChannel=db.prepare("SELECT b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,SUM(b.purchase_total_minor)/100.0 AS total FROM stock_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND substr(b.purchased_date,1,7)=? AND b.purchase_total_minor IS NOT NULL GROUP BY b.channel_id,c.name ORDER BY total DESC").all(homeId,month);
