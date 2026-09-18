@@ -4205,7 +4205,7 @@ export function App() {
               {t("存放地点")}
               <select
                 name="locationId"
-                defaultValue={prefillLocationId || locations[0]?.id || ""}
+                defaultValue={prefillLocationId}
               >
                 <option value="">{t("暂不指定")}</option>
                 {locationOptions.map((location) => (
