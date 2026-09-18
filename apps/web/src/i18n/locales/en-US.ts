@@ -520,4 +520,10 @@ export const enUS = {
   预算金额: "Budget amount",
   "移除{{name}}": "Remove {{name}}",
   尚未添加分类预算: "No category budgets added",
+  沿用预算: "Inherited budget",
+  本月预算: "This month's budget",
+  已分配: "Allocated",
+  可分配: "Available to allocate",
+  分类预算: "Category budgets",
+  按分类预留本月采购额度: "Reserve this month's purchasing allowance by category",
 } as const satisfies Record<keyof typeof zhCN, string>;
