@@ -79,15 +79,18 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
     FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN shopping_channels c ON c.id=b.channel_id LEFT JOIN shopping_list s ON s.id=b.shopping_item_id
     WHERE b.home_id=? AND substr(b.purchased_date,1,7)=? AND b.purchase_total_minor IS NOT NULL ORDER BY b.purchased_date DESC,b.received_at DESC LIMIT 200`).all(homeId,month) as {batchId:string;quantity:number;totalPrice:number;estimatedTotal:number|null}[];
   const purchaseRecords=purchases.map(row=>({...row,unitPrice:row.quantity>0?Math.round(row.totalPrice/row.quantity*100)/100:null,variance:row.estimatedTotal==null?null:Math.round((row.totalPrice-row.estimatedTotal)*100)/100}));
-  const valueRows=db.prepare(`SELECT * FROM (${batchBalanceQuery}) WHERE homeId=? AND quantity>0`).all(homeId) as {batchId:string;locationId:string|null;locationName:string|null;quantity:number;initialQuantity:number;purchaseTotalMinor:number|null;purchaseCategory:string|null;itemCategory:string}[];
+  const valueRows=db.prepare(`SELECT * FROM (${batchBalanceQuery}) WHERE homeId=? AND quantity>0`).all(homeId) as {batchId:string;itemId:string;itemName:string;itemCategory:string;baseUnit:string;locationId:string|null;locationName:string|null;quantity:number;initialQuantity:number;purchaseTotalMinor:number|null;purchaseCategory:string|null}[];
   const known=new Set<string>(),unknown=new Set<string>();let inventoryValue=0;
-  const valuation=new Map<string,{category:string;locationId:string|null;locationName:string;value:number}>();
+  const valuationByItem=new Map<string,{itemId:string;itemName:string;category:string;quantity:number;unit:string;locationIds:Set<string>;value:number}>();
+  const valuationByCategory=new Map<string,{category:string;value:number}>();
+  const valuationByLocation=new Map<string,{locationId:string|null;locationName:string;value:number}>();
   for(const row of valueRows) {
     if(row.purchaseTotalMinor===null||row.initialQuantity<=0) {unknown.add(row.batchId);continue;}
     known.add(row.batchId);const value=row.purchaseTotalMinor/100*row.quantity/row.initialQuantity;inventoryValue+=value;
     const category=row.purchaseCategory??row.itemCategory;
-    const key=`${category}\u0000${row.locationId??""}`;
-    const current=valuation.get(key)??{category,locationId:row.locationId,locationName:row.locationName??"未指定",value:0};current.value+=value;valuation.set(key,current);
+    const item=valuationByItem.get(row.itemId)??{itemId:row.itemId,itemName:row.itemName,category,quantity:0,unit:row.baseUnit,locationIds:new Set<string>(),value:0};item.quantity+=row.quantity;item.value+=value;if(row.locationId)item.locationIds.add(row.locationId);valuationByItem.set(row.itemId,item);
+    const categoryValue=valuationByCategory.get(category)??{category,value:0};categoryValue.value+=value;valuationByCategory.set(category,categoryValue);
+    const locationKey=row.locationId??"";const locationValue=valuationByLocation.get(locationKey)??{locationId:row.locationId,locationName:row.locationName??"未指定",value:0};locationValue.value+=value;valuationByLocation.set(locationKey,locationValue);
   }
   const trend=[];
   for(let offset=-11;offset<=0;offset++) {
@@ -98,7 +101,7 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
     trend.push({month:point,actual:spent,planned:pending,budget:limit.total});
   }
   const forecast=actual+planned;
-  return {month,currency:home.currency,budgetTotal:budget.total,budgetSourceMonth:budget.sourceMonth,budgetMode:budget.sourceMonth===null?"none":budget.sourceMonth===month?"explicit":"inherited",categoryBudgets,spendingTotal:actual,estimatedTotal:planned,forecastTotal:forecast,remainingBudget:budget.total===null?null:Math.round((budget.total-forecast)*100)/100,variance:actual-planned,inventoryValue:Math.round(inventoryValue*100)/100,pricedBatchCount:known.size,unknownBatchCount:unknown.size,byCategory,byChannel,purchases:purchaseRecords,trend,valuation:[...valuation.values()].sort((a,b)=>b.value-a.value)};
+  return {month,currency:home.currency,budgetTotal:budget.total,budgetSourceMonth:budget.sourceMonth,budgetMode:budget.sourceMonth===null?"none":budget.sourceMonth===month?"explicit":"inherited",categoryBudgets,spendingTotal:actual,estimatedTotal:planned,forecastTotal:forecast,remainingBudget:budget.total===null?null:Math.round((budget.total-forecast)*100)/100,variance:actual-planned,inventoryValue:Math.round(inventoryValue*100)/100,pricedBatchCount:known.size,unknownBatchCount:unknown.size,byCategory,byChannel,purchases:purchaseRecords,trend,valuation:{byItem:[...valuationByItem.values()].map(({locationIds,...row})=>({...row,locationCount:locationIds.size})).sort((a,b)=>b.value-a.value),byCategory:[...valuationByCategory.values()].sort((a,b)=>b.value-a.value),byLocation:[...valuationByLocation.values()].sort((a,b)=>b.value-a.value)}};
 }
 
 export const financialSummary=financialDashboard;
