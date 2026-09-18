@@ -92,6 +92,7 @@ type Item = {
   manufacturedDate?: string | null;
   expiryDate?: string | null;
   lastUnitPrice?:number|null;
+  latestReceivedAt?:string|null;
   currency?:string|null;
 };
 type LocationScopedItem=Item&{treeQuantity?:number};
@@ -643,6 +644,7 @@ export function App() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [stockStatusFilter, setStockStatusFilter] = useState("");
   const [expiryFilter, setExpiryFilter] = useState("");
+  const [inventorySort, setInventorySort] = useState<"urgency"|"recent">("urgency");
   const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [prefillLocationId, setPrefillLocationId] = useState("");
   const [prefillCategory, setPrefillCategory] = useState("");
@@ -1008,13 +1010,9 @@ export function App() {
             return false;
           return true;
         })
-        .sort(
-          (left, right) =>
-            displayStatusFor(left).priority -
-              displayStatusFor(right).priority ||
-            replenishmentFor(right) - replenishmentFor(left) ||
-            left.name.localeCompare(right.name, localeForDates()),
-        ),
+        .sort((left,right)=>inventorySort==="recent"
+          ? (right.latestReceivedAt??"").localeCompare(left.latestReceivedAt??"") || displayStatusFor(left).priority-displayStatusFor(right).priority || left.name.localeCompare(right.name,localeForDates())
+          : displayStatusFor(left).priority-displayStatusFor(right).priority || replenishmentFor(right)-replenishmentFor(left) || left.name.localeCompare(right.name,localeForDates())),
     [
       locationScopedItems,
       query,
@@ -1022,6 +1020,7 @@ export function App() {
       categoryScopeNames,
       stockStatusFilter,
       expiryFilter,
+      inventorySort,
       stock,
       activeI18n.resolvedLanguage,
     ],
@@ -1032,7 +1031,7 @@ export function App() {
   const pageEnd = Math.min(page * 10, filtered.length);
   useEffect(() => {
     setPage(1);
-  }, [query, locationFilter, categoryFilter, stockStatusFilter, expiryFilter]);
+  }, [query, locationFilter, categoryFilter, stockStatusFilter, expiryFilter, inventorySort]);
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
@@ -3088,7 +3087,7 @@ export function App() {
                 <div>
                   <h2>{t("库存明细")}</h2>
                   <p className="muted">
-                    {t("按紧急程度排序，共")}
+                    {t("按{{sort}}排序，共",{sort:t(inventorySort==="recent"?"近期入库":"紧急程度")})}
                     {filtered.length} {t("项")}
                   </p>
                 </div>
@@ -3159,6 +3158,13 @@ export function App() {
                     <option value="expiring">{t("临期")}</option>
                     <option value="valid">{t("有效")}</option>
                     <option value="none">{t("未设")}</option>
+                  </select>
+                </label>
+                <label>
+                  {t("排序")}
+                  <select value={inventorySort} onChange={event=>setInventorySort(event.target.value as "urgency"|"recent")}>
+                    <option value="urgency">{t("紧急程度")}</option>
+                    <option value="recent">{t("近期入库")}</option>
                   </select>
                 </label>
                 {(query ||

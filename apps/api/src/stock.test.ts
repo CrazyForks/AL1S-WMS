@@ -26,6 +26,15 @@ test("item query is unambiguous and supports paged results", () => {
   db.close();
 });
 
+test("item query includes the most recent receipt time", () => {
+  const {db,homeId,itemId,locationId}=fixture();
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,idempotencyKey:"latest-receipt"});
+  db.prepare("UPDATE stock_batches SET received_at=? WHERE item_id=?").run("2026-09-18T12:00:00.000Z",itemId);
+  const item=listItems(db,homeId,{}) as {latestReceivedAt:string|null}[];
+  assert.equal(item[0].latestReceivedAt,"2026-09-18T12:00:00.000Z");
+  db.close();
+});
+
 test("receipts create batches and issues allocate FEFO idempotently", () => {
   const {db,homeId,locationId,itemId} = fixture();
   const receive = (quantity:number, expiryDate:string|null, key:string) =>
