@@ -133,6 +133,21 @@ export function openDatabase(
       created_at TEXT NOT NULL,
       completed_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS finance_budgets (
+      home_id TEXT NOT NULL REFERENCES homes(id),
+      month TEXT NOT NULL,
+      total_minor INTEGER NOT NULL CHECK(total_minor >= 0),
+      currency TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(home_id, month)
+    );
+    CREATE TABLE IF NOT EXISTS finance_category_budgets (
+      home_id TEXT NOT NULL REFERENCES homes(id),
+      month TEXT NOT NULL,
+      category TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0),
+      PRIMARY KEY(home_id, month, category)
+    );
   `);
   try {
     db.exec("ALTER TABLE items ADD COLUMN default_location_id TEXT");
@@ -224,6 +239,8 @@ export function openDatabase(
   if(!batchColumns.some(column=>column.name==="purchase_currency"))db.exec("ALTER TABLE stock_batches ADD COLUMN purchase_currency TEXT");
   if(!batchColumns.some(column=>column.name==="purchased_date"))db.exec("ALTER TABLE stock_batches ADD COLUMN purchased_date TEXT");
   if(!batchColumns.some(column=>column.name==="channel_id"))db.exec("ALTER TABLE stock_batches ADD COLUMN channel_id TEXT REFERENCES shopping_channels(id)");
+  if(!batchColumns.some(column=>column.name==="shopping_item_id"))db.exec("ALTER TABLE stock_batches ADD COLUMN shopping_item_id TEXT");
+  if(!batchColumns.some(column=>column.name==="purchase_category"))db.exec("ALTER TABLE stock_batches ADD COLUMN purchase_category TEXT");
   const stockColumns = db.prepare("PRAGMA table_info(stock_transactions)").all() as {name:string}[];
   if (!stockColumns.some(column => column.name === "batch_id")) db.exec("ALTER TABLE stock_transactions ADD COLUMN batch_id TEXT REFERENCES stock_batches(id)");
   if (!stockColumns.some(column => column.name === "issue_reason")) db.exec("ALTER TABLE stock_transactions ADD COLUMN issue_reason TEXT");
