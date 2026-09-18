@@ -12,8 +12,8 @@ import { Batches, BatchSelect } from "./Batches.js";
 import { BarcodeScanner } from "./BarcodeScanner.js";
 import { ItemCombobox } from "./ItemCombobox.js";
 import { ItemDetail } from "./ItemDetail.js";
-import { BudgetCategoryPicker, BudgetCategoryLabel, BudgetExecution } from "./BudgetCategories.js";
-import type { CategorySpending } from "./budgetTree.js";
+import { BudgetCategoryPicker, BudgetAllocationEditor, BudgetExecution } from "./BudgetCategories.js";
+import { budgetAllocations, completeBudgetTree, setBudgetAllocation, removeBudgetAllocation, type CategorySpending } from "./budgetTree.js";
 import {
   type CSSProperties,
   FormEvent,
@@ -831,7 +831,8 @@ export function App() {
       const flow=financeFlowRef.current,origin=financeBudgetOriginRef.current;
       if(!flow||!origin)return;
       const flowRect=flow.getBoundingClientRect(),originRect=origin.getBoundingClientRect();
-      const links=financeBudgetEntries.flatMap(entry=>{
+      const links=budgetAllocations(categories,financeBudgetEntries).rows.flatMap(entry=>{
+        if(entry.parent)return [];
         const target=financeBudgetEntryRefs.current[entry.category];
         if(!target)return [];
         const targetRect=target.getBoundingClientRect();
@@ -846,7 +847,7 @@ export function App() {
     window.addEventListener("resize",updateLinks);
     financeBudgetListRef.current?.addEventListener("scroll",updateLinks);
     return ()=>{cancelAnimationFrame(frame);observer.disconnect();window.removeEventListener("resize",updateLinks);financeBudgetListRef.current?.removeEventListener("scroll",updateLinks);};
-  },[activePage,financeDashboard,financeBudgetEntries]);
+  },[activePage,financeDashboard,financeBudgetEntries,categories]);
   useEffect(() => {
     apiFetch("/api/v1/setup/status")
       .then((response) => response.json())
@@ -1642,8 +1643,10 @@ export function App() {
   async function saveFinanceBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (financeSaving) return;
+    const invalid=financeAllocations.rows.find(row=>row.unallocated<0);
+    if(invalid){setNotice(t("子分类额度超过{{category}}预算",{category:invalid.category}));return;}
     const totalValue=financeBudgetTotal.trim();
-    const categoryBudgets=financeBudgetEntries.flatMap(entry=>entry.amount.trim()===""?[]:[{category:entry.category,amount:Number(entry.amount)}]);
+    const categoryBudgets=completeBudgetTree(categories,financeBudgetEntries).map(entry=>({category:entry.category,amount:Number(entry.amount)}));
     setFinanceSaving(true);
     try {
       const response=await apiFetch(`/api/v1/homes/${getHomeId()}/financial-budget`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({month:financeMonth,total:totalValue===""?null:Number(totalValue),categoryBudgets})});
@@ -1657,9 +1660,8 @@ export function App() {
     finally {setFinanceSaving(false);}
   }
   function addFinanceCategoryBudget() {
-    if(financeBudgetEntries.some(entry=>categoryPath(financeCategorySelection).has(entry.category)||categoryPath(entry.category).has(financeCategorySelection)))return;
     if(!financeCategorySelection||financeCategoryAmount.trim()===""||Number(financeCategoryAmount)<0)return;
-    setFinanceBudgetEntries(entries=>[...entries,{category:financeCategorySelection,amount:Number(financeCategoryAmount).toFixed(2)}]);
+    setFinanceBudgetEntries(entries=>setBudgetAllocation(categories,entries,financeCategorySelection,Number(financeCategoryAmount).toFixed(2)));
     setFinanceCategorySelection("");
     setFinanceCategoryAmount("");
   }
@@ -1732,17 +1734,8 @@ export function App() {
         parentId: null,
         depth: 0,
       }));
-  const categoryPath=(name:string)=>{
-    const path=new Set([name]),seen=new Set<string>();
-    let category=categories.find(row=>row.name===name);
-    while(category&&!seen.has(category.id)) {
-      seen.add(category.id);
-      category=categories.find(row=>row.id===category?.parentId);
-      if(category)path.add(category.name);
-    }
-    return path;
-  };
-  const financeAllocatedBudget=financeBudgetEntries.reduce((total,entry)=>total+(Number(entry.amount)||0),0);
+  const financeAllocations=budgetAllocations(categories,financeBudgetEntries);
+  const financeAllocatedBudget=financeAllocations.total;
   const renderTreeNode = (node: TreeNode, depth = 0) => {
     const open = expandedLocations[node.id] ?? true;
     const children = treeNodes.filter((child) => child.parentId === node.id);
@@ -2065,7 +2058,7 @@ export function App() {
               </section>
               <form className="panel finance-budget" onSubmit={saveFinanceBudget}>
                 <div className="panel-head"><div><h2>{t("预算设置")}</h2>{financeDashboard.budgetMode==="inherited"&&<p className="muted">{t("沿用预算")} · {financeDashboard.budgetSourceMonth}</p>}</div><span className={`budget-mode ${financeDashboard.budgetMode}`}>{financeDashboard.budgetMode==="inherited"?t("沿用预算"):financeDashboard.budgetMode==="explicit"?t("本月预算"):t("未设置")}</span></div>
-                <div className="finance-budget-body"><div className="finance-budget-flow" ref={financeFlowRef}>{financeFlowSize.width>0&&<svg className="budget-flow-lines" viewBox={`0 0 ${financeFlowSize.width} ${financeFlowSize.height}`} aria-hidden="true">{financeBudgetLinks.map((link,index)=>{const span=Math.max(60,link.toX-link.fromX);return <path key={index} d={`M ${link.fromX} ${link.fromY} C ${link.fromX+span*.46} ${link.fromY}, ${link.toX-span*.4} ${link.toY}, ${link.toX} ${link.toY}`}/>;})}</svg>}<div className="finance-budget-overview"><div className="finance-budget-source" ref={financeBudgetOriginRef}><label>{t("月度总预算")}<input value={financeBudgetTotal} onChange={event=>setFinanceBudgetTotal(event.target.value)} type="number" min="0" step="0.01" placeholder="0.00" /></label><div className="budget-allocation"><span>{t("已分配")}</span><strong>{formatMoney(financeAllocatedBudget,financeDashboard.currency)}</strong><small>{t("可分配")} {financeBudgetTotal.trim()===""?t("未设置"):formatMoney(Number(financeBudgetTotal)-financeAllocatedBudget,financeDashboard.currency)}</small></div></div><div className="budget-add"><div><strong>{t("添加分类预算")}</strong></div><div className="budget-category-picker"><BudgetCategoryPicker categories={categories} entries={financeBudgetEntries} value={financeCategorySelection} onChange={setFinanceCategorySelection}/><input value={financeCategoryAmount} onChange={event=>setFinanceCategoryAmount(event.target.value)} onKeyDown={addFinanceCategoryBudgetOnEnter} type="number" min="0" step="0.01" placeholder={t("预算金额")} /><button type="button" className="secondary" disabled={!financeCategorySelection||financeCategoryAmount.trim()===""} onClick={addFinanceCategoryBudget}>{t("添加")}</button></div></div></div><div className="finance-budget-editor"><div className="budget-editor-head"><div><strong>{t("分类预算")}</strong></div><b>{formatMoney(financeAllocatedBudget,financeDashboard.currency)}</b></div><div className="category-budget-list" ref={financeBudgetListRef}>{financeBudgetEntries.length?financeBudgetEntries.map((entry,index)=><div className="category-budget-entry" ref={node=>{financeBudgetEntryRefs.current[entry.category]=node;}} key={entry.category}><BudgetCategoryLabel name={entry.category} categories={categories}/><input value={entry.amount} onChange={event=>setFinanceBudgetEntries(entries=>entries.map((value,current)=>current===index?{...value,amount:event.target.value}:value))} type="number" min="0" step="0.01" /><button type="button" aria-label={t("移除{{name}}",{name:entry.category})} onClick={()=>setFinanceBudgetEntries(entries=>entries.filter((_,current)=>current!==index))}><X size={14}/></button></div>):<p className="muted">{t("尚未添加分类预算")}</p>}</div></div></div><div className="finance-budget-actions">{financeBudgetTotal.trim()!==""&&financeAllocatedBudget>Number(financeBudgetTotal)&&<small role="alert">{t("分类预算合计不得超过总预算")}</small>}<button className="primary" disabled={financeSaving}>{financeSaving?t("保存中…"):t("保存预算")}</button></div></div>
+<div className="finance-budget-body"><div className="finance-budget-flow" ref={financeFlowRef}>{financeFlowSize.width>0&&<svg className="budget-flow-lines" viewBox={`0 0 ${financeFlowSize.width} ${financeFlowSize.height}`} aria-hidden="true">{financeBudgetLinks.map((link,index)=>{const span=Math.max(60,link.toX-link.fromX);return <path key={index} d={`M ${link.fromX} ${link.fromY} C ${link.fromX+span*.46} ${link.fromY}, ${link.toX-span*.4} ${link.toY}, ${link.toX} ${link.toY}`}/>;})}</svg>}<div className="finance-budget-overview"><div className="finance-budget-source" ref={financeBudgetOriginRef}><label>{t("月度总预算")}<input value={financeBudgetTotal} onChange={event=>setFinanceBudgetTotal(event.target.value)} type="number" min="0" step="0.01" placeholder="0.00" /></label><div className="budget-allocation"><span>{t("已分配")}</span><strong>{formatMoney(financeAllocatedBudget,financeDashboard.currency)}</strong><small>{t("可分配")} {financeBudgetTotal.trim()===""?t("未设置"):formatMoney(Number(financeBudgetTotal)-financeAllocatedBudget,financeDashboard.currency)}</small></div></div><div className="budget-add"><div><strong>{t("添加分类预算")}</strong></div><div className="budget-category-picker"><BudgetCategoryPicker categories={categories} entries={financeBudgetEntries} value={financeCategorySelection} onChange={setFinanceCategorySelection}/><input value={financeCategoryAmount} onChange={event=>setFinanceCategoryAmount(event.target.value)} onKeyDown={addFinanceCategoryBudgetOnEnter} type="number" min="0" step="0.01" placeholder={t("预算金额")} /><button type="button" className="secondary" disabled={!financeCategorySelection||financeCategoryAmount.trim()===""} onClick={addFinanceCategoryBudget}>{t("添加")}</button></div></div></div><div className="finance-budget-editor"><div className="budget-editor-head"><div><strong>{t("分类预算")}</strong></div><b>{formatMoney(financeAllocatedBudget,financeDashboard.currency)}</b></div><div className="category-budget-list" ref={financeBudgetListRef}>{financeBudgetEntries.length?<BudgetAllocationEditor categories={categories} entries={financeBudgetEntries} currency={financeDashboard.currency} entryRef={(category,node)=>{financeBudgetEntryRefs.current[category]=node;}} onChange={(category,amount)=>setFinanceBudgetEntries(entries=>setBudgetAllocation(categories,entries,category,amount))} onRemove={category=>setFinanceBudgetEntries(entries=>removeBudgetAllocation(categories,entries,category))}/>:<p className="muted">{t("尚未添加分类预算")}</p>}</div></div></div><div className="finance-budget-actions">{financeBudgetTotal.trim()!==""&&financeAllocatedBudget>Number(financeBudgetTotal)&&<small role="alert">{t("分类预算合计不得超过总预算")}</small>}<button className="primary" disabled={financeSaving||financeAllocations.rows.some(row=>row.unallocated<0)}>{financeSaving?t("保存中…"):t("保存预算")}</button></div></div>
               </form>
               <BudgetExecution key={`${getHomeId()}:${financeMonth}`} categories={categories} spending={financeDashboard.categorySpending??[]} budgets={financeDashboard.categoryBudgets} currency={financeDashboard.currency}/>
               <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("渠道支出")}</h2><p className="muted">{t("已完成采购")}</p></div></div><div className="bar-list">{financeDashboard.byChannel.length?financeDashboard.byChannel.map(row=>{const max=Math.max(1,...financeDashboard.byChannel.map(item=>item.total));return <div className="bar-row" key={row.channelId??"none"}><span>{row.channelName}</span><div><i style={{width:`${row.total/max*100}%`}} /></div><b>{formatMoney(row.total,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无渠道支出")}</p>}</div></section>

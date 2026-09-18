@@ -25,7 +25,19 @@
 .budget-tree-over,.budget-tree-remaining{display:block;text-align:right;font-size:11px;font-weight:650}
 .budget-tree-over{color:#a43e47}.budget-tree-remaining{color:#28717b}
 .finance-budget-actions .primary{margin-left:auto}
-.budget-tree-children{margin-left:14px;border-left:1px solid var(--aris-line-strong)}
+.finance-budget .budget-allocation-node{min-width:0;border-left:2px solid #5ab7bd}
+.finance-budget .budget-allocation-node>.category-budget-entry{border-left:0}
+.budget-allocation-children{display:grid;gap:6px;margin:0 0 8px 12px;padding:0 0 0 4px}
+.finance-budget .budget-allocation-children>.budget-allocation-node{border-left-color:#839bc1}
+.finance-budget .budget-allocation-children .budget-allocation-children>.budget-allocation-node{border-left-color:#b09ab8}
+.budget-allocation-children>.allocation-split{margin-left:0;border-left:2px solid #c9d5dc;padding-left:8px}
+.allocation-split{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;padding:6px 8px;font-size:10px;color:var(--aris-muted)}
+.allocation-split.invalid,.allocation-error{color:#a43e47}
+.allocation-error{display:block;padding:2px 8px 6px;font-size:10px}
+.budget-allocation-children .category-budget-entry{grid-template-columns:minmax(0,1fr) 70px 22px;gap:3px}
+.budget-execution-tree>.budget-spend-node{border-left:2px solid #5ab7bd}
+.budget-tree-children{margin:0 8px 10px 14px;border-left:2px solid #839bc1}
+.budget-tree-children .budget-tree-children{border-left-color:#b09ab8}
 .budget-direct{padding:10px 16px;border-top:1px dashed var(--aris-line)}
 @media(max-width:700px){.budget-tree-children{margin-left:10px}.budget-spend-node summary,.budget-spend-leaf{padding-right:10px}.budget-tree-picker{width:100%}}
 @media(max-width:540px){.budget-add .budget-category-picker>input{grid-column:1/-1;width:100%}}

@@ -1,6 +1,11 @@
 import type { zhCN } from "./zh-CN.js";
 
 export const enUS = {
+  "{{category}}预算": "{{category}} budget",
+  "子分类": "Subcategories",
+  "机动额度": "Flexible budget",
+  "可用": "Available",
+  "子分类额度超过{{category}}预算": "Child allocations exceed the {{category}} budget",
   "子分类已分配预算": "Descendants already have budgets",
   "覆盖全部子分类": "Covers all descendants",
   "本分类直接支出": "Direct spending in this category",
@@ -557,4 +562,5 @@ export const enUS = {
   添加分类预算: "Add category budget",
   为分类预留采购额度: "Reserve a purchase allowance for a category",
   当前已分配额度: "Currently allocated",
+  合计: "Total",
 } as const satisfies Record<keyof typeof zhCN, string>;

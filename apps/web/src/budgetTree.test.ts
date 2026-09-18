@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildBudgetTree, categoryPath } from "./budgetTree.js";
+import { buildBudgetTree, budgetAllocations, categoryPath, setBudgetAllocation, removeBudgetAllocation } from "./budgetTree.js";
 
 test("tree totals preserve direct costs without double counting descendants",()=>{
   const categories=[
@@ -25,4 +25,41 @@ test("tree totals preserve direct costs without double counting descendants",()=
   assert.equal(tree[1].name,"旧分类");
   assert.equal(tree[1].actual,15);
   assert.deepEqual(buildBudgetTree(categories,[])[0].children[0].children[0].path,["食品","饮品","茶饮"]);
+});
+
+test("adding children grows parent totals while preserving direct allocations",()=>{
+  const categories=[{id:"food",parentId:null,name:"食品"},{id:"drink",parentId:"food",name:"饮品"},{id:"instant",parentId:"food",name:"即食食品"},{id:"tea",parentId:"drink",name:"茶饮"}];
+  let entries=setBudgetAllocation(categories,[],"饮品","30.00");
+  const row=(name:string)=>budgetAllocations(categories,entries).rows.find(row=>row.category===name)!;
+  assert.equal(row("食品").amount,30);
+  assert.equal(row("食品").unallocated,0);
+  entries=setBudgetAllocation(categories,entries,"食品","100.00");
+  assert.equal(row("食品").unallocated,70);
+  entries=setBudgetAllocation(categories,entries,"即食食品","100.00");
+  assert.equal(row("食品").amount,200);
+  assert.equal(row("食品").unallocated,70);
+  assert.equal(budgetAllocations(categories,entries).total,200);
+  entries=setBudgetAllocation(categories,entries,"茶饮","0.78");
+  assert.equal(row("饮品").amount,30.78);
+  assert.equal(row("食品").amount,200.78);
+  assert.equal(row("食品").unallocated,70);
+  entries=removeBudgetAllocation(categories,entries,"饮品");
+  assert.equal(row("食品").amount,170);
+  assert.equal(row("食品").unallocated,70);
+  assert.equal(row("茶饮"),undefined);
+});
+
+test("allocation hierarchy is independent of add order and counts only root limits",()=>{
+  const categories=[{id:"food",parentId:null,name:"食品"},{id:"drink",parentId:"food",name:"饮品"},{id:"tea",parentId:"drink",name:"茶饮"}];
+  const food={category:"食品",amount:300},drink={category:"饮品",amount:100},tea={category:"茶饮",amount:40};
+  for(const entries of [[food,drink,tea],[tea,drink,food]]) {
+    const result=budgetAllocations(categories,entries);
+    assert.equal(result.total,300);
+    assert.equal(result.rows.find(row=>row.category==="食品")?.unallocated,200);
+    assert.equal(result.rows.find(row=>row.category==="饮品")?.unallocated,60);
+    assert.equal(result.rows.find(row=>row.category==="茶饮")?.parent,"饮品");
+  }
+  assert.equal(budgetAllocations(categories,[food,tea]).rows.find(row=>row.category==="食品")?.unallocated,260);
+  assert.equal(budgetAllocations(categories,[drink,tea]).total,100);
+  assert.equal(budgetAllocations(categories,[{...food,amount:50},drink]).rows.find(row=>row.category==="食品")?.unallocated,-50);
 });

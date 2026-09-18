@@ -37,7 +37,7 @@ test("category-only budgets persist and descendants share their ancestor budget"
   assert.deepEqual(result.categorySpending.find(row=>row.category==="茶饮"),{category:"茶饮",actual:100,planned:90});
   assert.deepEqual(result.categoryBudgets.map(row=>({...row})),[{category:"食品",amount:300}]);
   assert.equal(financialDashboard(db,homeId,{month:"2026-10"}).budgetTotal,300);
-  assert.throws(()=>saveFinancialBudget(db,homeId,{month:"2026-09",total:500,categoryBudgets:[{category:"食品",amount:300},{category:"茶饮",amount:100}]}));
+  assert.throws(()=>saveFinancialBudget(db,homeId,{month:"2026-09",total:500,categoryBudgets:[{category:"食品",amount:300},{category:"茶饮",amount:301}]}));
   assert.equal(financialDashboard(db,homeId,{month:"2026-09"}).budgetTotal,300);
   db.prepare("UPDATE items SET category='清洁用品' WHERE id=?").run(itemId);
   recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:15,purchaseDate:"2026-09-05",idempotencyKey:"outside"});
@@ -66,6 +66,46 @@ test("batch costs produce price history, spending, budget, and remaining invento
   assert.equal(history.items[0].unitPrice,2);
   const inventory=listItems(db,homeId,{}) as unknown as {lastUnitPrice:number}[];
   assert.equal(inventory[0].lastUnitPrice,2);
+  db.close();
+});
+
+test("nested budgets reserve child limits without adding them to the monthly total",()=>{
+  const {db,homeId,locationId,itemId}=fixture();
+  const root=randomUUID(),child=randomUUID();
+  const insert=db.prepare("INSERT INTO item_categories(id,home_id,name,parent_id) VALUES (?,?,?,?)");
+  insert.run(root,homeId,"食品",null);
+  insert.run(child,homeId,"饮品",root);
+  insert.run(randomUUID(),homeId,"茶饮",child);
+  insert.run(randomUUID(),homeId,"水果",root);
+  const save=(categoryBudgets:{category:string;amount:number}[],total:number|null=null)=>saveFinancialBudget(db,homeId,{month:"2026-09",total,categoryBudgets});
+  const food={category:"食品",amount:300},drink={category:"饮品",amount:100},tea={category:"茶饮",amount:40};
+  const onlyTea=save([tea]);
+  assert.equal(onlyTea.budgetTotal,40);
+  const nested=save([tea,food,drink]);
+  assert.equal(nested.budgetTotal,300);
+  assert.equal(save([food,drink,tea],300).budgetTotal,300);
+  // A skipped middle level still reserves the grandchild from its nearest budget.
+  assert.equal(save([tea,food]).budgetTotal,300);
+  save([food,drink,tea]);
+  for(const [category,cost] of [["食品",25],["饮品",30],["茶饮",45]] as const) {
+    db.prepare("UPDATE items SET category=? WHERE id=?").run(category,itemId);
+    recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:cost,purchaseDate:"2026-09-18",idempotencyKey:category});
+  }
+  saveShopping(db,homeId,{itemId,quantity:1,plannedDate:"2026-09-20",estimatedTotal:10});
+  const result=financialDashboard(db,homeId,{month:"2026-09"});
+  assert.equal(result.spendingTotal,100);
+  assert.equal(result.forecastTotal,110);
+  assert.equal(result.remainingBudget,190);
+  assert.deepEqual(result.byCategory.find(row=>row.category==="食品"),{category:"食品",actual:100,planned:10,budget:300});
+  assert.deepEqual(result.byCategory.find(row=>row.category==="饮品"),{category:"饮品",actual:75,planned:10,budget:100});
+  assert.deepEqual(result.byCategory.find(row=>row.category==="茶饮"),{category:"茶饮",actual:45,planned:10,budget:40});
+  assert.throws(()=>save([food,drink,tea,{category:"水果",amount:201}]),{code:"CHILD_BUDGET_EXCEEDS_PARENT"});
+  assert.throws(()=>save([food,{...drink,amount:39},tea]),{code:"CHILD_BUDGET_EXCEEDS_PARENT"});
+  assert.throws(()=>save([food,drink,tea],299));
+  assert.equal(financialDashboard(db,homeId,{month:"2026-10"}).budgetTotal,300);
+  // Removing only the parent preserves the children as standalone limits.
+  assert.equal(save([drink,tea]).budgetTotal,100);
+  assert.equal(financialDashboard(db,homeId,{month:"2026-09"}).byCategory.find(row=>row.category==="食品")?.budget,null);
   db.close();
 });
 

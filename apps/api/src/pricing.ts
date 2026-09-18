@@ -60,11 +60,13 @@ export function saveFinancialBudget(db:DatabaseSync,homeId:string,raw:unknown) {
     if(categories.has(budget.category))throw new InventoryError(400,"DUPLICATE_CATEGORY_BUDGET","error.validation");
     categories.add(budget.category);
   }
-  const categoryTotal=input.categoryBudgets.reduce((total,budget)=>total+budget.amount,0);
   const ancestors=categoryAncestors(db,homeId);
-  for(const category of categories) {
-    if(ancestors(category).slice(1).some(parent=>categories.has(parent)))
-      throw new InventoryError(400,"OVERLAPPING_CATEGORY_BUDGET","error.validation");
+  const allocations=input.categoryBudgets.map(budget=>({...budget,parent:ancestors(budget.category).slice(1).find(parent=>categories.has(parent))??null}));
+  const categoryTotal=allocations.filter(row=>row.parent===null).reduce((total,row)=>total+Math.round(row.amount*100),0)/100;
+  for(const row of allocations) {
+    const reserved=allocations.filter(child=>child.parent===row.category).reduce((sum,child)=>sum+Math.round(child.amount*100),0);
+    if(reserved>Math.round(row.amount*100))
+      throw new InventoryError(400,"CHILD_BUDGET_EXCEEDS_PARENT","error.childBudgetExceedsParent",{category:row.category});
   }
   const total=input.total??(input.categoryBudgets.length?categoryTotal:null);
   if(input.total!==null&&categoryTotal>input.total+1e-9)throw new InventoryError(400,"CATEGORY_BUDGET_EXCEEDS_TOTAL","error.validation");
@@ -99,9 +101,9 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
     const totals=new Map<string,number>();
     for(const row of rows) {
       const path=ancestors(row.category??"其他");
-      // The outermost budget owns the whole subtree, including legacy overlaps.
-      const category=[...path].reverse().find(name=>budgetNames.has(name))??path[0];
-      totals.set(category,(totals.get(category)??0)+row.total);
+      // Each cap includes its subtree. Monthly spending still sums direct costs only.
+      const owners=path.filter(name=>budgetNames.has(name));
+      for(const category of owners.length?owners:[path[0]])totals.set(category,(totals.get(category)??0)+row.total);
     }
     return [...totals].map(([category,total])=>({category,total}));
   };

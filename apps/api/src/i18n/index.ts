@@ -5,6 +5,7 @@ export type Locale = (typeof supportedLocales)[number];
 
 const messages = {
   "zh-CN": {
+    "error.childBudgetExceedsParent": "{category}的子分类预算合计超过该分类额度",
     "error.validation": "参数格式不正确",
     "error.internal": "操作失败，请稍后重试",
     "error.homeScopeOther": "该令牌不能访问其他家庭",
@@ -83,6 +84,7 @@ const messages = {
     "reason.stocktakeLoss": "盘点盘亏",
   },
   "en-US": {
+    "error.childBudgetExceedsParent": "Child budgets exceed the budget for {category}",
     "error.validation": "Invalid request parameters",
     "error.internal": "Operation failed. Please try again later",
     "error.homeScopeOther": "This token cannot access another home",
