@@ -2,13 +2,56 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test, beforeEach, afterEach, mock } from "node:test";
 import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
-import { financialDashboard, financialSummary, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
+import { financialDashboard, financialSummary, financialTrend, listPurchaseRecords, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
 import { listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
 import { recordStock } from "./stock.js";
 
 beforeEach(()=>mock.timers.enable({apis:["Date"],now:new Date("2026-09-18T12:00:00Z")}));
 afterEach(()=>mock.timers.reset());
+
+test("trend ranges compare matching elapsed dates and historical full periods",()=>{
+  const {db,homeId,itemId,locationId}=fixture();
+  for(const [date,total] of [["2025-09-10",10],["2026-08-10",20],["2026-08-25",100],["2026-09-10",40]] as const){
+    recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:total,idempotencyKey:date});
+    db.prepare("UPDATE stock_batches SET received_at=? WHERE id=(SELECT batch_id FROM stock_transactions WHERE idempotency_key=?)").run(`${date}T10:00:00.000Z`,`${date}:0`);
+  }
+  const current=financialTrend(db,homeId,{start:"2026-09",end:"2026-09"});
+  assert.equal(current.current.actual,40);
+  assert.equal(current.previous.actual,20);
+  assert.equal(current.previous.end,"2026-08-18");
+  assert.equal(current.previous.percent,100);
+  assert.equal(current.yearAgo.actual,10);
+  assert.equal(current.yearAgo.percent,300);
+  const previous=financialTrend(db,homeId,{start:"2026-08",end:"2026-08"});
+  assert.equal(previous.current.actual,120);
+  assert.equal(previous.previous.end,"2026-07-31");
+  assert.equal(previous.previous.percent,null);
+  const year=financialTrend(db,homeId,{start:"2026-01",end:"2026-12"});
+  assert.equal(year.points.length,12);
+  assert.equal(year.current.actual,160);
+  assert.equal(year.yearAgo.end,"2025-09-18");
+  assert.throws(()=>financialTrend(db,homeId,{start:"2026-09",end:"2026-08"}));
+  assert.throws(()=>financialTrend(db,homeId,{start:"2020-01",end:"2026-09"}));
+  db.close();
+});
+
+test("purchase pagination includes all records, date boundaries and stable tied timestamps",()=>{
+  const {db,homeId,itemId,locationId}=fixture();
+  for(let index=0;index<205;index++)recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:1,idempotencyKey:`page-${index}`});
+  const query={start:"2026-09-18",end:"2026-09-18",pageSize:100};
+  const pages=[1,2,3].map(page=>listPurchaseRecords(db,homeId,{...query,page}));
+  assert.deepEqual(pages.map(page=>page.items.length),[100,100,5]);
+  assert.equal(new Set(pages.flatMap(page=>page.items.map(row=>row.batchId))).size,205);
+  assert.equal(pages[2].total,205);
+  assert.equal(pages[2].amount,205);
+  assert.equal(pages[2].totalPages,3);
+  assert.equal(listPurchaseRecords(db,homeId,{...query,page:99}).page,3);
+  assert.equal(listPurchaseRecords(db,homeId,{...query,end:"2026-09-19",start:"2026-09-19"}).total,0);
+  assert.throws(()=>listPurchaseRecords(db,homeId,{start:"2026-09-19",end:"2026-09-18"}));
+  assert.throws(()=>listPurchaseRecords(db,homeId,{...query,pageSize:101}));
+  db.close();
+});
 
 test("financial spending follows receipt time, not planned or purchase dates",()=>{
   const {db,homeId,itemId,channelId}=fixture();

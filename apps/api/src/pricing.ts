@@ -33,6 +33,47 @@ function shiftMonth(month:string,offset:number) {
   const date=new Date(Date.UTC(year,value-1+offset,1));
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`;
 }
+
+const dateSchema=z.string().date();
+const purchaseFilters=z.object({start:dateSchema,end:dateSchema,page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).strict().refine(value=>value.start<=value.end,{message:"Invalid date range"});
+export function listPurchaseRecords(db:DatabaseSync,homeId:string,raw:unknown){
+  const input=purchaseFilters.parse(raw);
+  const home=requireHome(db,homeId);
+  const end=new Date(`${input.end}T00:00:00Z`);end.setUTCDate(end.getUTCDate()+1);
+  const from=`${input.start}T00:00:00.000Z`,until=end.toISOString();
+  const totals=db.prepare("SELECT COUNT(*) AS total,COALESCE(SUM(purchase_total_minor),0)/100.0 AS amount FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,from,until) as {total:number;amount:number};
+  const totalPages=Math.max(1,Math.ceil(totals.total/input.pageSize)),page=Math.min(input.page,totalPages);
+  const rows=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,COALESCE(b.purchase_category,i.category) AS category,substr(b.received_at,1,10) AS receivedDate,b.purchased_date AS purchaseDate,b.purchase_total_minor/100.0 AS totalPrice,COALESCE(c.name,'未指定') AS channelName,s.estimated_total_minor/100.0 AS estimatedTotal,
+    COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity
+    FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN shopping_channels c ON c.id=b.channel_id LEFT JOIN shopping_list s ON s.id=b.shopping_item_id
+    WHERE b.home_id=? AND b.received_at>=? AND b.received_at<? AND b.purchase_total_minor IS NOT NULL ORDER BY b.received_at DESC,b.id DESC LIMIT ? OFFSET ?`).all(homeId,from,until,input.pageSize,(page-1)*input.pageSize) as {batchId:string;itemId:string;itemName:string;category:string;receivedDate:string;purchaseDate:string|null;totalPrice:number;channelName:string;estimatedTotal:number|null;quantity:number}[];
+  return {...input,page,totalPages,total:totals.total,amount:totals.amount,currency:home.currency,items:rows.map(row=>({...row,unitPrice:row.quantity>0?Math.round(row.totalPrice/row.quantity*100)/100:null,variance:row.estimatedTotal===null?null:Math.round((row.totalPrice-row.estimatedTotal)*100)/100}))};
+}
+
+function monthEnd(month:string){return new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),0)).toISOString().slice(0,10);}
+function shiftDate(date:string,offset:number){const month=shiftMonth(date.slice(0,7),offset);return `${month}-${String(Math.min(Number(date.slice(8)),Number(monthEnd(month).slice(8)))).padStart(2,"0")}`;}
+export function financialTrend(db:DatabaseSync,homeId:string,raw:unknown){
+  const {start,end}=z.object({start:monthSchema,end:monthSchema}).strict().parse(raw);
+  const count=(Number(end.slice(0,4))-Number(start.slice(0,4)))*12+Number(end.slice(5))-Number(start.slice(5))+1;
+  if(count<1||count>36)throw new InventoryError(400,"INVALID_TREND_RANGE","error.validation");
+  const home=requireHome(db,homeId);
+  const spent=db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND substr(received_at,1,10)>=? AND substr(received_at,1,10)<=? AND purchase_total_minor IS NOT NULL");
+  const actual=(from:string,to:string)=>(spent.get(homeId,from,to) as {total:number}).total;
+  const today=new Date().toISOString().slice(0,10),cutoff=monthEnd(end)<today?monthEnd(end):today;
+  const compare=(offset:number)=>{
+    const from=`${shiftMonth(start,offset)}-01`,to=cutoff===monthEnd(end)?monthEnd(shiftMonth(end,offset)):shiftDate(cutoff,offset);
+    return {start:from,end:to,actual:cutoff<`${start}-01`?0:actual(from,to)};
+  };
+  const current={start:`${start}-01`,end:cutoff,actual:actual(`${start}-01`,cutoff)};
+  const previous=compare(-count),yearAgo=compare(-12);
+  const comparison=(value:typeof previous)=>({...value,difference:Math.round((current.actual-value.actual)*100)/100,percent:value.actual===0?null:Math.round((current.actual-value.actual)/value.actual*10000)/100});
+  const points=Array.from({length:count},(_,index)=>{
+    const month=shiftMonth(start,index);
+    const planned=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND substr(planned_date,1,7)=? AND estimated_total_minor IS NOT NULL").get(homeId,month) as {total:number}).total;
+    return {month,actual:actual(`${month}-01`,monthEnd(month)),planned,budget:budgetForMonth(db,homeId,month).total};
+  });
+  return {start,end,currency:home.currency,current,previous:comparison(previous),yearAgo:comparison(yearAgo),points};
+}
 function budgetForMonth(db:DatabaseSync,homeId:string,month:string) {
   const budget=db.prepare("SELECT month,total_minor/100.0 AS total FROM finance_budgets WHERE home_id=? AND month<=? ORDER BY month DESC LIMIT 1").get(homeId,month) as {month:string;total:number}|undefined;
   if(!budget)return {total:null,sourceMonth:null,categoryBudgets:[] as {category:string;amount:number}[]};
