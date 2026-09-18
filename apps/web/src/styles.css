@@ -475,7 +475,7 @@ input:disabled,select:disabled{background:#edf3f7!important;color:#768a9c!import
 .shell[data-page="profile"] .home-card{min-height:88px}
 .shell[data-page="profile"] .token-create{padding:20px 24px;max-width:660px}
 .shell[data-page="profile"] .token-list .empty{padding:24px;text-align:left;font-size:12px;background:var(--aris-surface-soft);margin:0}
-.shell[data-page="profile"] .home-editor{max-width:610px;margin:4px 24px 24px}
+.shell[data-page="profile"] .home-editor{width:auto;max-width:none;margin:4px 24px 24px}
 .home-card-actions,.home-editor-actions{display:flex;gap:8px;align-items:center}
 .home-settings .home-editor{margin:4px 20px 20px;padding:16px;background:var(--aris-surface-soft);border:1px solid var(--aris-line);border-radius:6px}
 .home-editor h3{grid-column:1/-1;margin:0;font-size:14px}
