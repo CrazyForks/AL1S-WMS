@@ -627,4 +627,8 @@ export const enUS = {
   "开封后保质期（天）": "Shelf life after opening (days)",
   开封后到期: "Expires after opening",
   可选: "Optional",
+  用尽已开封物品: "Exhaust opened item",
+  用尽数量: "Quantity to exhaust",
+  "当前已开封 {{quantity}} {{unit}}": "Currently opened: {{quantity}} {{unit}}",
+  确认用尽: "Confirm exhaustion",
 } as const satisfies Record<keyof typeof zhCN, string>;

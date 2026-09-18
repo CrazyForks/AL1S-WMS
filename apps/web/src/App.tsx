@@ -635,6 +635,7 @@ export function App() {
   const [items, setItems] = useState<Item[]>([]);
   const [stock, setStock] = useState<Stock[]>([]);
   const [openedConsumables,setOpenedConsumables]=useState<OpenedConsumable[]>([]);
+  const [exhaustTarget,setExhaustTarget]=useState<OpenedConsumable|null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
@@ -765,6 +766,7 @@ export function App() {
     setLogView(false);
     setShowForm(false);
     setStockAction(null);
+    setExhaustTarget(null);
     setDetailItem(null);
     setEditTreeNode(null);
     setDraggedTreeItem(null);
@@ -1223,13 +1225,22 @@ export function App() {
     } else setNotice(t("操作失败，可能是库存不足"));
   }
 
-  async function exhaustOpened(opened:OpenedConsumable) {
+  async function exhaustOpened(opened:OpenedConsumable,quantity:number) {
     if(busy)return;
     setBusy(true);
-    const response=await apiFetch(`/api/v1/homes/${getHomeId()}/opened-consumables/${opened.id}/exhaust`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idempotencyKey:newIdempotencyKey()})});
+    const response=await apiFetch(`/api/v1/homes/${getHomeId()}/opened-consumables/${opened.id}/exhaust`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({quantity,idempotencyKey:newIdempotencyKey()})});
     setBusy(false);
     if(!response.ok){setNotice(t("用尽操作失败"));return;}
+    setExhaustTarget(null);
     load();
+  }
+
+  function submitExhaust(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if(!exhaustTarget)return;
+    const quantity=Number(new FormData(event.currentTarget).get("quantity"));
+    if(!quantity||quantity<=0||quantity>exhaustTarget.quantity)return;
+    void exhaustOpened(exhaustTarget,quantity);
   }
 
   async function updateItem(event: FormEvent<HTMLFormElement>) {
@@ -3159,7 +3170,7 @@ export function App() {
             </div>
             <section className="panel opened-consumables-panel">
               <div className="panel-head"><div><h2>{t("已开封消耗品")}</h2><p className="muted">{t("开封后仍计入库存，用尽后才扣减")}</p></div><strong>{openedConsumables.length}</strong></div>
-              {openedConsumables.length===0?<p className="empty">{t("暂无已开封消耗品")}</p>:<div className="table-wrap"><table><thead><tr><th>{t("物资")}</th><th>{t("数量")}</th><th>{t("地点")}</th><th>{t("批次")}</th><th>{t("开封后到期")}</th><th>{t("保质期")}</th><th>{t("开封时间")}</th><th>{t("操作")}</th></tr></thead><tbody>{openedConsumables.map(opened=><tr key={opened.id}><td><button type="button" className="item-link" onClick={()=>openItemDetail(opened.itemId)}>{opened.itemName}</button></td><td>{opened.quantity} {displayUnit(opened.baseUnit)}</td><td>{opened.locationName||t("未指定")}</td><td>{opened.batchLabel||opened.batchId.slice(0,8)}</td><td>{opened.openedExpiryDate||t("未设置")}</td><td>{opened.expiryDate||t("未设置")}</td><td>{new Date(opened.openedAt).toLocaleString(localeForDates(),{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td><button type="button" className="text-button" disabled={busy} onClick={()=>exhaustOpened(opened)}>{t("用尽")}</button></td></tr>)}</tbody></table></div>}
+              {openedConsumables.length===0?<p className="empty">{t("暂无已开封消耗品")}</p>:<div className="table-wrap"><table><thead><tr><th>{t("物资")}</th><th>{t("数量")}</th><th>{t("地点")}</th><th>{t("批次")}</th><th>{t("开封后到期")}</th><th>{t("保质期")}</th><th>{t("开封时间")}</th><th>{t("操作")}</th></tr></thead><tbody>{openedConsumables.map(opened=><tr key={opened.id}><td><button type="button" className="item-link" onClick={()=>openItemDetail(opened.itemId)}>{opened.itemName}</button></td><td>{opened.quantity} {displayUnit(opened.baseUnit)}</td><td>{opened.locationName||t("未指定")}</td><td>{opened.batchLabel||opened.batchId.slice(0,8)}</td><td>{opened.openedExpiryDate||t("未设置")}</td><td>{opened.expiryDate||t("未设置")}</td><td>{new Date(opened.openedAt).toLocaleString(localeForDates(),{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td><button type="button" className="text-button" disabled={busy} onClick={()=>setExhaustTarget(opened)}>{t("用尽")}</button></td></tr>)}</tbody></table></div>}
             </section>
             <div className="panel inventory-panel count-inventory">
               <div className="panel-head">
@@ -3772,6 +3783,7 @@ export function App() {
           onChange={load}
         />
       )}
+      {exhaustTarget&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setExhaustTarget(null)}><form className="modal" onSubmit={submitExhaust}><div className="modal-head"><div><h2>{t("用尽已开封物品")}</h2><p className="muted">{exhaustTarget.itemName}</p></div><button type="button" className="close" onClick={()=>setExhaustTarget(null)} aria-label={t("关闭")}><X size={18} strokeWidth={1.8}/></button></div><label>{t("用尽数量")}<input name="quantity" type="number" min="0" max={exhaustTarget.quantity} step="any" defaultValue={exhaustTarget.quantity>=1?1:exhaustTarget.quantity} autoFocus required/><small className="form-hint">{t("当前已开封 {{quantity}} {{unit}}",{quantity:exhaustTarget.quantity,unit:displayUnit(exhaustTarget.baseUnit)})}</small></label><button className="primary full" disabled={busy}>{busy?t("处理中…"):t("确认用尽")}</button></form></div>}
       {stockAction && (
         <div
           className="modal-backdrop"
