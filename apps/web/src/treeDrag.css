@@ -1,0 +1,4 @@
+.tree-node-head.tree-drop-target{background:#e3f5f5;box-shadow:inset 3px 0 0 var(--aris-cyan),inset 0 -1px 0 var(--aris-cyan)}
+.tree-item-row[draggable="true"]{cursor:grab}
+.tree-item-row[draggable="true"]:active{cursor:grabbing}
+.tree-item-row.tree-item-dragging{opacity:.45}

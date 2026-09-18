@@ -1,4 +1,5 @@
 import { MaterialIcon, IconPicker, itemIconFor } from "./Icons.js";
+import "./treeDrag.css";
 import i18n, {
   displayUnit,
   localeForDates,
@@ -116,6 +117,7 @@ type Category = {
   active: boolean;
 };
 type Transaction = {
+  itemId: string;
   id: string;
   itemName: string;
   locationName: string;
@@ -134,7 +136,7 @@ type TransactionPage = {
   nextOffset: number | null;
   snapshotAt: string;
 };
-function TransactionRow({ transaction }: { transaction: Transaction }) {
+function TransactionRow({ transaction,onOpenItem }: { transaction: Transaction;onOpenItem?:(itemId:string)=>void }) {
   const labels = {
     receipt: t("入库"),
     issue: t("领用"),
@@ -164,7 +166,7 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
         )}
       </span>
       <div>
-        <strong>{transaction.itemName}</strong>
+        {onOpenItem?<button type="button" className="item-link" onClick={()=>onOpenItem(transaction.itemId)}>{transaction.itemName}</button>:<strong>{transaction.itemName}</strong>}
         <small>
           {[
             transaction.locationName,
@@ -682,6 +684,9 @@ export function App() {
   const [expandedLocations, setExpandedLocations] = useState<
     Record<string, boolean>
   >({});
+  const [draggedTreeItem,setDraggedTreeItem]=useState<{item:LocationScopedItem;sourceNodeId:string|null}|null>(null);
+  const [treeDropTarget,setTreeDropTarget]=useState<string|null>(null);
+  const [treeMoving,setTreeMoving]=useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
   const [mobileAction,setMobileAction]=useState<{kind:"shopping";item:ShoppingItem}|{kind:"inventory";item:LocationScopedItem}|null>(null);
@@ -753,6 +758,8 @@ export function App() {
     setStockAction(null);
     setDetailItem(null);
     setEditTreeNode(null);
+    setDraggedTreeItem(null);
+    setTreeDropTarget(null);
     setShowShoppingForm(false);
     setEditShoppingItem(null);
     setReceiveShoppingItem(null);
@@ -1757,6 +1764,26 @@ export function App() {
       }));
   const financeAllocations=budgetAllocations(categories,financeBudgetEntries);
   const financeAllocatedBudget=financeAllocations.total;
+  async function moveTreeItem(target:TreeNode) {
+    const dragged=draggedTreeItem;
+    if(!dragged||treeMoving||dragged.sourceNodeId===target.id)return;
+    setTreeMoving(true);
+    try {
+      const body=treeMode==="location"?{locationId:target.id}:{category:target.name};
+      const response=await apiFetch(`/api/v1/homes/${getHomeId()}/items/${dragged.item.id}`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+      if(!response.ok) {
+        const result=await response.json().catch(()=>({}));
+        throw new Error(result.message||t("保存失败，请重试"));
+      }
+      await load();
+    } catch(error) {
+      setNotice(error instanceof Error?error.message:t("保存失败，请重试"));
+    } finally {
+      setTreeMoving(false);
+      setDraggedTreeItem(null);
+      setTreeDropTarget(null);
+    }
+  }
   const renderTreeNode = (node: TreeNode, depth = 0) => {
     const open = expandedLocations[node.id] ?? true;
     const children = treeNodes.filter((child) => child.parentId === node.id);
@@ -1764,8 +1791,11 @@ export function App() {
     return (
       <div className="tree-node" key={node.id}>
         <div
-          className="tree-node-head"
+          className={`tree-node-head${treeDropTarget===node.id?" tree-drop-target":""}`}
           style={{ paddingLeft: 16 + depth * 22 }}
+          onDragEnter={event=>{if(draggedTreeItem&&draggedTreeItem.sourceNodeId!==node.id){event.preventDefault();setTreeDropTarget(node.id);}}}
+          onDragOver={event=>{if(draggedTreeItem&&draggedTreeItem.sourceNodeId!==node.id){event.preventDefault();event.dataTransfer.dropEffect="move";}}}
+          onDrop={event=>{event.preventDefault();void moveTreeItem(node);}}
         >
           <button
             type="button"
@@ -1842,9 +1872,12 @@ export function App() {
               const status = displayStatusFor(item);
               return (
                 <div
-                  className="tree-item-row"
+                  className={`tree-item-row${draggedTreeItem?.item.id===item.id?" tree-item-dragging":""}`}
                   key={`${item.id}:${item.locationId??"none"}`}
                   style={{ "--tree-depth": depth } as CSSProperties}
+                  draggable={!treeMoving}
+                  onDragStart={event=>{event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("text/plain",item.id);setDraggedTreeItem({item,sourceNodeId:node.id});}}
+                  onDragEnd={()=>{setDraggedTreeItem(null);setTreeDropTarget(null);}}
                 >
                   <strong className="tree-item-name">
                     <MaterialIcon value={itemIconFor(item)} />
@@ -2888,6 +2921,7 @@ export function App() {
                         <TransactionRow
                           key={transaction.id}
                           transaction={transaction}
+                          onOpenItem={transaction.type==="delete"?undefined:openItemDetail}
                         />
                       ))}
                     </div>
@@ -3368,6 +3402,7 @@ export function App() {
                   <TransactionRow
                     key={transaction.id}
                     transaction={transaction}
+                    onOpenItem={transaction.type==="delete"?undefined:openItemDetail}
                   />
                 ))}
               </div>
@@ -3443,6 +3478,7 @@ export function App() {
                   <TransactionRow
                     key={transaction.id}
                     transaction={transaction}
+                    onOpenItem={transaction.type==="delete"?undefined:openItemDetail}
                   />
                 ))
               )}
