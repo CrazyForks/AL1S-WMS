@@ -55,7 +55,7 @@ export function receiveShopping(db:DatabaseSync,homeId:string,shoppingId:string,
       itemId=randomUUID();
       db.prepare("INSERT INTO items(id,home_id,sku,name,category,base_unit,default_location_id) VALUES (?,?,?,?,?,?,?)").run(itemId,homeId,`ITEM-${itemId.slice(0,8).toUpperCase()}`,row.name,row.category,row.unit,locationId);
     }
-    const receipt=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:input.actualQuantity,idempotencyKey:`purchase:${input.idempotencyKey}`,reason:"reason.purchaseReceipt",manufacturedDate:input.manufacturedDate,expiryDate:input.expiryDate,totalPrice:input.totalPrice,purchaseDate:input.purchaseDate,channelId:row.channelId});
+    const receipt=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:input.actualQuantity,idempotencyKey:`purchase:${input.idempotencyKey}`,reason:"reason.purchaseReceipt",manufacturedDate:input.manufacturedDate,expiryDate:input.expiryDate,totalPrice:input.totalPrice,purchaseDate:input.purchaseDate,channelId:row.channelId,shoppingItemId:shoppingId});
     if(!automatic)db.prepare("UPDATE shopping_list SET item_id=?,completed=1,completed_at=? WHERE home_id=? AND id=?").run(itemId,new Date().toISOString(),homeId,shoppingId);
     return {id:shoppingId,completed:true,received:input.actualQuantity,itemId,locationId,estimatedTotal:row.estimatedTotal,actualTotal:input.totalPrice??null,beforeQuantity:receipt.beforeQuantity,afterQuantity:receipt.afterQuantity,difference:receipt.difference,transactions:receipt.transactions};
   });

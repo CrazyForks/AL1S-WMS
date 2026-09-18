@@ -45,10 +45,12 @@ test("shopping receipt inherits channel and records actual total on its batch",(
   const received=receiveShopping(db,homeId,purchase.id,{actualQuantity:3,totalPrice:8.4,purchaseDate:"2026-09-20",idempotencyKey:"receive-price"});
   assert.equal(received.estimatedTotal,9);
   assert.equal(received.actualTotal,8.4);
-  const batch=db.prepare("SELECT purchase_total_minor AS total,channel_id AS channelId,purchased_date AS purchaseDate FROM stock_batches WHERE item_id=?").get(itemId);
+  const batch=db.prepare("SELECT purchase_total_minor AS total,channel_id AS channelId,purchased_date AS purchaseDate,shopping_item_id AS shoppingItemId,purchase_category AS purchaseCategory FROM stock_batches WHERE item_id=?").get(itemId);
   assert.equal(batch?.total,840);
   assert.equal(batch?.channelId,channelId);
   assert.equal(batch?.purchaseDate,"2026-09-20");
+  assert.equal(batch?.shoppingItemId,purchase.id);
+  assert.equal(batch?.purchaseCategory,"饮品");
   const suggested=saveShopping(db,homeId,{itemId,quantity:2,channelId,plannedDate:"2026-10-01"});
   assert.equal(suggested.estimatedTotal,5.6);
   db.close();
