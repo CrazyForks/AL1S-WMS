@@ -517,7 +517,7 @@ export const enUS = {
   本月已有独立预算: "This month has an independent budget.",
   "尚未设置预算，可保存为本月版本": "No budget yet. Save to create a version for this month.",
   选择分类: "Select category",
-  分类预算金额: "Category budget amount",
+  预算金额: "Budget amount",
   "移除{{name}}": "Remove {{name}}",
   尚未添加分类预算: "No category budgets added",
 } as const satisfies Record<keyof typeof zhCN, string>;
