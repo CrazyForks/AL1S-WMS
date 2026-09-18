@@ -42,6 +42,7 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal(channels.length,9);
   const planned=await request(homeToken,"POST",`/api/v1/homes/${homeId}/shopping-list`,{itemId,quantity:1,channelId:channels[0].id,plannedDate:"2026-10-08"});
   assert.equal(planned.status,201);
+  const plannedId=(planned.body as {id:string}).id;
   const shopping=(await request(homeToken,"GET",`/api/v1/homes/${homeId}/shopping-list`)).body as {itemId:string;source:string}[];
   assert.equal(shopping.filter(entry=>entry.itemId===itemId).length,1,"persisted plans suppress duplicate automatic suggestions");
   const calendar=await request(homeToken,"GET",`/api/v1/homes/${homeId}/shopping-calendar?month=2026-10&includeCompleted=false`);
@@ -87,7 +88,16 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   assert.equal(overview.needsReplenishment.total,1);
   const finance=parseTool(await client.callTool({name:"get_financial_summary",arguments:{month:"2026-09"}}));
   assert.equal(finance.currency,"USD");
-  const mcpCalendar=parseTool(await client.callTool({name:"get_shopping_calendar",arguments:{month:"2026-10"}}));
+  const savedBudget=parseTool(await client.callTool({name:"set_financial_budget",arguments:{month:"2026-10",total:30,categoryBudgets:[{category:"食品",amount:10},{category:"日用品",amount:5}]}}));
+  assert.equal(savedBudget.budgetTotal,30);
+  const receivedShopping=parseTool(await client.callTool({name:"receive_shopping_item",arguments:{shoppingItemId:plannedId,actualQuantity:1,totalPrice:4,purchaseDate:"2026-10-08",idempotencyKey:"mcp-shopping-receipt"}}));
+  assert.equal(receivedShopping.completed,true);
+  const activeShopping=parseTool(await client.callTool({name:"list_shopping_items",arguments:{}})) as {id:string}[];
+  assert.equal(activeShopping.some(item=>item.id===plannedId),false);
+  const dashboard=parseTool(await client.callTool({name:"get_financial_dashboard",arguments:{month:"2026-10"}}));
+  assert.equal(dashboard.byCategory.find((row:{category:string})=>row.category==="食品").budget,10);
+  assert.equal(dashboard.purchases[0].shoppingItemId,plannedId);
+  const mcpCalendar=parseTool(await client.callTool({name:"get_shopping_calendar",arguments:{month:"2026-10",includeCompleted:true}}));
   assert.equal(mcpCalendar[0].channelName,channels[0].name);
   await client.close();await server.close();
 
