@@ -10,6 +10,7 @@
 .budget-category-label b{font-size:12px}.budget-category-label small{font-size:10px;color:var(--aris-muted);font-weight:400}
 .category-budget-entry:has(.budget-category-label){padding-top:9px;padding-bottom:9px}
 .budget-execution-tree{min-width:0}
+.trend-stack i.over{background:#b35a60}.trend-stack em.over{background:#e4b3b6}
 .execution-budget{min-width:0;border-top:1px solid var(--aris-line)}
 .execution-budget-summary{display:block;position:relative;padding:14px 16px 12px 28px;list-style:none;background:var(--aris-surface-soft)}
 .budget-execution-tree>.execution-budget>.execution-budget-summary,.budget-execution-tree>.execution-budget>details>.execution-budget-summary{box-shadow:inset 2px 0 0 var(--aris-cyan)}

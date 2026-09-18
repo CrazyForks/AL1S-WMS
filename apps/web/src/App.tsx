@@ -12,6 +12,7 @@ import { Batches, BatchSelect } from "./Batches.js";
 import { BarcodeScanner } from "./BarcodeScanner.js";
 import { ItemCombobox } from "./ItemCombobox.js";
 import { ItemDetail } from "./ItemDetail.js";
+import { spendingTrendScale } from "./spendingTrend.js";
 import { BudgetCategoryPicker, BudgetAllocationEditor, BudgetExecution } from "./BudgetCategories.js";
 import { budgetAllocations, completeBudgetTree, setBudgetAllocation, removeBudgetAllocation, type CategorySpending } from "./budgetTree.js";
 import {
@@ -2060,7 +2061,7 @@ export function App() {
               <section className="panel finance-trend">
                 <div className="panel-head"><div><h2>{t("支出趋势")}</h2><p className="muted">{t("实际支出、待采购预计与月度预算")}</p></div></div>
                 <div className="trend-chart" aria-label={t("过去 12 个月支出趋势")}>
-                  {financeDashboard.trend.map(point=>{const max=Math.max(1,...financeDashboard.trend.flatMap(row=>[row.actual+row.planned,row.budget??0]));return <div className="trend-column" key={point.month} title={`${point.month}: ${formatMoney(point.actual,financeDashboard.currency)}`}><div className="trend-stack"><i style={{height:`${point.actual/max*100}%`}} /><em style={{height:`${point.planned/max*100}%`}} />{point.budget!==null&&<b style={{bottom:`${point.budget/max*100}%`}} />}</div><small>{point.month.slice(5)}</small></div>;})}
+{financeDashboard.trend.map(point=>{const max=spendingTrendScale(financeDashboard.trend);return <div className="trend-column" key={point.month} title={`${point.month}\n${t("实际支出")} ${formatMoney(point.actual,financeDashboard.currency)}\n${t("待采购预计")} ${formatMoney(point.planned,financeDashboard.currency)}\n${t("月度预算")} ${point.budget===null?t("未设置"):formatMoney(point.budget,financeDashboard.currency)}${point.budget!==null&&point.actual+point.planned>point.budget?`\n${t("超支")} ${formatMoney(point.actual+point.planned-point.budget,financeDashboard.currency)}`:""}`}><div className="trend-stack"><i className={point.budget!==null&&point.actual>point.budget?"over":undefined} style={{height:`${point.actual/max*100}%`}} /><em className={point.budget!==null&&point.actual+point.planned>point.budget?"over":undefined} style={{height:`${point.planned/max*100}%`}} />{point.budget!==null&&<b style={{bottom:`${point.budget/max*100}%`}} />}</div><small>{point.month.slice(5)}</small></div>;})}
                 </div>
                 <div className="chart-legend"><span><i className="actual" />{t("实际支出")}</span><span><i className="planned" />{t("待采购预计")}</span><span><i className="budget" />{t("月度预算")}</span></div>
               </section>
