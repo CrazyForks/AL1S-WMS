@@ -15,7 +15,6 @@ export function BudgetCategoryPicker({categories,entries,value,onChange}:{catego
     return <div key={node.name}>
       <button type="button" disabled={disabled} style={{paddingLeft:12+depth*16}} title={node.path.join(" / ")} onClick={()=>{onChange(node.name);if(dropdown.current)dropdown.current.open=false;}}>
         <span>{depth>0?"└ ":""}{node.name}</span>
-        {!owner&&<small>{descendant?t("子分类已分配预算"):t("可分配")}</small>}
       </button>
       {node.children.map(child=>render(child,depth+1))}
     </div>;
@@ -27,9 +26,8 @@ export function BudgetCategoryPicker({categories,entries,value,onChange}:{catego
 }
 
 export function BudgetCategoryLabel({name,categories}:{name:string;categories:BudgetCategory[]}) {
-  const {t}=useTranslation();
   const path=categoryPath(name,categories);
-  return <span className="budget-category-label" title={path.join(" / ")}><b>{name}</b><small>{path.length>1?path.slice(0,-1).join(" / "):t("一级分类")}</small><small>{t("覆盖全部子分类")}</small></span>;
+  return <span className="budget-category-label" title={path.join(" / ")}><b>{name}</b>{path.length>1&&<small>{path.slice(0,-1).join(" / ")}</small>}</span>;
 }
 
 export function BudgetExecution({categories,spending,budgets,currency}:{categories:BudgetCategory[];spending:CategorySpending[];budgets:{category:string;amount:number}[];currency:string}) {
@@ -45,7 +43,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     const hasDetails=children.length>0;
     const forecast=node.actual+node.planned,remaining=(budget??0)-forecast,max=Math.max(1,budget??0,forecast);
     const content=<>
-      <span className="budget-tree-heading"><strong>{node.name}</strong>{budget!==undefined?<small>{t("预算")} {money(budget)}</small>:!owner&&<small>{t("未分配预算")}</small>}</span>
+      <span className="budget-tree-heading"><strong>{node.name}</strong>{budget!==undefined&&<small>{t("预算")} {money(budget)}</small>}</span>
       {amounts(node.actual,node.planned)}
       {budget!==undefined&&<><span className="category-execution-bar"><i style={{width:node.actual/max*100+"%"}}/><em style={{width:node.planned/max*100+"%"}}/><b style={{left:(budget/max*100)+"%"}}/></span><span className={remaining<0?"budget-tree-over":"budget-tree-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</span></>}
     </>;
@@ -61,7 +59,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
   const outside=spending.filter(row=>!budgets.some(budget=>categoryPath(row.category,categories).includes(budget.category)));
   const unbudgeted=buildBudgetTree(categories,outside).filter(node=>node.actual>0||node.planned>0);
   return <section className="panel finance-bars finance-category-spending">
-    <div className="panel-head"><div><h2>{t("分类预算执行")}</h2><p className="muted">{t("展开分类查看子孙分类支出")}</p></div></div>
+    <div className="panel-head"><div><h2>{t("分类预算执行")}</h2></div></div>
     <div className="budget-execution-tree">
       {budgets.length?budgets.map(budget=>{
         const node=find(tree,budget.category)??{name:budget.category,path:[budget.category],actual:0,planned:0,directActual:0,directPlanned:0,children:[]};
