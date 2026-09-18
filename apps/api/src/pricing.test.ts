@@ -33,6 +33,8 @@ test("category-only budgets persist and descendants share their ancestor budget"
   assert.equal(result.budgetTotal,300);
   assert.equal(result.remainingBudget,-10);
   assert.deepEqual(result.byCategory,[{category:"食品",actual:220,planned:90,budget:300}]);
+  assert.deepEqual(result.categorySpending.find(row=>row.category==="饮品"),{category:"饮品",actual:120,planned:0});
+  assert.deepEqual(result.categorySpending.find(row=>row.category==="茶饮"),{category:"茶饮",actual:100,planned:90});
   assert.deepEqual(result.categoryBudgets.map(row=>({...row})),[{category:"食品",amount:300}]);
   assert.equal(financialDashboard(db,homeId,{month:"2026-10"}).budgetTotal,300);
   assert.throws(()=>saveFinancialBudget(db,homeId,{month:"2026-09",total:500,categoryBudgets:[{category:"食品",amount:300},{category:"茶饮",amount:100}]}));
