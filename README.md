@@ -1,6 +1,6 @@
-# AL1S ERP
+# AL1S WMS
 
-AL1S ERP is a self-hosted household ERP for managing inventory, purchases, storage, stock batches, expiration dates, and physical stocktaking. Inspired by [Grocy](http://grocy.info/).
+AL1S WMS is a self-hosted household warehouse management system for managing inventory, purchases, storage, stock batches, expiration dates, and physical stocktaking. Inspired by [Grocy](http://grocy.info/).
 
 ## Features
 
@@ -36,7 +36,7 @@ Open `http://localhost:8080` and follow the initial setup.
 
 The SQLite database is stored at `/data/family-erp.db`. Always persist `/data` with a Docker volume or bind mount.
 
-Set `APIZERO_API_KEY` to use an authenticated ApiZero barcode lookup; without it, AL1S ERP uses the anonymous free quota.
+Set `APIZERO_API_KEY` to use an authenticated ApiZero barcode lookup; without it, AL1S WMS uses the anonymous free quota.
 
 To use a host directory:
 
@@ -73,7 +73,7 @@ pnpm build
 
 ## MCP
 
-AL1S ERP exposes a Streamable HTTP MCP endpoint at:
+AL1S WMS exposes a Streamable HTTP MCP endpoint at:
 
 ```text
 https://your-domain.example/mcp

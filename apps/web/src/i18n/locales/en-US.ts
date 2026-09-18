@@ -60,8 +60,8 @@ export const enUS = {
   "3 地点": "3 Location",
   建立本地管理员: "Create a local administrator",
   先创建你的账号: "Create your account first",
-  "账号只保存在这台 AL1S ERP 中，用于管理成员和敏感操作。":
-    "The account is stored only in this AL1S ERP and is used to manage members and sensitive operations.",
+  "账号只保存在这台 AL1S WMS 中，用于管理成员和敏感操作。":
+    "The account is stored only in this AL1S WMS and is used to manage members and sensitive operations.",
   用户名: "Username",
   密码: "password",
   "建立你的 Home": "Create your Home",

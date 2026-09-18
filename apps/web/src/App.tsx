@@ -275,7 +275,7 @@ function BrandWordmark() {
       <b>AL</b>
       <i>1</i>
       <b>S</b>
-      <small>ERP</small>
+      <small>WMS</small>
     </strong>
   );
 }
@@ -404,7 +404,7 @@ function Setup({
             <p className="eyebrow">{t("建立本地管理员")}</p>
             <h1>{t("先创建你的账号")}</h1>
             <p className="muted">
-              {t("账号只保存在这台 AL1S ERP 中，用于管理成员和敏感操作。")}
+              {t("账号只保存在这台 AL1S WMS 中，用于管理成员和敏感操作。")}
             </p>
             <label>
               {t("用户名")}
