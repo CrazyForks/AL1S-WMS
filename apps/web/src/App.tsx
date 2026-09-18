@@ -3840,10 +3840,10 @@ export function App() {
             <label>
               {t("存放地点")}
               <select
-                key={`shopping-location-${shoppingItemId}`}
+                key={`shopping-location-${shoppingItemId}-${locationOptions[0]?.id ?? ""}`}
                 name="locationId"
                 defaultValue={
-                  linkedShoppingItem?.locationId || locations[0]?.id || ""
+                  linkedShoppingItem?.locationId || locationOptions[0]?.id || ""
                 }
                 disabled={Boolean(linkedShoppingItem)}
               >
