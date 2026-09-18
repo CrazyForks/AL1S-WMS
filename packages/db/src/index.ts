@@ -262,7 +262,9 @@ export function openDatabase(
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_stock_batch ON stock_transactions(home_id,item_id,batch_id,location_id);
     CREATE INDEX IF NOT EXISTS idx_stock_history ON stock_transactions(home_id,occurred_at,id);
+    CREATE INDEX IF NOT EXISTS idx_stock_item_history ON stock_transactions(home_id,item_id,occurred_at DESC,id DESC);
     CREATE INDEX IF NOT EXISTS idx_item_history ON item_events(home_id,occurred_at,id);
+    CREATE INDEX IF NOT EXISTS idx_item_event_history ON item_events(home_id,item_id,occurred_at DESC,id DESC);
     CREATE INDEX IF NOT EXISTS idx_shopping_calendar ON shopping_list(home_id,planned_date,completed);
     DROP INDEX IF EXISTS idx_items_home_barcode;
     CREATE UNIQUE INDEX idx_items_home_barcode ON items(home_id,barcode) WHERE barcode IS NOT NULL AND active=1;`);

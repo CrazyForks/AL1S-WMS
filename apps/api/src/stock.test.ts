@@ -35,6 +35,23 @@ test("item query includes the most recent receipt time", () => {
   db.close();
 });
 
+test("item history is paged by newest transaction and has supporting indexes", () => {
+  const {db,homeId,itemId,locationId}=fixture();
+  for(let index=0;index<12;index++) {
+    recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,idempotencyKey:`history-${index}`});
+    db.prepare("UPDATE stock_transactions SET occurred_at=? WHERE idempotency_key=?").run(`2026-09-${String(index+1).padStart(2,"0")}T10:00:00.000Z`,`history-${index}:0`);
+  }
+  const first=listTransactions(db,homeId,{itemId,limit:10,offset:0}) as unknown as {items:{idempotencyKey:string}[];total:number;hasMore:boolean};
+  const second=listTransactions(db,homeId,{itemId,limit:10,offset:10}) as typeof first;
+  assert.equal(first.total,12);
+  assert.equal(first.items[0].idempotencyKey,"history-11:0");
+  assert.equal(first.hasMore,true);
+  assert.equal(second.items.length,2);
+  const indexes=db.prepare("PRAGMA index_list(stock_transactions)").all() as {name:string}[];
+  assert.ok(indexes.some(index=>index.name==="idx_stock_item_history"));
+  db.close();
+});
+
 test("receipts create batches and issues allocate FEFO idempotently", () => {
   const {db,homeId,locationId,itemId} = fixture();
   const receive = (quantity:number, expiryDate:string|null, key:string) =>
