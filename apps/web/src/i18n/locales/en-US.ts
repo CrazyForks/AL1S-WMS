@@ -154,7 +154,7 @@ export const enUS = {
   未指定地点: "No location",
   编辑: "Edit",
   主导航: "Main navigation",
-  首页: "Home",
+  首页: "Dashboard",
   盘点: "Stocktake",
   采购: "Purchase",
   切换家庭: "Switch home",
