@@ -54,6 +54,9 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
   const money=(value:number)=>new Intl.NumberFormat(i18n.language,{style:"currency",currency}).format(value);
   const tree=buildBudgetTree(categories,spending);
   const limits=new Map(budgets.map(row=>[row.category,row.amount]));
+  const palette=["#347e8b","#7785bb","#bd8957","#769960","#ac769c","#5d9fa8","#b87969"];
+  const colorNames=[...new Set([...categories.map(row=>row.name),...spending.map(row=>row.category)])].sort();
+  const color=(name:string)=>palette[Math.max(0,colorNames.indexOf(name))%palette.length];
   const owner=(name:string)=>[...categoryPath(name,categories)].reverse().find(name=>limits.has(name));
   const parent=(name:string)=>[...categoryPath(name,categories)].reverse().slice(1).find(name=>limits.has(name));
   const find=(nodes:BudgetNode[],name:string):BudgetNode|undefined=>{
@@ -76,6 +79,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     const actual=node?.actual??0,planned=node?.planned??0;
     const remaining=(Math.round(budget.amount*100)-Math.round(actual*100)-Math.round(planned*100))/100;
     const scale=Math.max(1,budget.amount,actual+planned);
+    const segments=node?[{name:node.name,actual:node.directActual,planned:node.directPlanned},...node.children.map(child=>({name:child.name,actual:child.actual,planned:child.planned}))]:[];
     const children=budgets.filter(child=>parent(child.category)===budget.category);
     const directTree=buildBudgetTree(categories,spending.filter(row=>owner(row.category)===budget.category));
     const direct=find(directTree,budget.category);
@@ -84,7 +88,12 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     const content=<>
       <span className="execution-budget-heading"><strong>{budget.category}</strong><span>{t("预算")} <b>{money(budget.amount)}</b></span></span>
       <span className="execution-budget-amounts"><span>{t("已花")} <b>{money(actual)}</b></span><span>{t("待采购")} <b>{money(planned)}</b></span><strong className={remaining<0?"execution-over":"execution-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</strong></span>
-      <span className={remaining<0?"execution-progress over":"execution-progress"} aria-hidden="true"><i style={{width:actual/scale*100+"%"}}/><em style={{width:planned/scale*100+"%"}}/></span>
+      <span className="execution-progress">{segments.flatMap(segment=>(["actual","planned"] as const).flatMap(kind=>{
+        const value=segment[kind];
+        if(value<=0)return [];
+        const label=`${segment.name} · ${kind==="actual"?t("已花"):t("待采购")} ${money(value)}`;
+        return [<span key={`${segment.name}-${kind}`} className={`execution-segment ${kind}`} style={{width:value/scale*100+"%",backgroundColor:color(segment.name)}} tabIndex={0} role="img" aria-label={label} data-tooltip={label} onClick={event=>event.preventDefault()} onKeyDown={event=>{if(event.key==="Enter"||event.key===" ")event.preventDefault();}}/>];
+      }))}</span>
     </>;
     const hasContents=children.length>0||hasDirect||details.length>0;
     return <div className="execution-budget" key={budget.category}>
