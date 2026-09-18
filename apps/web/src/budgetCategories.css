@@ -12,6 +12,7 @@
 .budget-execution-tree{min-width:0}
 .execution-budget{min-width:0;border-top:1px solid var(--aris-line)}
 .execution-budget-summary{display:block;position:relative;padding:14px 16px 12px 28px;list-style:none;background:var(--aris-surface-soft)}
+.budget-execution-tree>.execution-budget>.execution-budget-summary,.budget-execution-tree>.execution-budget>details>.execution-budget-summary{box-shadow:inset 2px 0 0 var(--aris-cyan)}
 summary.execution-budget-summary{cursor:pointer}
 .execution-budget summary::-webkit-details-marker,.execution-detail-branch summary::-webkit-details-marker{display:none}
 summary.execution-budget-summary::before{content:"›";position:absolute;left:12px;top:13px;color:var(--aris-muted)}
