@@ -108,18 +108,12 @@
 
 ### Docker
 
-需要 Docker。以下命令会构建镜像、启动服务，并把 SQLite 数据持久化到 Docker volume：
+需要安装 Docker 与 Compose。以下命令会构建镜像、启动服务，并把 SQLite 数据持久化到 Docker volume：
 
 ```bash
 git clone https://github.com/RicterZ/AL1S-WMS.git
 cd AL1S-WMS
-docker build -t al1s-wms .
-docker run -d \
-  --name al1s-wms \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  -v al1s-wms-data:/data \
-  al1s-wms
+docker compose up -d --build
 ```
 
 打开 `http://localhost:8080`，按页面引导完成首次初始化。应用的 SQLite 数据库位于容器内 `/data/al1s-wms.db`；`/data` 必须持久化，否则重建容器会丢失所有家庭数据。
@@ -133,7 +127,7 @@ docker run -d \
   --restart unless-stopped \
   -p 8080:8080 \
   -v /srv/al1s-wms/data:/data \
-  al1s-wms
+  al1s-wms:local
 ```
 
 建议定期备份 `/data/al1s-wms.db`。对外网部署时，请在反向代理后提供 HTTPS，并限制管理入口访问范围。

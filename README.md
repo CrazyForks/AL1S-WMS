@@ -110,18 +110,12 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 
 ### Docker
 
-Docker is required. The following commands build the image, start the service, and persist SQLite data in a Docker volume:
+Docker with Compose is required. The following commands build the image, start the service, and persist SQLite data in a Docker volume:
 
 ```bash
 git clone https://github.com/RicterZ/AL1S-WMS.git
 cd AL1S-WMS
-docker build -t al1s-wms .
-docker run -d \
-  --name al1s-wms \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  -v al1s-wms-data:/data \
-  al1s-wms
+docker compose up -d --build
 ```
 
 Open `http://localhost:8080` and complete the initial setup. The SQLite database is stored at `/data/al1s-wms.db` inside the container. Persist `/data`, or all household data will be lost when the container is recreated.
@@ -135,7 +129,7 @@ docker run -d \
   --restart unless-stopped \
   -p 8080:8080 \
   -v /srv/al1s-wms/data:/data \
-  al1s-wms
+  al1s-wms:local
 ```
 
 Back up `/data/al1s-wms.db` regularly. For an internet-facing deployment, place the application behind a reverse proxy with HTTPS and restrict access to its management surface.
