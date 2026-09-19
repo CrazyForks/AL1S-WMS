@@ -21,40 +21,43 @@ function useReport<T>(url:string,revision:unknown){
   return {data:result?.url===url?result.data:null,error,loading,retry:()=>setRetry(value=>value+1)};
 }
 const endOfMonth=(month:string)=>new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),0)).toISOString().slice(0,10);
+const shiftDay=(date:string,offset:number)=>{const value=new Date(`${date}T00:00:00.000Z`);value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);};
 type Comparison={start:string;end:string;actual:number;difference:number;percent:number|null};
-type TrendReport={currency:string;current:{start:string;end:string;actual:number};previous:Comparison;yearAgo:Comparison;points:{month:string;actual:number;planned:number;budget:number|null}[]};
+type TrendReport={granularity:"month"|"day";currency:string;current:{start:string;end:string;actual:number};previous:Comparison;yearAgo:Comparison;points:{label:string;actual:number;planned:number;budget:number|null}[]};
 
 export function FinanceTrend({homeId,month,revision}:{homeId:string;month:string;revision:unknown}){
   const {t,i18n}=useTranslation();
   const [mode,setMode]=useState("12"),[year,setYear]=useState(month.slice(0,4));
   const [customStart,setCustomStart]=useState(adjacentMonth(month,-11)),[customEnd,setCustomEnd]=useState(month);
-  const today=new Date().toISOString().slice(0,7);
-  const start=mode==="custom"?customStart:mode==="year"?`${year}-01`:mode==="ytd"?`${today.slice(0,4)}-01`:adjacentMonth(month,1-Number(mode));
-  const end=mode==="custom"?customEnd:mode==="year"?`${year}-12`:mode==="ytd"?today:month;
-  const length=(Number(end.slice(0,4))-Number(start.slice(0,4)))*12+Number(end.slice(5))-Number(start.slice(5))+1;
-  const valid=/^\d{4}-\d{2}$/.test(start)&&/^\d{4}-\d{2}$/.test(end)&&length>0&&length<=36;
-  const report=useReport<TrendReport>(valid?`/api/v1/homes/${homeId}/financial-trend?start=${start}&end=${end}`:"",revision);
+  const currentMonth=new Date().toISOString().slice(0,7);
+  const today=new Date().toISOString().slice(0,10);
+  const daily=mode==="30";
+  const end=daily?today:mode==="custom"?customEnd:mode==="year"?`${year}-12`:mode==="ytd"?currentMonth:month;
+  const start=daily?shiftDay(today,-29):mode==="custom"?customStart:mode==="year"?`${year}-01`:mode==="ytd"?`${currentMonth.slice(0,4)}-01`:adjacentMonth(month,1-Number(mode));
+  const length=daily?30:(Number(end.slice(0,4))-Number(start.slice(0,4)))*12+Number(end.slice(5))-Number(start.slice(5))+1;
+  const valid=daily||(/^\d{4}-\d{2}$/.test(start)&&/^\d{4}-\d{2}$/.test(end)&&length>0&&length<=36);
+  const report=useReport<TrendReport>(valid?`/api/v1/homes/${homeId}/financial-trend?start=${start}&end=${end}${daily?"&granularity=day":""}`:"",revision);
   const money=(value:number)=>new Intl.NumberFormat(i18n.language,{style:"currency",currency:report.data?.currency??"CNY"}).format(value);
   const data=report.data,max=spendingTrendScale(data?.points??[]);
   const scroll=useRef<HTMLDivElement>(null);
   useLayoutEffect(()=>{if(scroll.current)scroll.current.scrollLeft=scroll.current.scrollWidth;},[data]);
   const comparison=(label:string,value:Comparison)=><div title={`${value.start} — ${value.end}`}><small>{label}</small><strong className={value.difference>0?"report-increase":value.difference<0?"report-decrease":""}>{value.percent===null?(value.difference===0?"0%":t("无对比基数")):`${value.percent>0?"+":""}${value.percent}%`}</strong><span>{value.difference>0?"+":value.difference<0?"−":""}{money(Math.abs(value.difference))}</span><small>{value.start} — {value.end}</small></div>;
   return <section className="panel finance-trend">
-    <div className="panel-head"><div><h2>{t("支出趋势")}</h2><p className="muted">{t("实际支出、待采购预计与月度预算")}</p></div></div>
-    <div className="report-controls"><div className="report-presets">{[["1",t("单月")],["6",t("近6个月")],["12",t("近12个月")],["ytd",t("本年")],["year",t("全年")],["custom",t("自定义")]].map(([value,label])=><button key={value} type="button" aria-pressed={mode===value} onClick={()=>setMode(value)}>{label}</button>)}</div>
+    <div className="panel-head"><div><h2>{t("支出趋势")}</h2><p className="muted">{daily?`${t("实际支出")}、${t("待采购预计")}`:t("实际支出、待采购预计与月度预算")}</p></div></div>
+    <div className="report-controls"><div className="report-presets">{[["30",t("近30天")],["6",t("近6个月")],["12",t("近12个月")],["ytd",t("本年")],["year",t("全年")],["custom",t("自定义")]].map(([value,label])=><button key={value} type="button" aria-pressed={mode===value} onClick={()=>setMode(value)}>{label}</button>)}</div>
       {mode==="year"&&<label>{t("年份")}<input aria-label={t("年份")} type="number" min="1900" max="9999" value={year} onChange={event=>setYear(event.target.value)}/></label>}
       {mode==="custom"&&<div className="report-range"><label>{t("开始月份")}<input type="month" value={customStart} onChange={event=>setCustomStart(event.target.value)}/></label><label>{t("结束月份")}<input type="month" value={customEnd} onChange={event=>setCustomEnd(event.target.value)}/></label></div>}
       {valid&&<small className="report-range-caption">{start} — {end}</small>}
     </div>
     {!valid?<p className="empty" role="alert">{t("请选择不超过36个月的有效范围")}</p>:report.error?<p className="empty" role="alert">{report.error} <button onClick={report.retry}>{t("重试")}</button></p>:report.loading||!data?<p className="empty" role="status">{t("加载中…")}</p>:<>
       <div className="report-comparisons"><div><small>{t("区间支出")}</small><strong>{money(data.current.actual)}</strong><small>{data.current.start} — {data.current.end}</small></div>{comparison(t("环比"),data.previous)}{comparison(t("同比"),data.yearAgo)}</div>
-      <div className="trend-scroll" ref={scroll}><div className="trend-chart" style={{minWidth:Math.max(0,data.points.length*38)}} aria-label={t("支出趋势")}>
+      <div className="trend-scroll" ref={scroll}><div className="trend-chart" style={{minWidth:Math.max(0,data.points.length*(data.granularity==="day"?58:38))}} aria-label={t("支出趋势")}>
         {data.points.map(point=>{
           const remaining=point.budget===null?null:(Math.round(point.budget*100)-Math.round(point.actual*100)-Math.round(point.planned*100))/100;
-          const tooltip=[point.month,`${t("月度预算")} ${point.budget===null?t("未设置"):money(point.budget)}`,`${t("已花")} ${money(point.actual)}`,`${t("待采购")} ${money(point.planned)}`,`${remaining!==null&&remaining<0?t("超支"):t("剩余")} ${remaining===null?t("未设置"):money(Math.abs(remaining))}`].join("\n");
-          return <div className="trend-column" key={point.month} tabIndex={0} role="img" aria-label={tooltip} data-tooltip={tooltip}><div className="trend-stack"><i className={point.budget!==null&&point.actual>point.budget?"over":undefined} style={{height:`${point.actual/max*100}%`}}/><em className={remaining!==null&&remaining<0?"over":undefined} style={{height:`${point.planned/max*100}%`}}/>{point.budget!==null&&<b style={{bottom:`${point.budget/max*100}%`}}/>}</div><small>{point.month.slice(2)}</small></div>;
+          const tooltip=[point.label,...(point.budget===null?[]:[`${t("月度预算")} ${money(point.budget)}`]),`${t("已花")} ${money(point.actual)}`,`${t("待采购")} ${money(point.planned)}`,...(remaining===null?[]:[`${remaining<0?t("超支"):t("剩余")} ${money(Math.abs(remaining))}`])].join("\n");
+          return <div className="trend-column" key={point.label} tabIndex={0} role="img" aria-label={tooltip} data-tooltip={tooltip}><div className="trend-stack"><i className={point.budget!==null&&point.actual>point.budget?"over":undefined} style={{height:`${point.actual/max*100}%`}}/><em className={remaining!==null&&remaining<0?"over":undefined} style={{height:`${point.planned/max*100}%`}}/>{point.budget!==null&&<b style={{bottom:`${point.budget/max*100}%`}}/>}</div><small>{data.granularity==="day"?point.label.slice(5):point.label.slice(2)}</small></div>;
         })}
-      </div></div><div className="chart-legend"><span><i className="actual"/>{t("实际支出")}</span><span><i className="planned"/>{t("待采购预计")}</span><span><i className="budget"/>{t("月度预算")}</span></div>
+      </div></div><div className="chart-legend"><span><i className="actual"/>{t("实际支出")}</span><span><i className="planned"/>{t("待采购预计")}</span>{data.granularity==="month"&&<span><i className="budget"/>{t("月度预算")}</span>}</div>
     </>}
   </section>;
 }

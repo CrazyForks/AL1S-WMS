@@ -36,6 +36,26 @@ test("trend ranges compare matching elapsed dates and historical full periods",(
   db.close();
 });
 
+test("daily trend returns seven daily points with matching comparison periods",()=>{
+  const {db,homeId,itemId,locationId,channelId}=fixture();
+  for(const [date,total] of [["2026-09-10",10],["2026-09-16",20],["2026-09-18",30],["2025-09-12",8]] as const){
+    recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:total,idempotencyKey:`daily-${date}`});
+    db.prepare("UPDATE stock_batches SET received_at=? WHERE id=(SELECT batch_id FROM stock_transactions WHERE idempotency_key=?)").run(`${date}T10:00:00.000Z`,`daily-${date}:0`);
+  }
+  saveShopping(db,homeId,{itemId,quantity:1,channelId,plannedDate:"2026-09-18",estimatedTotal:12});
+  const trend=financialTrend(db,homeId,{start:"2026-09-12",end:"2026-09-18",granularity:"day"});
+  assert.equal(trend.granularity,"day");
+  assert.equal(trend.points.length,7);
+  assert.equal(trend.points[0]?.label,"2026-09-12");
+  assert.equal(trend.points.at(-1)?.actual,30);
+  assert.equal(trend.points.at(-1)?.planned,12);
+  assert.equal(trend.points.every(point=>point.budget===null),true);
+  assert.equal(trend.current.actual,50);
+  assert.equal(trend.previous.actual,10);
+  assert.equal(trend.yearAgo.actual,8);
+  db.close();
+});
+
 test("purchase pagination includes all records, date boundaries and stable tied timestamps",()=>{
   const {db,homeId,itemId,locationId}=fixture();
   for(let index=0;index<205;index++)recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:1,idempotencyKey:`page-${index}`});

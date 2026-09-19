@@ -59,8 +59,12 @@ export function listPurchaseRecords(db:DatabaseSync,homeId:string,raw:unknown){
 
 function monthEnd(month:string){return new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),0)).toISOString().slice(0,10);}
 function shiftDate(date:string,offset:number){const month=shiftMonth(date.slice(0,7),offset);return `${month}-${String(Math.min(Number(date.slice(8)),Number(monthEnd(month).slice(8)))).padStart(2,"0")}`;}
+function shiftDay(date:string,offset:number){const value=new Date(`${date}T00:00:00.000Z`);value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);}
+function shiftYear(date:string,offset:number){const value=new Date(`${date}T00:00:00.000Z`);value.setUTCFullYear(value.getUTCFullYear()+offset);return value.toISOString().slice(0,10);}
 export function financialTrend(db:DatabaseSync,homeId:string,raw:unknown){
-  const {start,end}=z.object({start:monthSchema,end:monthSchema}).strict().parse(raw);
+  const input=z.object({start:z.string(),end:z.string(),granularity:z.enum(["month","day"]).optional()}).strict().parse(raw);
+  if(input.granularity==="day")return dailyFinancialTrend(db,homeId,input.start,input.end);
+  const start=monthSchema.parse(input.start),end=monthSchema.parse(input.end);
   const count=(Number(end.slice(0,4))-Number(start.slice(0,4)))*12+Number(end.slice(5))-Number(start.slice(5))+1;
   if(count<1||count>36)throw new InventoryError(400,"INVALID_TREND_RANGE","error.validation");
   const home=requireHome(db,homeId);
@@ -78,9 +82,29 @@ export function financialTrend(db:DatabaseSync,homeId:string,raw:unknown){
     const month=shiftMonth(start,index);
     const [from,until]=monthRange(month);
     const planned=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND planned_date>=? AND planned_date<? AND estimated_total_minor IS NOT NULL").get(homeId,from,until) as {total:number}).total;
-    return {month,actual:actual(`${month}-01`,monthEnd(month)),planned,budget:budgetForMonth(db,homeId,month).total};
+    return {label:month,month,actual:actual(`${month}-01`,monthEnd(month)),planned,budget:budgetForMonth(db,homeId,month).total};
   });
-  return {start,end,currency:home.currency,current,previous:comparison(previous),yearAgo:comparison(yearAgo),points};
+  return {granularity:"month",start,end,currency:home.currency,current,previous:comparison(previous),yearAgo:comparison(yearAgo),points};
+}
+function dailyFinancialTrend(db:DatabaseSync,homeId:string,start:string,end:string) {
+  const from=dateSchema.parse(start),to=dateSchema.parse(end);
+  const days=Math.floor((Date.parse(`${to}T00:00:00Z`)-Date.parse(`${from}T00:00:00Z`))/86400000)+1;
+  if(days<1||days>366)throw new InventoryError(400,"INVALID_TREND_RANGE","error.validation");
+  const home=requireHome(db,homeId);
+  const spent=db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL");
+  const actual=(rangeStart:string,rangeEnd:string)=>(spent.get(homeId,`${rangeStart}T00:00:00.000Z`,`${dayAfter(rangeEnd)}T00:00:00.000Z`) as {total:number}).total;
+  const today=new Date().toISOString().slice(0,10),cutoff=to<today?to:today;
+  const current={start:from,end:cutoff,actual:from>cutoff?0:actual(from,cutoff)};
+  const compare=(rangeStart:string,rangeEnd:string)=>({start:rangeStart,end:rangeEnd,actual:from>cutoff?0:actual(rangeStart,rangeEnd)});
+  const previous=compare(shiftDay(from,-days),shiftDay(from,-1));
+  const yearAgo=compare(shiftYear(from,-1),shiftYear(cutoff,-1));
+  const comparison=(value:typeof previous)=>({...value,difference:Math.round((current.actual-value.actual)*100)/100,percent:value.actual===0?null:Math.round((current.actual-value.actual)/value.actual*10000)/100});
+  const planned=db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND planned_date=? AND estimated_total_minor IS NOT NULL");
+  const points=Array.from({length:days},(_,index)=>{
+    const day=shiftDay(from,index);
+    return {label:day,day,actual:actual(day,day),planned:(planned.get(homeId,day) as {total:number}).total,budget:null};
+  });
+  return {granularity:"day",start:from,end:to,currency:home.currency,current,previous:comparison(previous),yearAgo:comparison(yearAgo),points};
 }
 function budgetForMonth(db:DatabaseSync,homeId:string,month:string) {
   const budget=db.prepare("SELECT month,total_minor/100.0 AS total FROM finance_budgets WHERE home_id=? AND month<=? ORDER BY month DESC LIMIT 1").get(homeId,month) as {month:string;total:number}|undefined;

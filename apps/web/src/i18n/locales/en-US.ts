@@ -606,6 +606,7 @@ export const enUS = {
   当前已分配额度: "Currently allocated",
   合计: "Total",
   单月: "Single month",
+  近30天: "Last 30 days",
   "近6个月": "Last 6 months",
   "近12个月": "Last 12 months",
   "本年": "Year to date",
