@@ -1,4 +1,5 @@
 # AL1S WMS
+<img width="1600" height="448" alt="AL1S-WMS-README-banner" src="https://github.com/user-attachments/assets/8aa63d38-83aa-4353-b6b0-63ad7e4c3785" />
 
 AL1S WMS 是一个自托管、轻量级的家用仓库管理系统。它面向家庭储物场景：知道家里有什么、放在哪里、何时需要补货、哪些东西即将过期，以及这个月已经花了多少钱。
 
