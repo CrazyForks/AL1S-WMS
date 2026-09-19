@@ -2,6 +2,7 @@ import type { zhCN } from "./zh-CN.js";
 
 export const enUS = {
   "{{category}}预算": "{{category}} budget",
+  "预算": "Budget",
   "子分类": "Subcategories",
   "机动额度": "Flexible budget",
   "可用": "Available",
@@ -354,7 +355,7 @@ export const enUS = {
   "请通过入库、领用或盘点调整库存":
     "Adjust stock through receiving, issuing, or stocktake",
   单位: "Unit",
-  个: "unit",
+  个: "unit(s)",
   瓶: "bottle(s)",
   盒: "box(es)",
   包: "pack(s)",
