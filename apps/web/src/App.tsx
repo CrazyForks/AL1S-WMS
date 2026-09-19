@@ -2148,7 +2148,7 @@ export function App() {
               </button>
               <button type="button" onClick={() => navigate("count")}>
                 <Check size={16} />
-                {t("开始盘点")}
+                {t("盘点")}
               </button>
               <button type="button" onClick={() => navigate("shopping")}>
                 <ClipboardList size={16} />
