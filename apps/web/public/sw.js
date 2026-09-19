@@ -1,5 +1,5 @@
-const CACHE = "al1s-wms-static-v2";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/favicon.png?v=1"];
+const CACHE = "al1s-wms-static-v3";
+const APP_SHELL = ["/", "/manifest.webmanifest", "/favicon.svg?v=1"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)));
