@@ -380,7 +380,7 @@ async function getShoppingCalendar(month: string, includeCompleted = false) {
 }
 async function getFinancialSummary(month:string) {
   const response=await apiFetch(`/api/v1/homes/${getHomeId()}/financial-dashboard?month=${month}`);
-  if(!response.ok)throw new Error(t("无法加载价格统计"));
+  if(!response.ok)throw new Error(t("无法加载财务数据"));
   return response.json() as Promise<FinancialSummary>;
 }
 async function getCategories() {
@@ -651,6 +651,7 @@ export function App() {
   const [homes, setHomes] = useState<
     { id: string; name: string; icon?: string;defaultCurrency?:string }[]
   >([]);
+  const homeReady = homes.some((home) => home.id === getHomeId());
   const [homeNotice, setHomeNotice] = useState("");
   const [passwordNotice, setPasswordNotice] = useState("");
   const [editingHome, setEditingHome] = useState<{
@@ -821,7 +822,7 @@ export function App() {
       setTransactionPage(transactionPageCount);
   }, [transactionPage, transactionPageCount]);
   useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated || !homeReady) return;
     getTransactions(
       transactionPage,
       transactionPage === 1 ? "" : transactionSnapshot,
@@ -832,7 +833,7 @@ export function App() {
         if (transactionPage === 1) setTransactionSnapshot(next.snapshotAt);
       })
       .catch((error) => setNotice(error.message));
-  }, [transactionPage]);
+  }, [authenticated, homeReady, transactionPage]);
 
   const load = () =>
     Promise.all([
@@ -877,14 +878,14 @@ export function App() {
       )
       .catch((error) => setNotice(error.message));
   useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated || !homeReady) return;
     getShoppingCalendar(shoppingMonth, calendarIncludeCompleted)
       .then(setCalendarItems)
       .catch((error) => setNotice(error.message));
     getFinancialSummary(shoppingMonth).then(setCalendarFinancial).catch(error=>setNotice(error.message));
-  }, [authenticated, shoppingMonth, calendarIncludeCompleted, shoppingList]);
+  }, [authenticated, homeReady, shoppingMonth, calendarIncludeCompleted, shoppingList]);
   useEffect(() => {
-    if (!authenticated || activePage !== "finance") return;
+    if (!authenticated || !homeReady || activePage !== "finance") return;
     getFinancialSummary(financeMonth).then(data=>{
       setFinanceDashboard(data);
       setFinanceBudgetTotal(data.budgetTotal?.toString()??"");
@@ -892,7 +893,7 @@ export function App() {
       setFinanceCategorySelection("");
       setFinanceCategoryAmount("");
     }).catch(error=>setNotice(error.message));
-  }, [authenticated, activePage, financeMonth]);
+  }, [authenticated, homeReady, activePage, financeMonth]);
   useLayoutEffect(() => {
     if (activePage !== "finance" || !financeDashboard) return;
     const updateLinks=()=>{

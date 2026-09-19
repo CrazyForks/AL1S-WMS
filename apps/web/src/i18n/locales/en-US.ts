@@ -513,6 +513,7 @@ export const enUS = {
   天: "day(s)",
   到期日期: "Expiry date",
   无法加载价格统计: "Unable to load price statistics",
+  无法加载财务数据: "Unable to load financial data",
   "采购成本（可选）": "Purchase cost (optional)",
   "初始库存成本（可选）": "Initial stock cost (optional)",
   实付总价: "Actual total",
