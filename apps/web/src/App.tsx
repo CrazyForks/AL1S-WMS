@@ -2204,10 +2204,13 @@ export function App() {
               </div>
             </div>
             <div className="user-info-body">
-              <div className="user-identity"><small>{t("用户名")}</small><strong>{currentUser?.username}</strong></div>
-              <div className="avatar-selection"><strong>{t("头像选择")}</strong><div className="avatar-picker" role="radiogroup" aria-label={t("头像选择")}>
-                {avatarOptions.map(({value,label,Icon})=><button key={value} type="button" role="radio" aria-checked={currentUser?.avatar===value} className={currentUser?.avatar===value?"selected":""} disabled={busy} onClick={()=>void updateAvatar(value)} title={t(label)}><Icon size={20}/><span>{t(label)}</span></button>)}
-              </div></div>
+              <div className="user-settings-grid">
+                <div className="user-identity"><span className="user-identity-icon"><AvatarIcon avatar={currentUser?.avatar} size={22}/></span><div><small>{t("用户名")}</small><strong>{currentUser?.username}</strong></div></div>
+                <div className="avatar-selection"><strong>{t("头像选择")}</strong><div className="avatar-picker" role="radiogroup" aria-label={t("头像选择")}>
+                  {avatarOptions.map(({value,label,Icon})=><button key={value} type="button" role="radio" aria-checked={currentUser?.avatar===value} className={currentUser?.avatar===value?"selected":""} disabled={busy} onClick={()=>void updateAvatar(value)} title={t(label)}><Icon size={18}/><span>{t(label)}</span></button>)}
+                </div></div>
+                <label className="language-setting" htmlFor="interface-language"><span>{t("界面语言")}</span><span className="language-select-wrap"><select id="interface-language" value={activeI18n.resolvedLanguage??activeI18n.language} onChange={event=>void setLocale(event.target.value as Locale)}><option value="zh-CN">{t("简体中文")}</option><option value="en-US">{t("English")}</option></select><ChevronDown size={16} aria-hidden="true" /></span></label>
+              </div>
               <div className="password-section"><div><strong>{t("修改密码")}</strong><p className="muted">{t("验证当前密码后设置新密码")}</p></div>
               <form className="password-form" onSubmit={changePassword}>
                 <label>{t("当前密码")}<input name="currentPassword" type="password" autoComplete="current-password" required /></label>
@@ -2216,34 +2219,6 @@ export function App() {
                 <button className="primary" disabled={busy}>{busy ? t("修改中…") : t("修改密码")}</button>
               </form>
               {passwordNotice&&<p className="password-feedback" role="status">{passwordNotice}</p>}</div>
-            </div>
-          </section>
-        )}
-        {activePage === "profile" && (
-          <section className="panel language-panel">
-            <div className="panel-head">
-              <div>
-                <h2>{t("语言")}</h2>
-                <p className="muted">{t("选择界面显示语言")}</p>
-              </div>
-            </div>
-            <div className="language-control">
-              <label htmlFor="interface-language">
-                <span>{t("界面语言")}</span>
-                <span className="language-select-wrap">
-                  <select
-                    id="interface-language"
-                    value={activeI18n.resolvedLanguage ?? activeI18n.language}
-                    onChange={(event) =>
-                      void setLocale(event.target.value as Locale)
-                    }
-                  >
-                    <option value="zh-CN">{t("简体中文")}</option>
-                    <option value="en-US">{t("English")}</option>
-                  </select>
-                  <ChevronDown size={16} aria-hidden="true" />
-                </span>
-              </label>
             </div>
           </section>
         )}
