@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { buildBudgetTree, budgetAllocations, budgetSegmentColor, categoryPath, type BudgetCategory, type BudgetNode, type CategorySpending } from "./budgetTree.js";
+import { categoryLabel } from "./systemLabels.js";
 import "./budgetCategories.css";
 
 type Allocation = {category:string;amount: number|string};
@@ -12,20 +13,20 @@ export function BudgetCategoryPicker({categories,entries,value,onChange}:{catego
   const render=(node:BudgetNode,depth=0):React.ReactNode=>{
     return <div key={node.name}>
       <button type="button" style={{paddingLeft:12+depth*16}} title={node.path.join(" / ")} onClick={()=>{onChange(node.name);if(dropdown.current)dropdown.current.open=false;}}>
-        <span>{depth>0?"└ ":""}{node.name}</span>
+        <span>{depth>0?"└ ":""}{categoryLabel(node.name)}</span>
       </button>
       {node.children.map(child=>render(child,depth+1))}
     </div>;
   };
   return <details className="budget-tree-picker" ref={dropdown}>
-    <summary>{value?categoryPath(value,categories).join(" / "):t("选择分类")}</summary>
+    <summary>{value?categoryPath(value,categories).map(categoryLabel).join(" / "):t("选择分类")}</summary>
     <div className="budget-tree-options" aria-label={t("选择分类")}>{buildBudgetTree(categories,[]).map(node=>render(node))}</div>
   </details>;
 }
 
 export function BudgetCategoryLabel({name,categories}:{name:string;categories:BudgetCategory[]}) {
   const path=categoryPath(name,categories);
-  return <span className="budget-category-label" title={path.join(" / ")}><b>{name}</b>{path.length>1&&<small>{path.slice(0,-1).join(" / ")}</small>}</span>;
+  return <span className="budget-category-label" title={path.map(categoryLabel).join(" / ")}><b>{categoryLabel(name)}</b>{path.length>1&&<small>{path.slice(0,-1).map(categoryLabel).join(" / ")}</small>}</span>;
 }
 
 export function BudgetAllocationEditor({categories,entries,currency,onChange,onRemove,entryRef}:{categories:BudgetCategory[];entries:Allocation[];currency:string;onChange:(category:string,amount:string)=>void;onRemove:(category:string)=>void;entryRef:(category:string,node:HTMLDivElement|null)=>void}) {
@@ -36,13 +37,13 @@ export function BudgetAllocationEditor({categories,entries,currency,onChange,onR
     const children=rows.filter(child=>child.parent===row.category);
     return <div className="budget-allocation-node" key={row.category}>
       <div className="category-budget-entry" ref={node=>entryRef(row.category,node)}>
-        <span className="budget-category-label"><b>{row.category}</b>{children.length>0&&<small>{t("合计")}</small>}</span>
-        <input aria-label={t("{{category}}预算",{category:row.category})} value={entries.find(entry=>entry.category===row.category)?.amount??row.amount.toFixed(2)} onChange={event=>onChange(row.category,event.target.value)} type="number" min="0" step="0.01"/>
-        <button type="button" aria-label={t("移除{{name}}",{name:row.category})} onClick={()=>onRemove(row.category)}><X size={14}/></button>
+        <span className="budget-category-label"><b>{categoryLabel(row.category)}</b>{children.length>0&&<small>{t("合计")}</small>}</span>
+        <input aria-label={t("{{category}}预算",{category:categoryLabel(row.category)})} value={entries.find(entry=>entry.category===row.category)?.amount??row.amount.toFixed(2)} onChange={event=>onChange(row.category,event.target.value)} type="number" min="0" step="0.01"/>
+        <button type="button" aria-label={t("移除{{name}}",{name:categoryLabel(row.category)})} onClick={()=>onRemove(row.category)}><X size={14}/></button>
       </div>
       {children.length>0&&<>
-        {row.unallocated<0&&<small className="allocation-error" role="alert">{t("子分类额度超过{{category}}预算",{category:row.category})}</small>}
-        <div className="budget-allocation-children">{children.map(render)}{row.unallocated!==0&&<div className="allocation-split"><span>{row.category}</span><b>{money(row.unallocated)}</b></div>}</div>
+        {row.unallocated<0&&<small className="allocation-error" role="alert">{t("子分类额度超过{{category}}预算",{category:categoryLabel(row.category)})}</small>}
+        <div className="budget-allocation-children">{children.map(render)}{row.unallocated!==0&&<div className="allocation-split"><span>{categoryLabel(row.category)}</span><b>{money(row.unallocated)}</b></div>}</div>
       </>}
     </div>;
   };
@@ -61,7 +62,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
   };
   const hasSpending=(node:BudgetNode)=>node.actual!==0||node.planned!==0;
   const dot=(color?:string)=>color?<i className="execution-color-dot" style={{backgroundColor:color}} aria-hidden="true"/>:null;
-  const detailLine=(name:string,actual:number,planned:number,color?:string)=><span className="execution-detail-line"><span>{dot(color)}{name}</span><span className="execution-detail-values"><b>{money(actual)}</b>{planned!==0&&<small>{t("待采购")} {money(planned)}</small>}</span></span>;
+  const detailLine=(name:string,actual:number,planned:number,color?:string)=><span className="execution-detail-line"><span>{dot(color)}{categoryLabel(name)}</span><span className="execution-detail-values"><b>{money(actual)}</b>{planned!==0&&<small>{t("待采购")} {money(planned)}</small>}</span></span>;
   const renderDetail=(node:BudgetNode,colors?:Map<string,string>):React.ReactNode=>{
     const children=node.children.filter(hasSpending);
     return children.length?<details className="execution-detail-branch" key={node.name}>
@@ -91,7 +92,7 @@ export function BudgetExecution({categories,spending,budgets,currency}:{categori
     const details=direct?.children.filter(hasSpending)??[];
     const hasDirect=!!direct&&(direct.directActual!==0||direct.directPlanned!==0)&&(children.length>0||details.length>0);
     const content=<>
-      <span className="execution-budget-heading"><strong>{groupColors&&dot(colors.get(budget.category))}{budget.category}</strong><span>{t("预算")} <b>{money(budget.amount)}</b></span></span>
+      <span className="execution-budget-heading"><strong>{groupColors&&dot(colors.get(budget.category))}{categoryLabel(budget.category)}</strong><span>{t("预算")} <b>{money(budget.amount)}</b></span></span>
       <span className="execution-budget-amounts"><span>{t("已花")} <b>{money(actual)}</b></span><span>{t("待采购")} <b>{money(planned)}</b></span><strong className={remaining<0?"execution-over":"execution-remaining"}>{remaining<0?t("超支"):t("剩余")} {money(Math.abs(remaining))}</strong></span>
       <span className="execution-progress">{segments.flatMap(segment=>(["actual","planned"] as const).flatMap(kind=>{
         const value=segment[kind];

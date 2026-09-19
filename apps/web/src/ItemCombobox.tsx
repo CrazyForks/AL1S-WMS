@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import i18n from "./i18n/index.js";
 const t = i18n.t.bind(i18n);
 import { Search, X } from "lucide-react";
+import { categoryLabel } from "./systemLabels.js";
 
 type ItemOption = { id: string; name: string; category: string; sku: string };
 
@@ -88,7 +89,7 @@ export function ItemCombobox({
                 >
                   <strong>{item.name}</strong>
                   <small>
-                    {item.category} · {item.sku}
+                    {categoryLabel(item.category)} · {item.sku}
                   </small>
                 </button>
               ))

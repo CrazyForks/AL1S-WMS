@@ -17,6 +17,7 @@ import { Batches, BatchSelect } from "./Batches.js";
 import { BarcodeScanner } from "./BarcodeScanner.js";
 import { ItemCombobox } from "./ItemCombobox.js";
 import { ItemDetail } from "./ItemDetail.js";
+import { categoryLabel, channelLabel } from "./systemLabels.js";
 import { FinanceTrend, FinancePurchases } from "./FinanceReports.js";
 import { adjacentMonth, isPurchaseOverdue } from "./purchaseSchedule.js";
 import { BudgetCategoryPicker, BudgetAllocationEditor, BudgetExecution } from "./BudgetCategories.js";
@@ -809,9 +810,10 @@ export function App() {
   const linkedEditShoppingItem = items.find(
     (item) => item.id === editShoppingItemId,
   );
-  const shoppingChannelName = (item: ShoppingItem) =>
-    shoppingChannels.find((channel) => channel.id === item.channelId)?.name ||
-    t("未指定");
+  const shoppingChannelName = (item: ShoppingItem) => {
+    const name = shoppingChannels.find((channel) => channel.id === item.channelId)?.name;
+    return name ? channelLabel(name) : t("未指定");
+  };
   const transactionPageCount = Math.max(1, Math.ceil(transactionTotal / 10));
   const pagedTransactions = transactions;
   useEffect(() => {
@@ -1494,7 +1496,7 @@ export function App() {
     load();
   }
   async function deleteShoppingChannel(channel: ShoppingChannel) {
-    if (!window.confirm(t("删除购买渠道“{{name}}”？", { name: channel.name })))
+    if (!window.confirm(t("删除购买渠道“{{name}}”？", { name: channelLabel(channel.name) })))
       return;
     const response = await apiFetch(
       `/api/v1/homes/${getHomeId()}/shopping-channels/${channel.id}`,
@@ -1915,7 +1917,7 @@ export function App() {
               setExpandedLocations({ ...expandedLocations, [node.id]: !open })
             }
           >
-            {node.name}
+            {treeMode === "category" ? categoryLabel(node.name) : node.name}
           </button>
           <div className="tree-node-actions">
             <button
@@ -1990,7 +1992,7 @@ export function App() {
                   </span>
                   <span className="tree-item-meta">
                     {treeMode === "location"
-                      ? item.category || t("未分类")
+                      ? item.category ? categoryLabel(item.category) : t("未分类")
                       : item.locationName || t("未指定地点")}
                     {item.expiryDate
                       ? t(" · 到期 {{date}}", { date: item.expiryDate })
@@ -2211,10 +2213,10 @@ export function App() {
 <div className="finance-budget-body"><div className="finance-budget-flow" ref={financeFlowRef}>{financeFlowSize.width>0&&<svg className="budget-flow-lines" viewBox={`0 0 ${financeFlowSize.width} ${financeFlowSize.height}`} aria-hidden="true">{financeBudgetLinks.map((link,index)=>{const span=Math.max(60,link.toX-link.fromX);return <path key={index} d={`M ${link.fromX} ${link.fromY} C ${link.fromX+span*.46} ${link.fromY}, ${link.toX-span*.4} ${link.toY}, ${link.toX} ${link.toY}`}/>;})}</svg>}<div className="finance-budget-overview"><div className="finance-budget-source" ref={financeBudgetOriginRef}><label>{t("月度总预算")}<input value={financeBudgetTotal} onChange={event=>setFinanceBudgetTotal(event.target.value)} type="number" min="0" step="0.01" placeholder="0.00" /></label><div className="budget-allocation"><span>{t("已分配")}</span><strong>{formatMoney(financeAllocatedBudget,financeDashboard.currency)}</strong><small>{t("可分配")} {financeBudgetTotal.trim()===""?t("未设置"):formatMoney(Number(financeBudgetTotal)-financeAllocatedBudget,financeDashboard.currency)}</small></div></div><div className="budget-add"><div><strong>{t("添加分类预算")}</strong></div><div className="budget-category-picker"><BudgetCategoryPicker categories={categories} entries={financeBudgetEntries} value={financeCategorySelection} onChange={setFinanceCategorySelection}/><input value={financeCategoryAmount} onChange={event=>setFinanceCategoryAmount(event.target.value)} onKeyDown={addFinanceCategoryBudgetOnEnter} type="number" min="0" step="0.01" placeholder={t("预算金额")} /><button type="button" className="secondary" disabled={!financeCategorySelection||financeCategoryAmount.trim()===""} onClick={addFinanceCategoryBudget}>{t("添加")}</button></div></div></div><div className="finance-budget-editor"><div className="budget-editor-head"><div><strong>{t("分类预算")}</strong></div><b>{formatMoney(financeAllocatedBudget,financeDashboard.currency)}</b></div><div className="category-budget-list" ref={financeBudgetListRef}>{financeBudgetEntries.length?<BudgetAllocationEditor categories={categories} entries={financeBudgetEntries} currency={financeDashboard.currency} entryRef={(category,node)=>{financeBudgetEntryRefs.current[category]=node;}} onChange={(category,amount)=>setFinanceBudgetEntries(entries=>setBudgetAllocation(categories,entries,category,amount))} onRemove={category=>setFinanceBudgetEntries(entries=>removeBudgetAllocation(categories,entries,category))}/>:<p className="muted">{t("尚未添加分类预算")}</p>}</div></div></div><div className="finance-budget-actions">{financeBudgetTotal.trim()!==""&&financeAllocatedBudget>Number(financeBudgetTotal)&&<small role="alert">{t("分类预算合计不得超过总预算")}</small>}<button className="primary" disabled={financeSaving||financeAllocations.rows.some(row=>row.unallocated<0)}>{financeSaving?t("保存中…"):t("保存预算")}</button></div></div>
               </form>
               <BudgetExecution key={`${getHomeId()}:${financeMonth}`} categories={categories} spending={financeDashboard.categorySpending??[]} budgets={financeDashboard.categoryBudgets} currency={financeDashboard.currency}/>
-              <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("渠道支出")}</h2><p className="muted">{t("已完成采购")}</p></div></div><div className="bar-list">{financeDashboard.byChannel.length?financeDashboard.byChannel.map(row=>{const max=Math.max(1,...financeDashboard.byChannel.map(item=>item.total));return <div className="bar-row" key={row.channelId??"none"}><span>{row.channelName}</span><div><i style={{width:`${row.total/max*100}%`}} /></div><b>{formatMoney(row.total,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无渠道支出")}</p>}</div></section>
+              <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("渠道支出")}</h2><p className="muted">{t("已完成采购")}</p></div></div><div className="bar-list">{financeDashboard.byChannel.length?financeDashboard.byChannel.map(row=>{const max=Math.max(1,...financeDashboard.byChannel.map(item=>item.total));return <div className="bar-row" key={row.channelId??"none"}><span>{channelLabel(row.channelName)}</span><div><i style={{width:`${row.total/max*100}%`}} /></div><b>{formatMoney(row.total,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无渠道支出")}</p>}</div></section>
             </section>
             <FinancePurchases key={getHomeId()} homeId={getHomeId()} revision={financeDashboard} onOpenItem={openItemDetail}/>
-            <section className="panel finance-valuation"><div className="panel-head"><div><h2>{t("库存价值")}</h2><p className="muted">{t("按剩余数量和批次单位成本估值")}</p></div><strong>{formatMoney(financeDashboard.inventoryValue,financeDashboard.currency)}</strong></div><div className="valuation-meta"><span>{t("已计价批次")} {financeDashboard.pricedBatchCount}</span><span>{t("未知成本批次")} {financeDashboard.unknownBatchCount}</span><div className="valuation-switch" role="tablist" aria-label={t("库存价值")}><button type="button" role="tab" aria-selected={financeValuationView==="item"} className={financeValuationView==="item"?"active":""} onClick={()=>setFinanceValuationView("item")}>{t("按物资")}</button><button type="button" role="tab" aria-selected={financeValuationView==="category"} className={financeValuationView==="category"?"active":""} onClick={()=>setFinanceValuationView("category")}>{t("按分类")}</button><button type="button" role="tab" aria-selected={financeValuationView==="location"} className={financeValuationView==="location"?"active":""} onClick={()=>setFinanceValuationView("location")}>{t("按地点")}</button></div></div><div className="valuation-list">{financeValuationView==="item"?financeDashboard.valuation.byItem.map(row=><div className="valuation-row" key={row.itemId}><div><button type="button" className="item-link" onClick={()=>openItemDetail(row.itemId)}>{row.itemName}</button><small>{row.category} · {row.quantity} {displayUnit(row.unit)}{row.locations.length?` · ${row.locations.join("、")}`:""}</small></div><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):(financeValuationView==="category"?financeDashboard.valuation.byCategory.map(row=><div className="valuation-row" key={row.category}><strong>{row.category}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):financeDashboard.valuation.byLocation.map(row=><div className="valuation-row" key={row.locationId??"none"}><strong>{row.locationName}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>))}</div></section>
+            <section className="panel finance-valuation"><div className="panel-head"><div><h2>{t("库存价值")}</h2><p className="muted">{t("按剩余数量和批次单位成本估值")}</p></div><strong>{formatMoney(financeDashboard.inventoryValue,financeDashboard.currency)}</strong></div><div className="valuation-meta"><span>{t("已计价批次")} {financeDashboard.pricedBatchCount}</span><span>{t("未知成本批次")} {financeDashboard.unknownBatchCount}</span><div className="valuation-switch" role="tablist" aria-label={t("库存价值")}><button type="button" role="tab" aria-selected={financeValuationView==="item"} className={financeValuationView==="item"?"active":""} onClick={()=>setFinanceValuationView("item")}>{t("按物资")}</button><button type="button" role="tab" aria-selected={financeValuationView==="category"} className={financeValuationView==="category"?"active":""} onClick={()=>setFinanceValuationView("category")}>{t("按分类")}</button><button type="button" role="tab" aria-selected={financeValuationView==="location"} className={financeValuationView==="location"?"active":""} onClick={()=>setFinanceValuationView("location")}>{t("按地点")}</button></div></div><div className="valuation-list">{financeValuationView==="item"?financeDashboard.valuation.byItem.map(row=><div className="valuation-row" key={row.itemId}><div><button type="button" className="item-link" onClick={()=>openItemDetail(row.itemId)}>{row.itemName}</button><small>{categoryLabel(row.category)} · {row.quantity} {displayUnit(row.unit)}{row.locations.length?` · ${row.locations.join("、")}`:""}</small></div><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):(financeValuationView==="category"?financeDashboard.valuation.byCategory.map(row=><div className="valuation-row" key={row.category}><strong>{categoryLabel(row.category)}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):financeDashboard.valuation.byLocation.map(row=><div className="valuation-row" key={row.locationId??"none"}><strong>{row.locationName}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>))}</div></section>
           </div>
         )}
         {activePage === "profile" && (
@@ -2557,7 +2559,7 @@ export function App() {
                 {categoryOptions.map((category) => (
                   <option key={category.id} value={category.id}>
                     {"　".repeat(category.depth)}
-                    {category.name}
+                    {categoryLabel(category.name)}
                   </option>
                 ))}
               </select>
@@ -2618,7 +2620,7 @@ export function App() {
                                 <strong>{item.name}</strong>
                                 <small>
                                   {[
-                                    item.category || t("未分类"),
+                                    item.category ? categoryLabel(item.category) : t("未分类"),
                                     locations.find(
                                       (location) =>
                                         location.id === item.locationId,
@@ -2710,12 +2712,12 @@ export function App() {
                 <div>
                   {shoppingChannels.map((channel) => (
                     <span key={channel.id}>
-                      <b>{channel.name}</b>
+                      <b>{channelLabel(channel.name)}</b>
                       <button
                         type="button"
                         className="channel-remove"
                         title={t("删除渠道")}
-                        aria-label={t("删除{{name}}", { name: channel.name })}
+                        aria-label={t("删除{{name}}", { name: channelLabel(channel.name) })}
                         onClick={() => deleteShoppingChannel(channel)}
                       >
                         <X size={12} />
@@ -3034,7 +3036,7 @@ export function App() {
                         >
                           <span>
                             <strong>{item.name}</strong>
-                            <small>{item.category || t("未分类")}</small>
+                            <small>{item.category ? categoryLabel(item.category) : t("未分类")}</small>
                           </span>
                           <b>
                             {item.quantity}{" "}
@@ -3068,7 +3070,7 @@ export function App() {
                     {categorySummary.map((category) => (
                       <div key={category.id}>
                         <span style={{ paddingLeft: category.depth * 14 }}>
-                          {category.name}
+                          {categoryLabel(category.name)}
                         </span>
                         <strong>{category.count}</strong>
                       </div>
@@ -3216,7 +3218,7 @@ export function App() {
                     {categoryOptions.map((category) => (
                       <option key={category.id} value={category.name}>
                         {"　".repeat(category.depth)}
-                        {category.name}
+                        {categoryLabel(category.name)}
                       </option>
                     ))}
                   </select>
@@ -3326,7 +3328,7 @@ export function App() {
                                 </span>
                                 <div>
                                   <button type="button" className="item-link" onClick={()=>openItemDetail(item.id)}>{item.name}</button>
-                                  <span>{item.category || t("未分类")}</span>
+                                  <span>{item.category ? categoryLabel(item.category) : t("未分类")}</span>
                                 </div>
                               </div>
                             </td>
@@ -3648,7 +3650,7 @@ export function App() {
                 {selectCategoryOptions.map((category) => (
                   <option key={category.id} value={category.name}>
                     {"　".repeat(category.depth)}
-                    {category.name}
+                    {categoryLabel(category.name)}
                   </option>
                 ))}
               </select>
@@ -3799,7 +3801,7 @@ export function App() {
         />
       )}
       {exhaustTarget&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setExhaustTarget(null)}><form className="modal" onSubmit={submitExhaust}><div className="modal-head"><div><h2>{t("用尽已开封物品")}</h2><p className="muted">{exhaustTarget.itemName}</p></div><button type="button" className="close" onClick={()=>setExhaustTarget(null)} aria-label={t("关闭")}><X size={18} strokeWidth={1.8}/></button></div><label>{t("用尽数量")}<input name="quantity" type="number" min="0" max={exhaustTarget.quantity} step="any" defaultValue={exhaustTarget.quantity>=1?1:exhaustTarget.quantity} autoFocus required/><small className="form-hint">{t("当前已开封 {{quantity}} {{unit}}",{quantity:exhaustTarget.quantity,unit:displayUnit(exhaustTarget.baseUnit)})}</small></label><button className="primary full" disabled={busy}>{busy?t("处理中…"):t("确认用尽")}</button></form></div>}
-      {showHomeIssuePicker&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&(setShowHomeIssuePicker(false),setHomeIssueQuery(""))}><section className="modal home-issue-picker" role="dialog" aria-modal="true" aria-labelledby="home-issue-title"><div className="modal-head"><div><h2 id="home-issue-title">{t("领用物资")}</h2><p className="muted">{t("选择要领用的物资")}</p></div><button type="button" className="close" onClick={()=>{setShowHomeIssuePicker(false);setHomeIssueQuery("");}} aria-label={t("关闭")}><X size={18} strokeWidth={1.8}/></button></div><label className="home-issue-search"><Search size={16}/><input value={homeIssueQuery} autoFocus placeholder={t("搜索名称、分类或 SKU")} onChange={event=>setHomeIssueQuery(event.target.value)}/></label><div className="home-issue-results">{items.filter(item=>`${item.name} ${item.category} ${item.sku}`.toLocaleLowerCase(localeForDates()).includes(homeIssueQuery.trim().toLocaleLowerCase(localeForDates()))).map(item=><button type="button" key={item.id} onClick={()=>chooseHomeIssueItem(item)}><span className="item-icon"><MaterialIcon value={itemIconFor(item)}/></span><span><strong>{item.name}</strong><small>{item.category||t("未分类")} · {balanceFor(item.id)} {displayUnit(item.baseUnit)}</small></span><ChevronRight size={16}/></button>)}{items.filter(item=>`${item.name} ${item.category} ${item.sku}`.toLocaleLowerCase(localeForDates()).includes(homeIssueQuery.trim().toLocaleLowerCase(localeForDates()))).length===0&&<p className="empty compact">{t("没有匹配物资")}</p>}</div></section></div>}
+      {showHomeIssuePicker&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&(setShowHomeIssuePicker(false),setHomeIssueQuery(""))}><section className="modal home-issue-picker" role="dialog" aria-modal="true" aria-labelledby="home-issue-title"><div className="modal-head"><div><h2 id="home-issue-title">{t("领用物资")}</h2><p className="muted">{t("选择要领用的物资")}</p></div><button type="button" className="close" onClick={()=>{setShowHomeIssuePicker(false);setHomeIssueQuery("");}} aria-label={t("关闭")}><X size={18} strokeWidth={1.8}/></button></div><label className="home-issue-search"><Search size={16}/><input value={homeIssueQuery} autoFocus placeholder={t("搜索名称、分类或 SKU")} onChange={event=>setHomeIssueQuery(event.target.value)}/></label><div className="home-issue-results">{items.filter(item=>`${item.name} ${item.category} ${item.sku}`.toLocaleLowerCase(localeForDates()).includes(homeIssueQuery.trim().toLocaleLowerCase(localeForDates()))).map(item=><button type="button" key={item.id} onClick={()=>chooseHomeIssueItem(item)}><span className="item-icon"><MaterialIcon value={itemIconFor(item)}/></span><span><strong>{item.name}</strong><small>{item.category?categoryLabel(item.category):t("未分类")} · {balanceFor(item.id)} {displayUnit(item.baseUnit)}</small></span><ChevronRight size={16}/></button>)}{items.filter(item=>`${item.name} ${item.category} ${item.sku}`.toLocaleLowerCase(localeForDates()).includes(homeIssueQuery.trim().toLocaleLowerCase(localeForDates()))).length===0&&<p className="empty compact">{t("没有匹配物资")}</p>}</div></section></div>}
       {stockAction && (
         <div
           className="modal-backdrop"
@@ -3850,7 +3852,7 @@ export function App() {
                 locationId={stockLocationId}
               />
             ) : null}
-            {stockAction.type==="receipt"&&<fieldset className="purchase-cost"><legend>{t("采购成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue=""><option value="">{t("未指定")}</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label></div></fieldset>}
+            {stockAction.type==="receipt"&&<fieldset className="purchase-cost"><legend>{t("采购成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue=""><option value="">{t("未指定")}</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channelLabel(channel.name)}</option>)}</select></label></div></fieldset>}
             {stockAction.type==="issue"&&stockAction.item.consumptionType!=="long_term_consumable"&&<label>{t("领用类型")}<select name="issueReason" defaultValue={stockAction.item.consumptionType==="non_consumable"?"damaged":"used"}>{stockAction.item.consumptionType!=="non_consumable"&&<option value="used">{t("正常使用")}</option>}<option value="expired">{t("过期报废")}</option><option value="damaged">{t("损坏")}</option></select></label>}
             <label>
               {t("数量")}
@@ -3955,7 +3957,7 @@ export function App() {
                 {selectCategoryOptions.map((category) => (
                   <option key={category.id} value={category.name}>
                     {"　".repeat(category.depth)}
-                    {category.name}
+                    {categoryLabel(category.name)}
                   </option>
                 ))}
               </select>
@@ -3986,7 +3988,7 @@ export function App() {
                   <option value="">{t("未安排")}</option>
                   {shoppingChannels.map((channel) => (
                     <option key={channel.id} value={channel.id}>
-                      {channel.name}
+                      {channelLabel(channel.name)}
                     </option>
                   ))}
                 </select>
@@ -4086,7 +4088,7 @@ export function App() {
                 {selectCategoryOptions.map((category) => (
                   <option key={category.id} value={category.name}>
                     {"　".repeat(category.depth)}
-                    {category.name}
+                    {categoryLabel(category.name)}
                   </option>
                 ))}
               </select>
@@ -4122,7 +4124,7 @@ export function App() {
                   <option value="">{t("未安排")}</option>
                   {shoppingChannels.map((channel) => (
                     <option key={channel.id} value={channel.id}>
-                      {channel.name}
+                      {channelLabel(channel.name)}
                     </option>
                   ))}
                 </select>
@@ -4282,7 +4284,7 @@ export function App() {
                 {selectCategoryOptions.map((category) => (
                   <option key={category.id} value={category.name}>
                     {"　".repeat(category.depth)}
-                    {category.name}
+                    {categoryLabel(category.name)}
                   </option>
                 ))}
               </select>
@@ -4328,7 +4330,7 @@ export function App() {
               />
             </label>
             <BatchFields title={t("初始库存批次（可选）")} />
-            <fieldset className="purchase-cost"><legend>{t("初始库存成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue=""><option value="">{t("未指定")}</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label></div></fieldset>
+            <fieldset className="purchase-cost"><legend>{t("初始库存成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue=""><option value="">{t("未指定")}</option>{shoppingChannels.map(channel=><option key={channel.id} value={channel.id}>{channelLabel(channel.name)}</option>)}</select></label></div></fieldset>
             <label>
               {t("存放地点")}
               <select

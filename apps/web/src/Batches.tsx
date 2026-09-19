@@ -4,6 +4,7 @@ import { apiFetch } from "./i18n/apiFetch.js";
 const t = i18n.t.bind(i18n);
 import { X } from "lucide-react";
 import { BatchFields } from "./BatchFields.js";
+import { channelLabel } from "./systemLabels.js";
 
 export type Batch = {
   batchId: string;
@@ -137,7 +138,7 @@ export function Batches({
               manufacturedDate={edit.manufacturedDate || ""}
               expiryDate={edit.expiryDate || ""}
             />
-            <fieldset className="purchase-cost"><legend>{t("采购成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" defaultValue={edit.totalPrice??""}/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={edit.purchasedDate??""}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue={edit.channelId??""}><option value="">{t("未指定")}</option>{edit.channelId&&!channels.some(channel=>channel.id===edit.channelId)&&<option value={edit.channelId}>{edit.channelName||t("未指定")}</option>}{channels.map(channel=><option key={channel.id} value={channel.id}>{channel.name}</option>)}</select></label></div></fieldset>
+            <fieldset className="purchase-cost"><legend>{t("采购成本（可选）")}</legend><div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" defaultValue={edit.totalPrice??""}/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={edit.purchasedDate??""}/></label><label>{t("购买渠道")}<select name="channelId" defaultValue={edit.channelId??""}><option value="">{t("未指定")}</option>{edit.channelId&&!channels.some(channel=>channel.id===edit.channelId)&&<option value={edit.channelId}>{edit.channelName?channelLabel(edit.channelName):t("未指定")}</option>}{channels.map(channel=><option key={channel.id} value={channel.id}>{channelLabel(channel.name)}</option>)}</select></label></div></fieldset>
             <div className="delete-dialog-actions">
               <button
                 className="secondary"
@@ -209,7 +210,7 @@ export function Batches({
                           <span>{row.expiryDate || t("未设置")}</span>
                         </div>
                       </td>
-                      <td>{row.totalPrice==null?t("未知"):<div className="date-cell"><span>{new Intl.NumberFormat(localeForDates(),{style:"currency",currency:row.purchaseCurrency??"CNY"}).format(row.totalPrice)}</span><span>{row.unitPrice==null?"":t("{{price}} / {{unit}}",{price:new Intl.NumberFormat(localeForDates(),{style:"currency",currency:row.purchaseCurrency??"CNY"}).format(row.unitPrice),unit:displayUnit(item.baseUnit)})}</span><span>{row.channelName||t("未指定")}</span></div>}</td>
+                      <td>{row.totalPrice==null?t("未知"):<div className="date-cell"><span>{new Intl.NumberFormat(localeForDates(),{style:"currency",currency:row.purchaseCurrency??"CNY"}).format(row.totalPrice)}</span><span>{row.unitPrice==null?"":t("{{price}} / {{unit}}",{price:new Intl.NumberFormat(localeForDates(),{style:"currency",currency:row.purchaseCurrency??"CNY"}).format(row.unitPrice),unit:displayUnit(item.baseUnit)})}</span><span>{row.channelName?channelLabel(row.channelName):t("未指定")}</span></div>}</td>
                       <td>
                         <button
                           className="text-button"
