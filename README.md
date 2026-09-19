@@ -28,11 +28,12 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 
 | Feature | AL1S WMS | [Grocy](https://grocy.info/) | [HomeBox](https://homebox.software/) |
 | --- | --- | --- | --- |
+| Cute | Tendou Arisu is indisputably cute | - | - |
 | Core focus | Household consumables | Food and household routines | Durable household assets |
 | Inventory model | Batches and stock ledger | Comprehensive, configurable inventory | Quantity as an item attribute |
 | Consumption | Issue, open, and exhaust | Consume and open | Manual quantity changes |
-| Expiry | Batch expiry and FEFO | Expiry rules and prioritized consumption | No dedicated workflow |
-| Replenishment | Stock alerts, purchase plans, and receiving | Shopping lists and automatic replenishment | No dedicated workflow |
+| Expiry | Batch expiry and FEFO | Expiry rules and prioritized consumption | - |
+| Replenishment | Stock alerts, purchase plans, and receiving | Shopping lists and automatic replenishment | - |
 | Household finance | Budgets, planned and actual spending | Price history and spending reports | Purchase value of assets |
 | Broader scope | Inventory, purchasing, and spending | Recipes, meal plans, chores, and tasks | Documents, warranties, and maintenance |
 | Agent integration | Built-in MCP | REST API and community MCP servers | REST API |
