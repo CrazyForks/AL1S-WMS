@@ -4,14 +4,17 @@
 
 面向家庭储物的轻量级、自托管仓库管理系统。
 
+<a href="https://github.com/RicterZ/AL1S-WMS/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/RicterZ/AL1S-WMS?display_name=tag" /></a>
+<a href="LICENSE"><img alt="许可证" src="https://img.shields.io/github/license/RicterZ/AL1S-WMS" /></a>
+
+[English](README.md) | [中文](README.zh-CN.md)
+
 <img width="1600" height="448" alt="AL1S-WMS-README-banner" src="https://github.com/user-attachments/assets/1aeb25ec-4633-4d3b-9655-8b1a7ce13350" />
 </div>
 
 它帮助家庭了解有什么、放在哪里、何时需要补货、哪些东西即将过期，以及这个月已经花了多少钱。
 
 它把盘点、采购和财务放在同一条数据链路中：采购完成后入库会生成批次与库存流水；录入成本后，这笔实际支出、物品价格历史和库存价值会自动更新。系统也提供 MCP 接口，方便 AI Agent 在明确授权范围内协助管理家庭库存。
-
-[English README](README.md)
 
 ## 适合谁
 
