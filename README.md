@@ -18,6 +18,8 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 - Anyone tracking the same item across rooms, cabinets, and refrigerator zones.
 - People who want purchase plans, actual costs, and monthly budgets to stay connected instead of maintaining separate spreadsheets.
 - Users who want an AI agent to help check stock, expiry, and replenishment suggestions while retaining approval over consequential actions.
+- 
+<img width="1585" height="986" alt="image" src="https://github.com/user-attachments/assets/00117ee5-ac0e-41e2-8045-b5356c5bbe11" />
 
 ## Features
 
@@ -29,6 +31,9 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 - A batch may exist in several locations. Stock can be issued from a selected batch or automatically by FEFO, first expiry first out.
 - Record receipts, issues, transfers, stocktakes, and batch changes in a complete transaction history.
 - Item details bring together stock, batches, purchase records, price trends, and paginated transaction history.
+
+<img width="1585" height="986" alt="image" src="https://github.com/user-attachments/assets/a9b3002f-b90a-4393-a5e8-da09e5e201cf" />
+
 
 ### Alerts and Stocktakes
 
@@ -45,6 +50,9 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 - Receiving records the actual quantity, cost, and date as a new batch. The completed item leaves the active list while its purchase and finance history remain traceable.
 - Maintain purchase channels and look up products by barcode. Barcode lookup checks household data and local cache before public product sources.
 
+<img width="1585" height="986" alt="image" src="https://github.com/user-attachments/assets/9876cb1f-9f54-47e5-b3de-fcbe1aadfc79" />
+
+
 ### Finance
 
 - Set a monthly total budget and category budgets; a future month can inherit the latest saved budget until it is changed.
@@ -53,6 +61,9 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 - Review monthly spending trends, budget comparisons, category and channel rankings, paginated purchase records, and inventory valuation.
 - Actual spending belongs to the month of stock receipt. Planned amounts affect the forecast only and never replace actual costs.
 - Item price history keeps batch-level and channel-level prices for comparing the latest, lowest, and average prices.
+
+<img width="1585" height="986" alt="image" src="https://github.com/user-attachments/assets/835318bd-0119-4588-8040-da61be1e0f7d" />
+
 
 ### Multiple Homes and AI Agents
 
@@ -70,10 +81,10 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 
 ## TODOs
 
-- Multi-user support, including household membership and role-based access control (RBAC).
-- Import, export, backup, and restore for household data.
-- Recurring shopping templates and replenishment rules for regularly purchased items.
-- Configurable expiry and stock reminders, exposed through MCP so an AI agent or external automation can deliver them.
+- [ ] Multi-user support, including household membership and role-based access control (RBAC).
+- [ ] Import, export, backup, and restore for household data.
+- [ ] Recurring shopping templates and replenishment rules for regularly purchased items.
+- [ ] Configurable expiry and stock reminders, exposed through MCP so an AI agent or external automation can deliver them.
 
 ## Deployment
 
