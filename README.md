@@ -63,6 +63,13 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 - ERP, WMS, POS, or supply-chain workloads requiring bulk operations, warehouse slotting, wave picking, or compliance-grade audit controls.
 - Turning the household into a logistics center solely because a three-month-old cucumber appeared in the refrigerator. It can, however, help deal with that cucumber first.
 
+## TODOs
+
+- Multi-user support, including household membership and role-based access control (RBAC).
+- Import, export, backup, and restore for household data.
+- Recurring shopping templates and replenishment rules for regularly purchased items.
+- Configurable expiry and stock reminders, exposed through MCP so an AI agent or external automation can deliver them.
+
 ## Deployment
 
 ### Docker
