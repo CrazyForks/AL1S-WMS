@@ -25,18 +25,14 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 
 | Feature | AL1S WMS | [Grocy](https://grocy.info/) | [HomeBox](https://homebox.software/) |
 | --- | --- | --- | --- |
-| Quantity and stock movements | ✅ | ✅ | ◐ |
-| Batches, expiry, and FEFO | ✅ | ✅ | ❌ |
-| Opened-item tracking | ✅ | ✅ | ❌ |
-| Low-stock alerts and replenishment | ✅ | ✅ | ❌ |
-| Shopping-to-stock workflow | ✅ | ✅ | ❌ |
-| Purchase planning and budgets | ✅ | ◐ | ❌ |
-| Recipes and meal planning | ❌ | ✅ | ❌ |
-| Chores and household tasks | ❌ | ✅ | ❌ |
-| Asset catalog and purchase details | ◐ | ◐ | ✅ |
-| Documents, warranties, and maintenance | ❌ | ◐ | ✅ |
-| Multiple users and roles | ❌ | ✅ | ✅ |
-| Built-in MCP server | ✅ | ❌ | ❌ |
+| Core focus | Household consumables | Food and household routines | Durable household assets |
+| Inventory model | Batches and stock ledger | Comprehensive, configurable inventory | Quantity as an item attribute |
+| Consumption | Issue, open, and exhaust | Consume and open | Manual quantity changes |
+| Expiry | Batch expiry and FEFO | Expiry rules and prioritized consumption | No dedicated workflow |
+| Replenishment | Stock alerts, purchase plans, and receiving | Shopping lists and automatic replenishment | No dedicated workflow |
+| Household finance | Budgets, planned and actual spending | Price history and spending reports | Purchase value of assets |
+| Broader scope | Inventory, purchasing, and spending | Recipes, meal plans, chores, and tasks | Documents, warranties, and maintenance |
+| Agent integration | Built-in MCP | REST API and community MCP servers | REST API |
 
 ## Features
 
