@@ -72,6 +72,9 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 - MCP covers home status, items, locations, categories, batches, receipts, issues, transfers, stocktakes, purchasing, price history, and financial analysis.
 - Agents should obtain explicit confirmation before budget changes, deletions, or other consequential operations. Inventory writes use idempotency keys for safe retries.
 
+<img width="1196" height="875" alt="image" src="https://github.com/user-attachments/assets/1d966aa9-2f0e-4e80-8695-6bcb57c75046" />
+
+
 ## What It Is Not For
 
 - Businesses, studios, stores, or other commercial settings that need approvals, supplier contracts, fulfillment, and complex role models.
