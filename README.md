@@ -21,6 +21,23 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 
 <img width="1585" height="986" alt="image" src="https://github.com/user-attachments/assets/00117ee5-ac0e-41e2-8045-b5356c5bbe11" />
 
+## How It Compares
+
+| Feature | AL1S WMS | [Grocy](https://grocy.info/) | [HomeBox](https://homebox.software/) |
+| --- | --- | --- | --- |
+| Quantity and stock movements | ✅ | ✅ | ◐ |
+| Batches, expiry, and FEFO | ✅ | ✅ | ❌ |
+| Opened-item tracking | ✅ | ✅ | ❌ |
+| Low-stock alerts and replenishment | ✅ | ✅ | ❌ |
+| Shopping-to-stock workflow | ✅ | ✅ | ❌ |
+| Purchase planning and budgets | ✅ | ◐ | ❌ |
+| Recipes and meal planning | ❌ | ✅ | ❌ |
+| Chores and household tasks | ❌ | ✅ | ❌ |
+| Asset catalog and purchase details | ◐ | ◐ | ✅ |
+| Documents, warranties, and maintenance | ❌ | ◐ | ✅ |
+| Multiple users and roles | ❌ | ✅ | ✅ |
+| Built-in MCP server | ✅ | ❌ | ❌ |
+
 ## Features
 
 ### Inventory and Batches
