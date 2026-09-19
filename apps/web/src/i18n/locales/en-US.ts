@@ -331,6 +331,8 @@ export const enUS = {
   批次: "Batch",
   展开节点查看库存与状态: "Expand nodes to view stock and status",
   返回盘点: "Back to stocktake",
+  全部展开: "Expand all",
+  全部闭合: "Collapse all",
   暂无节点: "No nodes",
   完整变动日志: "Full transaction log",
   变动记录: "Transaction history",

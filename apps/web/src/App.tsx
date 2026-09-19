@@ -1845,6 +1845,15 @@ export function App() {
       }));
   const financeAllocations=budgetAllocations(categories,financeBudgetEntries);
   const financeAllocatedBudget=financeAllocations.total;
+  const expandableTreeNodeIds=treeNodes.filter(node=>node.items.length>0||treeNodes.some(child=>child.parentId===node.id)).map(node=>node.id);
+  const treeFullyExpanded=expandableTreeNodeIds.every(id=>expandedLocations[id]??true);
+  function toggleAllTreeNodes() {
+    const nextOpen=!treeFullyExpanded;
+    setExpandedLocations(previous=>({
+      ...previous,
+      ...Object.fromEntries(expandableTreeNodeIds.map(id=>[id,nextOpen])),
+    }));
+  }
   async function moveTreeItem(target:TreeNode) {
     const dragged=draggedTreeItem;
     if(!dragged||treeMoving||dragged.sourceNodeId===target.id)return;
@@ -3487,9 +3496,10 @@ export function App() {
               <div className="panel-tools">
                 <button
                   className="text-button"
-                  onClick={() => navigate("count")}
+                  disabled={!expandableTreeNodeIds.length}
+                  onClick={toggleAllTreeNodes}
                 >
-                  {t("返回盘点")}
+                  {treeFullyExpanded?t("全部闭合"):t("全部展开")}
                 </button>
               </div>
             </div>
