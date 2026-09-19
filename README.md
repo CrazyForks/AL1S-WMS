@@ -153,9 +153,3 @@ pnpm typecheck
 pnpm test
 pnpm build
 ```
-
-## Internationalization
-
-The web interface and user-facing API errors support Simplified Chinese (`zh-CN`) and English (`en-US`). A saved choice in Settings takes precedence, then the browser language, with Simplified Chinese as the fallback.
-
-Clients send the selected locale in `Accept-Language`. Names, categories, locations, channels, and historical business data are user data and are not translated automatically.
