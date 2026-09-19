@@ -18,7 +18,7 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 - Anyone tracking the same item across rooms, cabinets, and refrigerator zones.
 - People who want purchase plans, actual costs, and monthly budgets to stay connected instead of maintaining separate spreadsheets.
 - Users who want an AI agent to help check stock, expiry, and replenishment suggestions while retaining approval over consequential actions.
-- 
+
 <img width="1585" height="986" alt="image" src="https://github.com/user-attachments/assets/00117ee5-ac0e-41e2-8045-b5356c5bbe11" />
 
 ## Features
