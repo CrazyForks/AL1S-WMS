@@ -1,4 +1,5 @@
 # AL1S WMS
+<img width="1600" height="448" alt="AL1S-WMS-README-banner" src="https://github.com/user-attachments/assets/1aeb25ec-4633-4d3b-9655-8b1a7ce13350" />
 
 AL1S WMS is a lightweight, self-hosted warehouse manager for the home. It helps a household answer practical questions: what is on hand, where it is stored, what needs buying, what is nearing expiry, and how much has been spent this month.
 
