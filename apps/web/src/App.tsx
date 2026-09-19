@@ -122,10 +122,17 @@ type Item = {
 type LocationScopedItem=Item&{treeQuantity?:number};
 type Stock = { itemId: string; locationId: string; quantity: number; latestReceivedAt?:string|null };
 type OpenedConsumable={id:string;itemId:string;itemName:string;baseUnit:string;locationId:string;locationName:string|null;batchId:string;batchLabel:string|null;manufacturedDate:string|null;expiryDate:string|null;openedExpiryDate:string|null;quantity:number;openedAt:string};
+function formatDateTime(value:string) {
+  const date=new Date(value);
+  if(!Number.isFinite(date.getTime()))return value;
+  const pad=(part:number)=>String(part).padStart(2,"0");
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 function openedExpiryForDisplay(opened: Pick<OpenedConsumable,"openedExpiryDate"|"expiryDate">) {
   const dates=[opened.openedExpiryDate,opened.expiryDate].filter((value):value is string=>Boolean(value)).map(value=>({value,time:/^\d{4}-\d{2}-\d{2}$/.test(value)?new Date(`${value}T23:59:59`).getTime():new Date(value).getTime()})).filter(value=>Number.isFinite(value.time));
   if(!dates.length)return null;
-  return new Date(Math.min(...dates.map(date=>date.time))).toLocaleString(localeForDates(),{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+  const earliest=dates.reduce((result,date)=>date.time<result.time?date:result);
+  return /^\d{4}-\d{2}-\d{2}$/.test(earliest.value)?earliest.value:formatDateTime(earliest.value);
 }
 type Location = {
   id: string;
@@ -207,13 +214,7 @@ function TransactionRow({ transaction,onOpenItem }: { transaction: Transaction;o
           : labels[transaction.type]}
       </b>
       <time>
-        {new Date(transaction.occurredAt).toLocaleString(localeForDates(), {
-          year: "numeric",
-          month: "numeric",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
+        {formatDateTime(transaction.occurredAt)}
       </time>
     </div>
   );
@@ -2196,15 +2197,25 @@ export function App() {
           </div>
         )}
         {activePage === "profile" && (
-          <section className="panel avatar-panel">
+          <section className="panel user-info-panel">
             <div className="panel-head">
               <div>
-                <h2>{t("头像")}</h2>
-                <p className="muted">{currentUser?.username}</p>
+                <h2>{t("用户信息")}</h2>
               </div>
             </div>
-            <div className="avatar-picker" role="radiogroup" aria-label={t("头像")}>
-              {avatarOptions.map(({value,label,Icon})=><button key={value} type="button" role="radio" aria-checked={currentUser?.avatar===value} className={currentUser?.avatar===value?"selected":""} disabled={busy} onClick={()=>void updateAvatar(value)} title={t(label)}><Icon size={20}/><span>{t(label)}</span></button>)}
+            <div className="user-info-body">
+              <div className="user-identity"><small>{t("用户名")}</small><strong>{currentUser?.username}</strong></div>
+              <div className="avatar-selection"><strong>{t("头像选择")}</strong><div className="avatar-picker" role="radiogroup" aria-label={t("头像选择")}>
+                {avatarOptions.map(({value,label,Icon})=><button key={value} type="button" role="radio" aria-checked={currentUser?.avatar===value} className={currentUser?.avatar===value?"selected":""} disabled={busy} onClick={()=>void updateAvatar(value)} title={t(label)}><Icon size={20}/><span>{t(label)}</span></button>)}
+              </div></div>
+              <div className="password-section"><div><strong>{t("修改密码")}</strong><p className="muted">{t("验证当前密码后设置新密码")}</p></div>
+              <form className="password-form" onSubmit={changePassword}>
+                <label>{t("当前密码")}<input name="currentPassword" type="password" autoComplete="current-password" required /></label>
+                <label>{t("新密码")}<input name="newPassword" type="password" autoComplete="new-password" minLength={8} required /></label>
+                <label>{t("确认新密码")}<input name="confirmation" type="password" autoComplete="new-password" minLength={8} required /></label>
+                <button className="primary" disabled={busy}>{busy ? t("修改中…") : t("修改密码")}</button>
+              </form>
+              {passwordNotice&&<p className="password-feedback" role="status">{passwordNotice}</p>}</div>
             </div>
           </section>
         )}
@@ -2234,55 +2245,6 @@ export function App() {
                 </span>
               </label>
             </div>
-          </section>
-        )}
-        {activePage === "profile" && (
-          <section className="panel password-panel">
-            <div className="panel-head">
-              <div>
-                <h2>{t("修改密码")}</h2>
-                <p className="muted">{t("验证当前密码后设置新密码")}</p>
-              </div>
-            </div>
-            <form className="password-form" onSubmit={changePassword}>
-              <label>
-                {t("当前密码")}
-                <input
-                  name="currentPassword"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-              <label>
-                {t("新密码")}
-                <input
-                  name="newPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={8}
-                  required
-                />
-              </label>
-              <label>
-                {t("确认新密码")}
-                <input
-                  name="confirmation"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={8}
-                  required
-                />
-              </label>
-              <button className="primary" disabled={busy}>
-                {busy ? t("修改中…") : t("修改密码")}
-              </button>
-            </form>
-            {passwordNotice && (
-              <p className="password-feedback" role="status">
-                {passwordNotice}
-              </p>
-            )}
           </section>
         )}
         {activePage === "profile" && (
@@ -3226,7 +3188,7 @@ export function App() {
             </div>
             <section className="panel opened-consumables-panel">
               <div className="panel-head"><div><h2>{t("已开封消耗品")}</h2><p className="muted">{t("开封后仍计入库存，用尽后才扣减")}</p></div><strong>{openedConsumables.length}</strong></div>
-              {openedConsumables.length===0?<p className="empty">{t("暂无已开封消耗品")}</p>:<div className="table-wrap"><table><thead><tr><th>{t("物资")}</th><th>{t("数量")}</th><th>{t("地点")}</th><th>{t("开封时间")}</th><th>{t("开封后到期")}</th><th>{t("操作")}</th></tr></thead><tbody>{openedConsumables.map(opened=><tr key={opened.id}><td><button type="button" className="item-link" onClick={()=>openItemDetail(opened.itemId)}>{opened.itemName}</button></td><td>{opened.quantity} {displayUnit(opened.baseUnit)}</td><td>{opened.locationName||t("未指定")}</td><td>{new Date(opened.openedAt).toLocaleString(localeForDates(),{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td>{openedExpiryForDisplay(opened)||"--"}</td><td><button type="button" className="text-button" disabled={busy} onClick={()=>setExhaustTarget(opened)}>{t("用尽")}</button></td></tr>)}</tbody></table></div>}
+              {openedConsumables.length===0?<p className="empty">{t("暂无已开封消耗品")}</p>:<div className="table-wrap"><table><thead><tr><th>{t("物资")}</th><th>{t("数量")}</th><th>{t("地点")}</th><th>{t("开封时间")}</th><th>{t("开封后到期")}</th><th>{t("操作")}</th></tr></thead><tbody>{openedConsumables.map(opened=><tr key={opened.id}><td><button type="button" className="item-link" onClick={()=>openItemDetail(opened.itemId)}>{opened.itemName}</button></td><td>{opened.quantity} {displayUnit(opened.baseUnit)}</td><td>{opened.locationName||t("未指定")}</td><td>{formatDateTime(opened.openedAt)}</td><td>{openedExpiryForDisplay(opened)||"--"}</td><td><button type="button" className="text-button" disabled={busy} onClick={()=>setExhaustTarget(opened)}>{t("用尽")}</button></td></tr>)}</tbody></table></div>}
             </section>
             <div className="panel inventory-panel count-inventory">
               <div className="panel-head">
