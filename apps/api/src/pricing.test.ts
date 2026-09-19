@@ -219,6 +219,7 @@ test("financial dashboard combines budgets, plans, purchases, and valuation",()=
   assert.equal(dashboard.purchases[0].variance,null);
   assert.equal(dashboard.valuation.byItem[0].itemName,"乌龙茶");
   assert.equal(dashboard.valuation.byItem[0].value,12);
+  assert.deepEqual(dashboard.valuation.byItem[0].locations,["储物柜"]);
   assert.equal(dashboard.valuation.byCategory[0].category,"饮品");
   assert.equal(dashboard.valuation.byLocation[0].locationId,locationId);
   assert.equal(dashboard.trend.length,12);
@@ -227,5 +228,16 @@ test("financial dashboard combines budgets, plans, purchases, and valuation",()=
   assert.equal(inherited.budgetMode,"inherited");
   assert.equal(inherited.budgetSourceMonth,"2026-09");
   assert.throws(()=>saveFinancialBudget(db,homeId,{month:"2026-09",total:10,categoryBudgets:[{category:"饮品",amount:11}]}));
+  db.close();
+});
+
+test("inventory valuation lists every location for an item",()=>{
+  const {db,homeId,locationId,itemId}=fixture();
+  const secondLocationId=randomUUID();
+  db.prepare("INSERT INTO locations(id,home_id,name) VALUES (?,?,?)").run(secondLocationId,homeId,"客厅储物架");
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:4,idempotencyKey:"valuation-first"});
+  recordStock(db,homeId,"receipt",{itemId,locationId:secondLocationId,quantity:2,totalPrice:6,idempotencyKey:"valuation-second"});
+  const valuation=financialDashboard(db,homeId,{month:"2026-09"}).valuation.byItem;
+  assert.deepEqual(valuation,[{itemId,itemName:"乌龙茶",category:"饮品",quantity:3,unit:"瓶",locations:["储物柜","客厅储物架"],value:10}]);
   db.close();
 });
