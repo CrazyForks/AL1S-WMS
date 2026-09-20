@@ -92,7 +92,7 @@ export function FinancePurchases({homeId,revision,onOpenItem}:{homeId:string;rev
 type BatchCosts={batchId:string;itemId:string;itemName:string;receivedDate:string;originalCost:number|null;usedCost:number|null;wastedCost:number|null;adjustmentCost:number|null;remainingCost:number|null;usedShare:number|null};
 type WasteRow={originalCost:number;wastedValue:number;expiredValue:number;damagedValue:number;batches:BatchCosts[]};
 
-type InventoryCostReport={asOf:string;cohorts:{asOf:string;points:CohortPoint[]};granularity:"month"|"day";start:string;end:string;currency:string;totals:{inbound:number;consumed:number;wasted:number;expired:number;damaged:number;adjustment:number;wasteRate:number|null};points:{label:string;inbound:number;consumed:number;expired:number;damaged:number;adjustment:number}[];waste:{byItem:(WasteRow&{itemId:string;itemName:string;category:string})[];byCategory:(WasteRow&{category:string})[];byLocation:(WasteRow&{locationId:string|null;locationName:string})[]};expiryRisk:{asOf:string;through:string;value:number;unknownCostBatchCount:number;items:{batchId:string;itemId:string;itemName:string;expiryDate:string;unit:string;quantity:number;value:number|null}[]};dataQuality:{unknownInboundBatchCount:number;unknownCostIssueCount:number;unknownInboundBatches:{batchId:string;itemId:string;itemName:string;unit:string;receivedDate:string;quantity:number;reason:"missingCost"|"missingQuantity"}[];unknownCostIssues:{transactionId:string;batchId:string;itemId:string;itemName:string;unit:string;occurredDate:string;quantity:number;issueReason:"used"|"expired"|"damaged"|"adjustment"}[]}};
+type InventoryCostReport={asOf:string;cohorts:{asOf:string;points:CohortPoint[];adjustmentBatches:BatchCosts[]};granularity:"month"|"day";start:string;end:string;currency:string;totals:{inbound:number;consumed:number;wasted:number;expired:number;damaged:number;adjustment:number;wasteRate:number|null};points:{label:string;inbound:number;consumed:number;expired:number;damaged:number;adjustment:number}[];waste:{byItem:(WasteRow&{itemId:string;itemName:string;category:string})[];byCategory:(WasteRow&{category:string})[];byLocation:(WasteRow&{locationId:string|null;locationName:string})[]};expiryRisk:{asOf:string;through:string;value:number;unknownCostBatchCount:number;items:{batchId:string;itemId:string;itemName:string;expiryDate:string;unit:string;quantity:number;value:number|null}[]};dataQuality:{unknownInboundBatchCount:number;unknownCostIssueCount:number;unknownInboundBatches:{batchId:string;itemId:string;itemName:string;unit:string;receivedDate:string;quantity:number;reason:"missingCost"|"missingQuantity"}[];unknownCostIssues:{transactionId:string;batchId:string;itemId:string;itemName:string;unit:string;occurredDate:string;quantity:number;issueReason:"used"|"expired"|"damaged"|"adjustment"}[]}};
 
 type InventoryReportProps={homeId:string;revision:unknown;onOpenItem:(id:string)=>void};
 
@@ -120,7 +120,7 @@ function InventoryReportStatus({valid,report}:{valid:boolean;report:ReturnType<t
   return !valid?<p className="empty" role="alert">{t("请选择不超过36个月的有效范围")}</p>:report.error?<p className="empty" role="alert">{report.error} <button type="button" onClick={report.retry}>{t("重试")}</button></p>:report.loading||!report.data?<p className="empty" role="status">{t("加载中…")}</p>:null;
 }
 
-function InventoryCohorts({homeId,revision}:InventoryReportProps){
+function InventoryCohorts({homeId,revision,onOpenItem}:InventoryReportProps){
   const {t,i18n}=useTranslation();
   const range=useInventoryRange();
   const [asOf,setAsOf]=useState(new Date().toISOString().slice(0,10));
@@ -132,21 +132,25 @@ function InventoryCohorts({homeId,revision}:InventoryReportProps){
   const points=groupCohorts(data?.cohorts.points??[],grain);
   const money=(value:number)=>new Intl.NumberFormat(i18n.language,{style:"currency",currency:data?.currency??"CNY"}).format(value);
   const max=Math.max(1,...points.map(point=>point.originalCost));
-  const segments=[["usedCost","已使用成本"],["wastedCost","浪费成本"],["adjustmentCost","调整成本"],["remainingCost","剩余库存成本"]] as const;
+  const hasAdjustment=points.some(point=>point.adjustmentCost>0);
+  const segments=([["usedCost","已使用成本"],["wastedCost","浪费成本"],["adjustmentCost","调整成本"],["remainingCost","剩余库存成本"]] as const).filter(([key])=>key!=="adjustmentCost"||hasAdjustment);
   return <section className="panel cost-chart-card">
     <div className="panel-head cost-card-head"><h3>{t("入库批次去向")}</h3></div>
     <InventoryRangeControls range={range} kind="receipt"/>
     <div className="report-controls"><div className="report-presets" aria-label={t("汇总粒度")}>{([["month","按月"],["quarter","按季"],["year","按年"]] as const).map(([value,label])=><button type="button" key={value} aria-pressed={grain===value} onClick={()=>setGrain(value)}>{t(label)}</button>)}</div><label>{t("统计截止日期")}<input type="date" value={asOf} onChange={event=>setAsOf(event.target.value)}/></label><label><input type="checkbox" checked={percent} onChange={event=>setPercent(event.target.checked)}/>{t("百分比")}</label></div>
     <InventoryReportStatus valid={valid} report={report}/>
     {valid&&data&&<>
-      <div className="cost-kpis">{([["originalCost","原始成本"],...segments] as const).map(([key,label])=><div className="cost-kpi" key={key}><small>{t(label)}</small><strong>{money(points.reduce((total,point)=>total+point[key],0))}</strong></div>)}</div>
+      <div className="cost-kpis">{([["originalCost","原始成本"],...segments.filter(([key])=>key!=="adjustmentCost")] as const).map(([key,label])=><div className="cost-kpi" key={key}><small>{t(label)}</small><strong>{money(points.reduce((total,point)=>total+point[key],0))}</strong></div>)}</div>
       <div className="cost-chart-scroll"><div className={`cost-chart cohort-chart ${points.length<=12?"cohort-chart-fit":"cohort-chart-scrollable"}`} style={{width:points.length<=12?"100%":`${points.length*64+32}px`}}>{points.map(point=>{
         const share=point.usedShare===null?"—":`${point.usedShare}%`;
         const description=[point.label,`${t("原始成本")} ${money(point.originalCost)}`,...segments.map(([key,label])=>`${t(label)} ${money(point[key])}`),`${t("已使用占比")} ${share}`].join("\n");
         return <div className="cost-column" key={point.label} tabIndex={0} role="img" aria-label={description} title={description}><div><div className="cost-stack" style={{height:`${percent?(point.originalCost>0?100:0):point.originalCost/max*100}%`}}>{segments.map(([key,label])=><span key={key} className={key} title={`${t(label)} ${money(point[key])}`} style={{height:`${point.originalCost>0?point[key]/point.originalCost*100:0}%`}}/>)}</div></div><small>{point.label}</small></div>;
       })}</div></div>
-      <div className="cost-legend"><span><i className="consumed"/>{t("已使用成本")}</span><span><i className="waste"/>{t("浪费成本")}</span><span><i className="adjustment"/>{t("调整成本")}</span><span><i className="remaining"/>{t("剩余库存成本")}</span></div>
-      <div className="table-wrap"><table><thead><tr>{["入库时间","原始成本","已使用成本","浪费成本","调整成本","剩余库存成本","已使用占比"].map(label=><th key={label}>{t(label)}</th>)}</tr></thead><tbody>{points.map(point=><tr key={point.label}><td>{point.label}</td>{[point.originalCost,point.usedCost,point.wastedCost,point.adjustmentCost,point.remainingCost].map((value,index)=><td key={index}>{money(value)}</td>)}<td>{point.usedShare===null?"—":`${point.usedShare}%`}</td></tr>)}</tbody></table></div>
+      <div className="cost-legend"><span><i className="consumed"/>{t("已使用成本")}</span><span><i className="waste"/>{t("浪费成本")}</span>{hasAdjustment&&<span><i className="adjustment"/>{t("调整成本")}</span>}<span><i className="remaining"/>{t("剩余库存成本")}</span></div>
+      <div className="table-wrap"><table><thead><tr>{["入库时间","原始成本","已使用成本","浪费成本","剩余库存成本","已使用占比"].map(label=><th key={label}>{t(label)}</th>)}</tr></thead><tbody>{points.map(point=><tr key={point.label}><td>{point.label}{point.adjustmentCost>0&&<details className="cohort-adjustment"><summary>{t("差异 {{amount}}",{amount:money(point.adjustmentCost)})}</summary><p>{t("盘点或其他调整出库，未计入使用与浪费。")}</p>{(data.cohorts.adjustmentBatches??[]).filter(batch=>{
+        const month=batch.receivedDate.slice(0,7);
+        return (grain==="month"?month:grain==="year"?month.slice(0,4):`${month.slice(0,4)} Q${Math.ceil(Number(month.slice(5))/3)}`)===point.label;
+      }).map(batch=><div key={batch.batchId}><button type="button" className="item-link" onClick={()=>onOpenItem(batch.itemId)}>{batch.itemName}</button><small>{batch.receivedDate} · {batch.batchId.slice(0,8)}</small><strong>{money(batch.adjustmentCost??0)}</strong></div>)}</details>}</td>{[point.originalCost,point.usedCost,point.wastedCost,point.remainingCost].map((value,index)=><td key={index}>{money(value)}</td>)}<td>{point.usedShare===null?"—":`${point.usedShare}%`}</td></tr>)}</tbody></table></div>
     </>}
   </section>;
 }

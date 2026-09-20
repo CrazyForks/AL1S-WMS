@@ -560,6 +560,8 @@ export const enUS = {
   正常消耗成本: "Consumed cost",
   浪费成本: "Waste cost",
   浪费率: "Waste rate",
+  "差异 {{amount}}": "Adjustment {{amount}}",
+  "盘点或其他调整出库，未计入使用与浪费。": "Stock reconciliation or other adjustments, excluded from usage and waste.",
   调整成本: "Adjustment cost",
   部分记录未计入金额: "Some records are excluded from monetary totals",
   缺少成本的入库批次: "Inbound batches without cost",

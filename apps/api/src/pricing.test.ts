@@ -287,6 +287,9 @@ test("inventory cost analysis uses historical batch cost and separates waste rea
   assert.equal(result.waste.byCategory[0]?.category,"饮品");
   assert.equal(result.waste.byLocation[0]?.locationId,locationId);
   assert.equal(result.cohorts.points[0]?.usedShare,14.29);
+  assert.equal(result.cohorts.adjustmentBatches.length,1);
+  assert.equal(result.cohorts.adjustmentBatches[0].batchId,first);
+  assert.equal(result.cohorts.adjustmentBatches[0].adjustmentCost,2);
   assert.equal(result.cohorts.points[0]?.remainingCost,6);
   assert.equal(result.expiryRisk.value,6);
   assert.equal(result.expiryRisk.items[0]?.quantity,3);

@@ -46,3 +46,15 @@
   .inventory-cost-section .cost-kpi { padding: 10px 12px; }
   .inventory-cost-section .cost-kpi strong { font-size: 14px; }
 }
+
+.inventory-cost-section .cost-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cohort-adjustment { margin-top: 3px; color: var(--aris-muted); font-size: 11px; white-space: normal; max-width: 300px; }
+.cohort-adjustment summary { cursor: pointer; color: var(--aris-blue-dark); }
+.cohort-adjustment p { margin: 8px 0; }
+.cohort-adjustment > div { display: grid; gap: 3px; padding: 8px 0; border-top: 1px solid var(--aris-line); }
+.cohort-adjustment .item-link { text-align: left; font-size: 12px; }
+.cohort-adjustment small { font-size: 11px; }
+@media(max-width:620px) {
+  .inventory-cost-section .cost-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inventory-cost-section .cost-kpi:last-child { grid-column: auto; }
+}
