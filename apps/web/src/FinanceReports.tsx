@@ -92,7 +92,7 @@ export function FinancePurchases({homeId,revision,onOpenItem}:{homeId:string;rev
 type BatchCosts={batchId:string;itemId:string;itemName:string;receivedDate:string;originalCost:number|null;usedCost:number|null;wastedCost:number|null;adjustmentCost:number|null;remainingCost:number|null;usedShare:number|null};
 type WasteRow={originalCost:number;wastedValue:number;expiredValue:number;damagedValue:number;batches:BatchCosts[]};
 
-type InventoryCostReport={asOf:string;cohorts:{asOf:string;points:CohortPoint[]};granularity:"month"|"day";start:string;end:string;currency:string;totals:{inbound:number;consumed:number;wasted:number;expired:number;damaged:number;adjustment:number;wasteRate:number|null};points:{label:string;inbound:number;consumed:number;expired:number;damaged:number;adjustment:number}[];waste:{byItem:(WasteRow&{itemId:string;itemName:string;category:string})[];byCategory:(WasteRow&{category:string})[];byLocation:(WasteRow&{locationId:string|null;locationName:string})[]};expiryRisk:{asOf:string;through:string;value:number;unknownCostBatchCount:number;items:{batchId:string;itemId:string;itemName:string;expiryDate:string;unit:string;quantity:number;value:number|null}[]};dataQuality:{unknownInboundBatchCount:number;unknownCostIssueCount:number}};
+type InventoryCostReport={asOf:string;cohorts:{asOf:string;points:CohortPoint[]};granularity:"month"|"day";start:string;end:string;currency:string;totals:{inbound:number;consumed:number;wasted:number;expired:number;damaged:number;adjustment:number;wasteRate:number|null};points:{label:string;inbound:number;consumed:number;expired:number;damaged:number;adjustment:number}[];waste:{byItem:(WasteRow&{itemId:string;itemName:string;category:string})[];byCategory:(WasteRow&{category:string})[];byLocation:(WasteRow&{locationId:string|null;locationName:string})[]};expiryRisk:{asOf:string;through:string;value:number;unknownCostBatchCount:number;items:{batchId:string;itemId:string;itemName:string;expiryDate:string;unit:string;quantity:number;value:number|null}[]};dataQuality:{unknownInboundBatchCount:number;unknownCostIssueCount:number;unknownInboundBatches:{batchId:string;itemId:string;itemName:string;unit:string;receivedDate:string;quantity:number;reason:"missingCost"|"missingQuantity"}[];unknownCostIssues:{transactionId:string;batchId:string;itemId:string;itemName:string;unit:string;occurredDate:string;quantity:number;issueReason:"used"|"expired"|"damaged"|"adjustment"}[]}};
 
 type InventoryReportProps={homeId:string;revision:unknown;onOpenItem:(id:string)=>void};
 
@@ -120,7 +120,20 @@ function InventoryReportStatus({valid,report}:{valid:boolean;report:ReturnType<t
   return !valid?<p className="empty" role="alert">{t("请选择不超过36个月的有效范围")}</p>:report.error?<p className="empty" role="alert">{report.error} <button type="button" onClick={report.retry}>{t("重试")}</button></p>:report.loading||!report.data?<p className="empty" role="status">{t("加载中…")}</p>:null;
 }
 
-function InventoryCohorts({homeId,revision}:InventoryReportProps){
+function MissingCostRecords({data,onOpenItem}:{data:InventoryCostReport;onOpenItem:(id:string)=>void}){
+  const {t}=useTranslation();
+  const inbound=data.dataQuality.unknownInboundBatches,issues=data.dataQuality.unknownCostIssues;
+  if(!inbound.length&&!issues.length)return null;
+  return <section className="missing-cost-module" aria-labelledby="missing-cost-title">
+    <div className="missing-cost-head"><div><h3 id="missing-cost-title">{t("成本缺失记录")}</h3><p>{t("这些记录未计入金额，可回到对应批次补录成本")}</p></div><strong>{inbound.length+issues.length}</strong></div>
+    <div className="missing-cost-columns">
+      <div><h4>{t("缺少成本的入库批次")} <small>{inbound.length}</small></h4>{inbound.length?inbound.map(row=><div className="missing-cost-row" key={row.batchId}><div><button type="button" className="item-link" onClick={()=>onOpenItem(row.itemId)}>{row.itemName}</button><small>{row.receivedDate} · {row.quantity} {row.unit}</small></div><span>{row.reason==="missingCost"?t("未填写采购成本"):t("入库数量无效")}</span></div>):<p className="empty">{t("暂无缺失成本的入库批次")}</p>}</div>
+      <div><h4>{t("缺少成本的出库记录")} <small>{issues.length}</small></h4>{issues.length?issues.map(row=><div className="missing-cost-row" key={row.transactionId}><div><button type="button" className="item-link" onClick={()=>onOpenItem(row.itemId)}>{row.itemName}</button><small>{row.occurredDate} · {row.quantity} {row.unit} · {t(row.issueReason)}</small></div><span>{t("所属批次未填写成本")}</span></div>):<p className="empty">{t("暂无缺失成本的出库记录")}</p>}</div>
+    </div>
+  </section>;
+}
+
+function InventoryCohorts({homeId,revision,onOpenItem}:InventoryReportProps){
   const {t,i18n}=useTranslation();
   const range=useInventoryRange();
   const [asOf,setAsOf]=useState(new Date().toISOString().slice(0,10));
@@ -133,22 +146,21 @@ function InventoryCohorts({homeId,revision}:InventoryReportProps){
   const money=(value:number)=>new Intl.NumberFormat(i18n.language,{style:"currency",currency:data?.currency??"CNY"}).format(value);
   const max=Math.max(1,...points.map(point=>point.originalCost));
   const segments=[["usedCost","已使用成本"],["wastedCost","浪费成本"],["adjustmentCost","调整成本"],["remainingCost","剩余库存成本"]] as const;
-  const unknown=points.reduce((total,point)=>total+point.unknownCostBatchCount,0);
   return <section className="panel cost-chart-card">
-    <div className="cost-card-head"><h3>{t("入库批次去向")}</h3></div>
+    <div className="panel-head cost-card-head"><h3>{t("入库批次去向")}</h3></div>
     <InventoryRangeControls range={range} kind="receipt"/>
     <div className="report-controls"><div className="report-presets" aria-label={t("汇总粒度")}>{([["month","按月"],["quarter","按季"],["year","按年"]] as const).map(([value,label])=><button type="button" key={value} aria-pressed={grain===value} onClick={()=>setGrain(value)}>{t(label)}</button>)}</div><label>{t("统计截止日期")}<input type="date" value={asOf} onChange={event=>setAsOf(event.target.value)}/></label><label><input type="checkbox" checked={percent} onChange={event=>setPercent(event.target.checked)}/>{t("百分比")}</label></div>
     <InventoryReportStatus valid={valid} report={report}/>
     {valid&&data&&<>
       <div className="cost-kpis">{([["originalCost","原始成本"],...segments] as const).map(([key,label])=><div className="cost-kpi" key={key}><small>{t(label)}</small><strong>{money(points.reduce((total,point)=>total+point[key],0))}</strong></div>)}</div>
-      {unknown>0&&<div className="cost-quality">{t("缺少成本的入库批次")} {unknown}</div>}
       <div className="cost-chart-scroll"><div className={`cost-chart cohort-chart ${points.length<=12?"cohort-chart-fit":"cohort-chart-scrollable"}`} style={{width:points.length<=12?"100%":`${points.length*64+32}px`}}>{points.map(point=>{
         const share=point.usedShare===null?"—":`${point.usedShare}%`;
         const description=[point.label,`${t("原始成本")} ${money(point.originalCost)}`,...segments.map(([key,label])=>`${t(label)} ${money(point[key])}`),`${t("已使用占比")} ${share}`].join("\n");
         return <div className="cost-column" key={point.label} tabIndex={0} role="img" aria-label={description} title={description}><div><div className="cost-stack" style={{height:`${percent?(point.originalCost>0?100:0):point.originalCost/max*100}%`}}>{segments.map(([key,label])=><span key={key} className={key} title={`${t(label)} ${money(point[key])}`} style={{height:`${point.originalCost>0?point[key]/point.originalCost*100:0}%`}}/>)}</div></div><small>{point.label}</small></div>;
       })}</div></div>
       <div className="cost-legend"><span><i className="consumed"/>{t("已使用成本")}</span><span><i className="waste"/>{t("浪费成本")}</span><span><i className="adjustment"/>{t("调整成本")}</span><span><i className="remaining"/>{t("剩余库存成本")}</span></div>
-      <div className="table-wrap"><table><thead><tr>{["入库时间","原始成本","已使用成本","浪费成本","调整成本","剩余库存成本","已使用占比"].map(label=><th key={label}>{t(label)}</th>)}</tr></thead><tbody>{points.map(point=><tr key={point.label}><td>{point.label}{point.unknownCostBatchCount>0&&<small> · {t("未知成本批次")} {point.unknownCostBatchCount}</small>}</td>{[point.originalCost,point.usedCost,point.wastedCost,point.adjustmentCost,point.remainingCost].map((value,index)=><td key={index}>{money(value)}</td>)}<td>{point.usedShare===null?"—":`${point.usedShare}%`}</td></tr>)}</tbody></table></div>
+      <div className="table-wrap"><table><thead><tr>{["入库时间","原始成本","已使用成本","浪费成本","调整成本","剩余库存成本","已使用占比"].map(label=><th key={label}>{t(label)}</th>)}</tr></thead><tbody>{points.map(point=><tr key={point.label}><td>{point.label}</td>{[point.originalCost,point.usedCost,point.wastedCost,point.adjustmentCost,point.remainingCost].map((value,index)=><td key={index}>{money(value)}</td>)}<td>{point.usedShare===null?"—":`${point.usedShare}%`}</td></tr>)}</tbody></table></div>
+      <MissingCostRecords data={data} onOpenItem={onOpenItem} />
     </>}
   </section>;
 }
@@ -161,9 +173,9 @@ function InventoryWasteRanking({homeId,revision,onOpenItem}:InventoryReportProps
   const data=range.valid?report.data:null;
   const money=(value:number)=>new Intl.NumberFormat(i18n.language,{style:"currency",currency:data?.currency??"CNY"}).format(value);
   const rankingRows=data?(view==="item"?data.waste.byItem.map(row=>({...row,key:row.itemId,name:row.itemName})):view==="category"?data.waste.byCategory.map(row=>({...row,key:row.category,itemId:null,name:categoryLabel(row.category)})):data.waste.byLocation.map(row=>({...row,key:row.locationId??"none",itemId:null,name:row.locationName}))):[];
-  const controls=<><InventoryRangeControls range={range} kind="waste"/>{data&&<div className="cost-quality"><strong>{t("期间浪费")} {money(data.totals.wasted)}</strong>{data.dataQuality.unknownCostIssueCount>0&&<span>{t("缺少成本的出库记录")} {data.dataQuality.unknownCostIssueCount}</span>}</div>}</>;
+  const controls=<><InventoryRangeControls range={range} kind="waste"/>{data&&<div className="cost-quality"><strong>{t("期间浪费")} {money(data.totals.wasted)}</strong></div>}</>;
   const status=<InventoryReportStatus valid={range.valid} report={report}/>;
-  return <section className="panel cost-ranking-card"><><div className="cost-card-head"><div><h3>{t("浪费排行")}</h3><p>{t("定位最值得调整采购量或储存方式的对象")}</p></div><div className="cost-tabs" role="tablist">{(["item","category","location"] as const).map(value=><button key={value} type="button" role="tab" aria-selected={view===value} onClick={()=>setView(value)}>{value==="item"?t("按物资"):value==="category"?t("按分类"):t("按地点")}</button>)}</div></div>{controls}{status}<div className="cost-ranking">{!data?null:rankingRows.length?rankingRows.map((row,index)=><div key={row.key}><span>{index+1}</span><div>{row.itemId?<button type="button" className="item-link" onClick={()=>onOpenItem(row.itemId!)}>{row.name}</button>:<strong>{row.name}</strong>}<small>{t("涉及批次原始成本")} {money(row.originalCost)}</small><details><summary>{t("查看批次去向")} · {data?.asOf}</summary>{view==="location"&&<p>{t("以下为整批成本，同一批次可能涉及多个地点，请勿跨地点相加")}</p>}{row.batches.map(batch=><div className="cost-batch-detail" key={batch.batchId}><strong>{batch.itemName} · {batch.receivedDate}</strong><small>{t("原始成本")} {money(batch.originalCost??0)} · {t("已使用成本")} {money(batch.usedCost??0)} · {t("累计浪费成本")} {money(batch.wastedCost??0)} · {t("调整成本")} {money(batch.adjustmentCost??0)} · {t("剩余库存成本")} {money(batch.remainingCost??0)} · {t("已使用占比")} {batch.usedShare===null?"—":`${batch.usedShare}%`}</small></div>)}</details></div><b><small>{t("期间浪费")}</small>{money(row.wastedValue)}</b></div>):<p className="empty">{t("所选范围暂无浪费记录")}</p>}</div></></section>;
+  return <section className="panel cost-ranking-card"><><div className="panel-head cost-card-head"><div><h3>{t("浪费排行")}</h3><p>{t("定位最值得调整采购量或储存方式的对象")}</p></div><div className="cost-tabs" role="tablist">{(["item","category","location"] as const).map(value=><button key={value} type="button" role="tab" aria-selected={view===value} onClick={()=>setView(value)}>{value==="item"?t("按物资"):value==="category"?t("按分类"):t("按地点")}</button>)}</div></div>{controls}{status}<div className="cost-ranking">{!data?null:rankingRows.length?rankingRows.map((row,index)=><div key={row.key}><span>{index+1}</span><div>{row.itemId?<button type="button" className="item-link" onClick={()=>onOpenItem(row.itemId!)}>{row.name}</button>:<strong>{row.name}</strong>}<small>{t("涉及批次原始成本")} {money(row.originalCost)}</small><details><summary>{t("查看批次去向")} · {data?.asOf}</summary>{view==="location"&&<p>{t("以下为整批成本，同一批次可能涉及多个地点，请勿跨地点相加")}</p>}{row.batches.map(batch=><div className="cost-batch-detail" key={batch.batchId}><strong>{batch.itemName} · {batch.receivedDate}</strong><small>{t("原始成本")} {money(batch.originalCost??0)} · {t("已使用成本")} {money(batch.usedCost??0)} · {t("累计浪费成本")} {money(batch.wastedCost??0)} · {t("调整成本")} {money(batch.adjustmentCost??0)} · {t("剩余库存成本")} {money(batch.remainingCost??0)} · {t("已使用占比")} {batch.usedShare===null?"—":`${batch.usedShare}%`}</small></div>)}</details></div><b><small>{t("期间浪费")}</small>{money(row.wastedValue)}</b></div>):<p className="empty">{t("所选范围暂无浪费记录")}</p>}</div></></section>;
 }
 
 function InventoryExpiryRisk({homeId,revision,onOpenItem}:InventoryReportProps){
@@ -172,7 +184,7 @@ function InventoryExpiryRisk({homeId,revision,onOpenItem}:InventoryReportProps){
   const report=useReport<InventoryCostReport>(`/api/v1/homes/${homeId}/inventory-cost-analysis?start=${month}&end=${month}`,revision);
   const data=report.data;
   const money=(value:number)=>new Intl.NumberFormat(i18n.language,{style:"currency",currency:data?.currency??"CNY"}).format(value);
-  return <section className="panel cost-risk-card"><InventoryReportStatus valid report={report}/>{data&&<><div className="cost-card-head"><div><h3>{t("未来30天临期风险")}</h3><p>{data.expiryRisk.asOf} — {data.expiryRisk.through}</p></div><strong>{money(data.expiryRisk.value)}</strong></div>{data.expiryRisk.unknownCostBatchCount>0&&<p className="cost-risk-note">{t("另有未知成本批次")} {data.expiryRisk.unknownCostBatchCount}</p>}<div className="cost-risk-list">{data.expiryRisk.items.length?data.expiryRisk.items.slice(0,8).map(item=><div key={item.batchId}><div><button type="button" className="item-link" onClick={()=>onOpenItem(item.itemId)}>{item.itemName}</button><small>{item.expiryDate} · {item.quantity} {item.unit}</small></div><b>{item.value===null?t("未知"):money(item.value)}</b></div>):<p className="empty">{t("未来30天暂无临期库存")}</p>}</div></>}</section>;
+  return <section className="panel cost-risk-card"><InventoryReportStatus valid report={report}/>{data&&<><div className="panel-head cost-card-head"><div><h3>{t("未来30天临期风险")}</h3><p>{data.expiryRisk.asOf} — {data.expiryRisk.through}</p></div><strong>{money(data.expiryRisk.value)}</strong></div><div className="cost-risk-list">{data.expiryRisk.items.length?data.expiryRisk.items.slice(0,8).map(item=><div key={item.batchId}><div><button type="button" className="item-link" onClick={()=>onOpenItem(item.itemId)}>{item.itemName}</button><small>{item.expiryDate} · {item.quantity} {item.unit}</small></div><b>{item.value===null?t("未知"):money(item.value)}</b></div>):<p className="empty">{t("未来30天暂无临期库存")}</p>}</div></>}</section>;
 }
 
 export function InventoryCostWaste(props:InventoryReportProps){

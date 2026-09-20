@@ -1,15 +1,54 @@
-.cohort-chart-fit .cost-column{flex:1;min-width:0}
-.cohort-chart-fit .cost-stack{width:36px}
-.inventory-cost-section .cost-card-head{min-height:44px;padding:10px 12px}
-.inventory-cost-section .report-controls{gap:6px;padding:8px 12px}
-.inventory-cost-section .report-controls label{font-size:10px}
-.inventory-cost-section .report-presets{gap:2px}
-.inventory-cost-section .report-presets button{padding:4px 7px;font-size:10px}
-.inventory-cost-section .cost-kpis .cost-kpi{min-height:64px;padding:9px 10px}
-.inventory-cost-section .cost-kpis .cost-kpi strong{margin-top:5px;font-size:14px}
-.inventory-cost-section .cost-kpis .cost-kpi small{font-size:9px}
-.inventory-cost-section .cost-chart{height:190px;padding:14px 12px 6px;gap:5px}
-.inventory-cost-section .cost-legend{gap:9px;padding:7px 12px;font-size:9px}
-.inventory-cost-section .cost-chart-card table{min-width:0;width:100%;font-size:10px}
-.inventory-cost-section .cost-chart-card th,.inventory-cost-section .cost-chart-card td{padding:6px 7px;white-space:nowrap}
-.inventory-cost-section .cost-chart-card td small{font-size:9px}
+/* Share finance controls and panel styling; compact only the data rows. */
+.cohort-chart-fit .cost-column { flex: 1; min-width: 0; }
+.cohort-chart-fit .cost-stack { width: min(36px, 65%); }
+.inventory-cost-section .cost-card-head {
+  align-items: center;
+  min-height: 0;
+  padding: 18px 20px;
+}
+.inventory-cost-section .cost-card-head h3 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--aris-navy);
+}
+.inventory-cost-section .cost-card-head p { margin: 0; font-size: 13px; }
+.inventory-cost-section .cost-card-head > strong { font-size: 17px; }
+.inventory-cost-section .cost-kpi { min-height: 64px; padding: 12px 16px; border-top: 0; }
+.inventory-cost-section .cost-kpi strong { margin-top: 5px; font-size: 17px; }
+.inventory-cost-section .cost-kpi small { font-size: 10px; }
+.inventory-cost-section .cost-chart { height: 190px; padding: 14px 16px 6px; gap: 5px; }
+.inventory-cost-section .cost-legend { gap: 12px; padding: 8px 16px; font-size: 10px; }
+.finance-purchases table th,
+.finance-purchases table td,
+.inventory-cost-section .cost-chart-card th,
+.inventory-cost-section .cost-chart-card td { padding: 8px 16px; font-size: 11px; }
+.finance-purchases .item-link { font-size: 11px; padding-top: 2px; padding-bottom: 2px; }
+.finance-purchases .purchase-card { padding: 9px 14px; gap: 4px; }
+.finance-purchases .report-pagination { padding: 8px 16px; }
+.inventory-cost-section .cost-chart-card table { min-width: 600px; width: 100%; }
+.inventory-cost-section .cost-chart-card td { white-space: nowrap; }
+.inventory-cost-section .cost-tabs { border: 0; gap: 4px; flex-wrap: wrap; }
+.inventory-cost-section .cost-tabs button {
+  height: auto;
+  padding: 6px 9px;
+  font-size: 11px;
+  border: 1px solid var(--aris-line);
+}
+.inventory-cost-section .cost-tabs button[aria-selected=true] { border-color: #80cbd0; font-weight: 400; }
+.inventory-cost-section .cost-quality { background: var(--aris-surface-soft); border-color: var(--aris-line); color: var(--aris-ink); font-size: 11px; }
+.inventory-cost-section .cost-ranking small,
+.inventory-cost-section .cost-risk-list small { font-size: 10px; }
+.inventory-cost-section .cost-ranking b > small { font-size: 10px; }
+@media(max-width:620px) {
+  .inventory-cost-section .cost-card-head { padding: 14px; }
+  .inventory-cost-section .cost-card-head:has(.cost-tabs) { align-items: stretch; }
+  .inventory-cost-section .cost-kpi { padding: 10px 12px; }
+  .inventory-cost-section .cost-kpi strong { font-size: 14px; }
+}
+.missing-cost-module{margin:12px;border:1px solid #ead9ae;background:#fffdf6}.missing-cost-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #ead9ae}.missing-cost-head h3{margin:0;font-size:13px;color:#79602a}.missing-cost-head p{margin:3px 0 0;font-size:10px;color:#8d7542}.missing-cost-head>strong{font-size:16px;color:#a43e47}.missing-cost-columns{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#ead9ae}.missing-cost-columns>div{background:#fffdf6}.missing-cost-columns h4{display:flex;justify-content:space-between;margin:0;padding:8px 12px;font-size:10px;color:var(--aris-ink)}.missing-cost-columns h4 small{font-weight:400;color:var(--aris-muted)}.missing-cost-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-top:1px solid #f0e6c8}.missing-cost-row>div{display:grid;gap:2px;min-width:0}.missing-cost-row strong{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.missing-cost-row small,.missing-cost-row>span{font-size:9px;color:var(--aris-muted)}.missing-cost-row>span{color:#a05d67;text-align:right}@media(max-width:700px){.missing-cost-columns{grid-template-columns:1fr}}
+
+.missing-cost-head h3 { font-size: 14px; }
+.missing-cost-head p, .missing-cost-columns h4 { font-size: 11px; }
+.missing-cost-row small, .missing-cost-row > span { font-size: 10px; }
+.missing-cost-row .item-link { text-align: left; font-size: 11px; overflow-wrap: anywhere; }

@@ -277,6 +277,10 @@ test("inventory cost analysis uses historical batch cost and separates waste rea
   assert.deepEqual(result.points,[{label:"2026-09",inbound:28,consumed:4,expired:6,damaged:10,adjustment:2}]);
   assert.equal(result.dataQuality.unknownInboundBatchCount,1);
   assert.equal(result.dataQuality.unknownCostIssueCount,1);
+  const item=db.prepare("SELECT name,base_unit AS unit FROM items WHERE id=?").get(itemId) as {name:string;unit:string};
+  assert.deepEqual(result.dataQuality.unknownInboundBatches,[{batchId:unknown,itemId,itemName:item.name,unit:item.unit,receivedDate:"2026-09-18",quantity:2,reason:"missingCost"}]);
+  const issue=db.prepare("SELECT id FROM stock_transactions WHERE idempotency_key=?").get("cost-unknown-waste:0") as {id:string};
+  assert.deepEqual(result.dataQuality.unknownCostIssues,[{transactionId:issue.id,batchId:unknown,itemId,itemName:item.name,unit:item.unit,occurredDate:"2026-09-18",quantity:1,issueReason:"expired"}]);
   assert.equal(result.waste.byItem[0]?.wastedValue,16);
   assert.equal(result.waste.byItem[0]?.originalCost,28);
   assert.equal(result.waste.byItem[0]?.batches.reduce((sum,batch)=>sum+(batch.usedCost??0),0),4);

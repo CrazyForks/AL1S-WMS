@@ -112,27 +112,29 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
   const fromIso=`${start}T00:00:00.000Z`,untilIso=`${until}T00:00:00.000Z`<cutoff?`${until}T00:00:00.000Z`:cutoff;
   const labelFor=(timestamp:string)=>input.granularity==="day"?timestamp.slice(0,10):timestamp.slice(0,7);
   const points=new Map(labels.map(label=>[label,{label,inbound:0,consumed:0,expired:0,damaged:0,adjustment:0} satisfies CostPoint]));
-  const inboundRows=db.prepare(`SELECT b.id AS batchId,b.received_at AS occurredAt,b.purchase_total_minor AS purchaseTotalMinor,
+  const inboundRows=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS unit,b.received_at AS occurredAt,b.purchase_total_minor AS purchaseTotalMinor,
     COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity
-    FROM stock_batches b WHERE b.home_id=? AND b.received_at>=? AND b.received_at<?`).all(homeId,fromIso,untilIso) as {batchId:string;occurredAt:string;purchaseTotalMinor:number|null;initialQuantity:number}[];
+    FROM stock_batches b JOIN items i ON i.id=b.item_id WHERE b.home_id=? AND b.received_at>=? AND b.received_at<?`).all(homeId,fromIso,untilIso) as {batchId:string;itemId:string;itemName:string;unit:string;occurredAt:string;purchaseTotalMinor:number|null;initialQuantity:number}[];
   let inbound=0,unknownInboundBatchCount=0;
+  const unknownInboundBatches:{batchId:string;itemId:string;itemName:string;unit:string;receivedDate:string;quantity:number;reason:"missingCost"|"missingQuantity"}[]=[];
   for(const row of inboundRows) {
-    if(row.purchaseTotalMinor===null||row.initialQuantity<=0){unknownInboundBatchCount++;continue;}
+    if(row.purchaseTotalMinor===null||row.initialQuantity<=0){unknownInboundBatchCount++;unknownInboundBatches.push({batchId:row.batchId,itemId:row.itemId,itemName:row.itemName,unit:row.unit,receivedDate:row.occurredAt.slice(0,10),quantity:row.initialQuantity,reason:row.purchaseTotalMinor===null?"missingCost":"missingQuantity"});continue;}
     const value=row.purchaseTotalMinor/100;inbound+=value;const point=points.get(labelFor(row.occurredAt));if(point)point.inbound+=value;
   }
-  const issues=db.prepare(`SELECT t.id,t.batch_id AS batchId,t.item_id AS itemId,i.name AS itemName,COALESCE(b.purchase_category,i.category,'其他') AS category,
+  const issues=db.prepare(`SELECT t.id,t.batch_id AS batchId,t.item_id AS itemId,i.name AS itemName,i.base_unit AS unit,COALESCE(b.purchase_category,i.category,'其他') AS category,
     t.location_id AS locationId,COALESCE(l.name,'未指定') AS locationName,t.quantity,t.issue_reason AS issueReason,t.occurred_at AS occurredAt,b.purchase_total_minor AS purchaseTotalMinor,
     COALESCE((SELECT SUM(origin.quantity) FROM stock_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity
     FROM stock_transactions t JOIN stock_batches b ON b.id=t.batch_id JOIN items i ON i.id=t.item_id LEFT JOIN locations l ON l.id=t.location_id
-    WHERE t.home_id=? AND t.type='issue' AND t.issue_reason IN ('used','expired','damaged','adjustment') AND t.occurred_at>=? AND t.occurred_at<?`).all(homeId,fromIso,untilIso) as {id:string;batchId:string;itemId:string;itemName:string;category:string;locationId:string|null;locationName:string;quantity:number;issueReason:"used"|"expired"|"damaged"|"adjustment";occurredAt:string;purchaseTotalMinor:number|null;initialQuantity:number}[];
+    WHERE t.home_id=? AND t.type='issue' AND t.issue_reason IN ('used','expired','damaged','adjustment') AND t.occurred_at>=? AND t.occurred_at<?`).all(homeId,fromIso,untilIso) as {id:string;batchId:string;itemId:string;itemName:string;unit:string;category:string;locationId:string|null;locationName:string;quantity:number;issueReason:"used"|"expired"|"damaged"|"adjustment";occurredAt:string;purchaseTotalMinor:number|null;initialQuantity:number}[];
   const totals={inbound,consumed:0,wasted:0,expired:0,damaged:0,adjustment:0,wasteRate:null as number|null};
   let unknownCostIssueCount=0;
+  const unknownCostIssues:{transactionId:string;batchId:string;itemId:string;itemName:string;unit:string;occurredDate:string;quantity:number;issueReason:"used"|"expired"|"damaged"|"adjustment"}[]=[];
   const wasteByItem=new Map<string,WasteValue&{itemId:string;itemName:string;category:string}>();
   const wasteByCategory=new Map<string,WasteValue&{category:string}>();
   const wasteByLocation=new Map<string,WasteValue&{locationId:string|null;locationName:string}>();
   const addWaste=(target:WasteValue,reason:"expired"|"damaged",batchId:string,value:number)=>{target.batchIds.add(batchId);target.wastedValue+=value;if(reason==="expired")target.expiredValue+=value;else target.damagedValue+=value;};
   for(const row of issues) {
-    if(row.purchaseTotalMinor===null||row.initialQuantity<=0){unknownCostIssueCount++;continue;}
+    if(row.purchaseTotalMinor===null||row.initialQuantity<=0){unknownCostIssueCount++;unknownCostIssues.push({transactionId:row.id,batchId:row.batchId,itemId:row.itemId,itemName:row.itemName,unit:row.unit,occurredDate:row.occurredAt.slice(0,10),quantity:row.quantity,issueReason:row.issueReason});continue;}
     const value=row.purchaseTotalMinor/100/row.initialQuantity*row.quantity;
     const point=points.get(labelFor(row.occurredAt));if(point)point[row.issueReason==="used"?"consumed":row.issueReason]+=value;
     if(row.issueReason==="used")totals.consumed+=value;
@@ -186,7 +188,7 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
       originalCost:rounded(related.reduce((sum,batch)=>sum+(batch.originalCost??0),0)),batches:related};
   };
 
-  return {granularity:input.granularity,start:input.start,end:input.end,asOf,currency:home.currency,cohorts:{asOf,points:cohortPoints},totals:{...totals,inbound:rounded(totals.inbound),consumed:rounded(totals.consumed),wasted:rounded(totals.wasted),expired:rounded(totals.expired),damaged:rounded(totals.damaged),adjustment:rounded(totals.adjustment)},points:[...points.values()].map(point=>Object.fromEntries(Object.entries(point).map(([key,value])=>[key,typeof value==="number"?rounded(value):value])) as CostPoint),waste:{byItem:[...wasteByItem.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue),byCategory:[...wasteByCategory.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue),byLocation:[...wasteByLocation.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue)},expiryRisk:{asOf:today,through:riskThrough,value:rounded(riskValue),unknownCostBatchCount:unknownRiskBatchCount,items:riskItems},dataQuality:{unknownInboundBatchCount,unknownCostIssueCount}};
+  return {granularity:input.granularity,start:input.start,end:input.end,asOf,currency:home.currency,cohorts:{asOf,points:cohortPoints},totals:{...totals,inbound:rounded(totals.inbound),consumed:rounded(totals.consumed),wasted:rounded(totals.wasted),expired:rounded(totals.expired),damaged:rounded(totals.damaged),adjustment:rounded(totals.adjustment)},points:[...points.values()].map(point=>Object.fromEntries(Object.entries(point).map(([key,value])=>[key,typeof value==="number"?rounded(value):value])) as CostPoint),waste:{byItem:[...wasteByItem.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue),byCategory:[...wasteByCategory.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue),byLocation:[...wasteByLocation.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue)},expiryRisk:{asOf:today,through:riskThrough,value:rounded(riskValue),unknownCostBatchCount:unknownRiskBatchCount,items:riskItems},dataQuality:{unknownInboundBatchCount,unknownCostIssueCount,unknownInboundBatches,unknownCostIssues}};
 }
 function dailyFinancialTrend(db:DatabaseSync,homeId:string,start:string,end:string) {
   const from=dateSchema.parse(start),to=dateSchema.parse(end);
