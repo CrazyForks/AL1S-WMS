@@ -6,6 +6,7 @@ import {spendingTrendScale} from "./spendingTrend.js";
 import { categoryLabel, channelLabel } from "./systemLabels.js";
 import "./financeReports.css";
 import {groupCohorts,type CohortPoint,type CohortGrain} from "./inventoryCohorts.js";
+import "./inventoryCompact.css";
 
 function useReport<T>(url:string,revision:unknown){
   const [result,setResult]=useState<{url:string;data:T}|null>(null);
@@ -141,7 +142,7 @@ function InventoryCohorts({homeId,revision}:InventoryReportProps){
     {valid&&data&&<>
       <div className="cost-kpis">{([["originalCost","原始成本"],...segments] as const).map(([key,label])=><div className="cost-kpi" key={key}><small>{t(label)}</small><strong>{money(points.reduce((total,point)=>total+point[key],0))}</strong></div>)}</div>
       {unknown>0&&<div className="cost-quality">{t("缺少成本的入库批次")} {unknown}</div>}
-      <div className="cost-chart-scroll"><div className="cost-chart cohort-chart" style={{width:Math.max(1,points.length)*64+32}}>{points.map(point=>{
+      <div className="cost-chart-scroll"><div className={`cost-chart cohort-chart ${points.length<=12?"cohort-chart-fit":"cohort-chart-scrollable"}`} style={{width:points.length<=12?"100%":`${points.length*64+32}px`}}>{points.map(point=>{
         const share=point.usedShare===null?"—":`${point.usedShare}%`;
         const description=[point.label,`${t("原始成本")} ${money(point.originalCost)}`,...segments.map(([key,label])=>`${t(label)} ${money(point[key])}`),`${t("已使用占比")} ${share}`].join("\n");
         return <div className="cost-column" key={point.label} tabIndex={0} role="img" aria-label={description} title={description}><div><div className="cost-stack" style={{height:`${percent?(point.originalCost>0?100:0):point.originalCost/max*100}%`}}>{segments.map(([key,label])=><span key={key} className={key} title={`${t(label)} ${money(point[key])}`} style={{height:`${point.originalCost>0?point[key]/point.originalCost*100:0}%`}}/>)}</div></div><small>{point.label}</small></div>;
