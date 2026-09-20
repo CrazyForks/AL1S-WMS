@@ -17,11 +17,11 @@ function useReport<T>(url:string,revision:unknown){
   useEffect(()=>{
     if(!url){setLoading(false);return;}
     const controller=new AbortController();
-    setLoading(true);setError("");setResult(null);
+    setLoading(true);setError("");
     apiFetch(url,{signal:controller.signal}).then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.message||String(response.status));return body as T;}).then(data=>{if(!controller.signal.aborted)setResult({url,data});}).catch(error=>{if(!controller.signal.aborted)setError(String(error.message));}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return ()=>controller.abort();
   },[url,revision,retry]);
-  return {data:result?.url===url?result.data:null,error,loading,retry:()=>setRetry(value=>value+1)};
+  return {data:result?.url===url?result.data:null,error,loading:loading&&result?.url!==url,retry:()=>setRetry(value=>value+1)};
 }
 const endOfMonth=(month:string)=>new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),0)).toISOString().slice(0,10);
 const shiftDay=(date:string,offset:number)=>{const value=new Date(`${date}T00:00:00.000Z`);value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);};
