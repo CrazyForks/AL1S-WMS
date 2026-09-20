@@ -764,6 +764,9 @@ export function App() {
   );
   const [receiveShoppingItem, setReceiveShoppingItem] =
     useState<ShoppingItem | null>(null);
+  const [receiveQuantity,setReceiveQuantity]=useState("");
+  const [receiveTotal,setReceiveTotal]=useState("");
+  const receiveUnitPrice=receiveTotal.trim()!==""&&Number.isFinite(Number(receiveTotal))&&Number(receiveTotal)>=0&&Number.isFinite(Number(receiveQuantity))&&Number(receiveQuantity)>0?Number(receiveTotal)/Number(receiveQuantity):null;
   const [receiveOperationKey, setReceiveOperationKey] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const itemCategories = categories.length
@@ -1440,6 +1443,8 @@ export function App() {
   }
   function openShoppingReceipt(item: ShoppingItem) {
     setReceiveOperationKey(newIdempotencyKey());
+    setReceiveQuantity(String(item.quantity));
+    setReceiveTotal(item.estimatedTotal==null?"":String(item.estimatedTotal));
     setReceiveShoppingItem(item);
   }
   async function updateShoppingItem(event: FormEvent<HTMLFormElement>) {
@@ -4156,7 +4161,7 @@ export function App() {
               <div>
                 <h2>{t("采购入库")}</h2>
                 <p className="muted">
-                  {receiveShoppingItem.name} {t("· 建议")}{" "}
+                  {receiveShoppingItem.name} · {t("待采购")}{" "}
                   {receiveShoppingItem.quantity}{" "}
                   {displayUnit(receiveShoppingItem.unit) || t("件")}
                 </p>
@@ -4177,7 +4182,8 @@ export function App() {
                 type="number"
                 min="0"
                 step="any"
-                defaultValue={receiveShoppingItem.quantity}
+                value={receiveQuantity}
+                onChange={event=>setReceiveQuantity(event.target.value)}
                 autoFocus
                 required
               />
@@ -4203,7 +4209,8 @@ export function App() {
                 ))}
               </select>
             </label>
-            <div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" defaultValue={receiveShoppingItem.estimatedTotal??""} placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label></div>
+            <div className="form-row"><label>{t("实付总价")}<input name="totalPrice" type="number" min="0" step="0.01" value={receiveTotal} onChange={event=>setReceiveTotal(event.target.value)} placeholder="0.00"/></label><label>{t("采购日期")}<input name="purchaseDate" type="date" defaultValue={new Date().toISOString().slice(0,10)}/></label></div>
+            <p className="muted" aria-live="polite">{t("折合单价")}：{receiveUnitPrice===null?"—":`${new Intl.NumberFormat(localeForDates(),{style:"currency",currency:financialSummary?.currency??"CNY",maximumFractionDigits:4}).format(receiveUnitPrice)} / ${displayUnit(receiveShoppingItem.unit)||t("件")}`}</p>
             <BatchFields title={t("采购入库批次（可选）")} />
             <button className="primary full" disabled={busy}>
               {busy ? t("入库中…") : t("确认入库")}
