@@ -364,6 +364,8 @@ test("missing costs are unique per batch, include depleted history and disappear
   const history=listMissingCosts(db,homeId,{pageSize:1,page:2}).items[0];
   assert.equal(history.batchId,first);
   assert.equal(history.quantity,4);
+  assert.equal(history.remainingQuantity,0);
+  assert.equal(result.items[0].remainingQuantity,1);
   assert.equal(history.issueCount,2);
   const otherHome=randomUUID();db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(otherHome,"other");
   assert.equal(listMissingCosts(db,otherHome,{}).total,0);

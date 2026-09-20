@@ -324,9 +324,10 @@ export function listMissingCosts(db:DatabaseSync,homeId:string,raw:unknown) {
   const from="FROM stock_batches b JOIN items i ON i.id=b.item_id AND i.home_id=b.home_id WHERE b.home_id=? AND i.active=1 AND b.purchase_total_minor IS NULL";
   const {total}=db.prepare(`SELECT COUNT(*) AS total ${from}`).get(homeId) as {total:number};
   const totalPages=Math.max(1,Math.ceil(total/pageSize)),currentPage=Math.min(page,totalPages);
-  const items=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS unit,b.label,b.received_at AS receivedAt,
+  const items=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS unit,b.label,b.legacy,b.received_at AS receivedAt,
     COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity,
+    COALESCE((SELECT SUM(CASE WHEN t.type='receipt' THEN t.quantity WHEN t.type='issue' THEN -t.quantity ELSE 0 END) FROM stock_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id),0) AS remainingQuantity,
     (SELECT COUNT(*) FROM stock_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id AND t.type='issue' AND t.idempotency_key NOT LIKE 'event:%') AS issueCount
-    ${from} ORDER BY b.received_at DESC,b.id LIMIT ? OFFSET ?`).all(homeId,pageSize,(currentPage-1)*pageSize) as {batchId:string;itemId:string;itemName:string;unit:string;label:string|null;receivedAt:string;quantity:number;issueCount:number}[];
+    ${from} ORDER BY b.received_at DESC,b.id LIMIT ? OFFSET ?`).all(homeId,pageSize,(currentPage-1)*pageSize) as {batchId:string;itemId:string;itemName:string;unit:string;label:string|null;receivedAt:string;quantity:number;remainingQuantity:number;legacy:number;issueCount:number}[];
   return {currency:home.currency,total,page:currentPage,totalPages,items};
 }

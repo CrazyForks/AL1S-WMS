@@ -76,3 +76,8 @@
 dialog.missing-cost-dialog { position: fixed; inset: 0; margin: auto; border: 1px solid var(--aris-line); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; color: var(--aris-ink); }
 dialog.missing-cost-dialog::backdrop { background: #17202b66; }
 .missing-cost-dialog .muted { font-size: 12px; }
+
+.cost-dialog-quantities { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+.cost-dialog-quantities dt { font-size: 12px; color: var(--aris-muted); }
+.cost-dialog-quantities dd { margin: 4px 0 0; font-weight: 600; }
+.cost-unit-preview { font-size: 12px; color: var(--aris-blue-dark); }
