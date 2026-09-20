@@ -582,7 +582,6 @@ export const enUS = {
   "剩余库存成本": "Remaining stock cost",
   "已使用占比": "Consumed share of original cost",
   "入库月份": "Receipt month",
-  "出库损耗占比按期间浪费除以正常使用与浪费之和计算，不代表采购批次浪费率": "Waste share divides period waste by period consumption plus waste; it does not measure waste of purchases made in that period.",
   "涉及批次原始成本": "Original cost of affected batches",
   "查看批次去向": "View batch outcomes",
   "以下为整批成本，同一批次可能涉及多个地点，请勿跨地点相加": "These are whole-batch costs. A batch may span multiple locations; do not add these costs across locations.",
