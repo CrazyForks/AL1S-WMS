@@ -22,8 +22,8 @@
 .finance-purchases table th,
 .finance-purchases table td,
 .inventory-cost-section .cost-chart-card th,
-.inventory-cost-section .cost-chart-card td { padding: 8px 16px; font-size: 11px; }
-.finance-purchases .item-link { font-size: 11px; padding-top: 2px; padding-bottom: 2px; }
+.inventory-cost-section .cost-chart-card td { padding: 8px 16px; font-size: 12px; }
+.finance-purchases .item-link { font-size: 12px; padding-top: 2px; padding-bottom: 2px; }
 .finance-purchases .purchase-card { padding: 9px 14px; gap: 4px; }
 .finance-purchases .report-pagination { padding: 8px 16px; }
 .inventory-cost-section .cost-chart-card table { min-width: 600px; width: 100%; }
