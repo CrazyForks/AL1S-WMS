@@ -262,6 +262,9 @@ test("inventory cost analysis uses historical batch cost and separates waste rea
   assert.equal(result.dataQuality.unknownInboundBatchCount,1);
   assert.equal(result.dataQuality.unknownCostIssueCount,1);
   assert.equal(result.waste.byItem[0]?.wastedValue,16);
+  assert.equal(result.waste.byItem[0]?.originalCost,28);
+  assert.equal(result.waste.byItem[0]?.usedCost,4);
+  assert.equal(result.waste.byItem[0]?.utilizationRate,20);
   assert.equal(result.waste.byCategory[0]?.category,"饮品");
   assert.equal(result.waste.byLocation[0]?.locationId,locationId);
   assert.equal(result.waste.completelyUnusedQuantity,4);
