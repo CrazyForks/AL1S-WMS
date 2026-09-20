@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState,type FormEvent} from "react";
+import {useEffect,useLayoutEffect,useRef,useState,type FormEvent} from "react";
 import {useTranslation} from "react-i18next";
 import {apiFetch} from "./i18n/apiFetch.js";
 import {displayUnit} from "./i18n/index.js";
@@ -10,8 +10,21 @@ function CostDialog({homeId,batch,currency,onClose,onSaved}:{homeId:string;batch
   const {t}=useTranslation();
   const dialog=useRef<HTMLDialogElement>(null);
   const saving=useRef(false);
+  const amountInput=useRef<HTMLInputElement>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState("");
-  useEffect(()=>{const node=dialog.current!;node.showModal();return ()=>node.close();},[]);
+  useLayoutEffect(()=>{
+    const node=dialog.current!;
+    const trigger=document.activeElement instanceof HTMLElement?document.activeElement:null;
+    const {scrollX,scrollY}=window;
+    node.showModal();
+    amountInput.current?.focus({preventScroll:true});
+    // Opening a native dialog must not move the underlying finance page.
+    window.scrollTo({left:scrollX,top:scrollY,behavior:"instant"});
+    return ()=>{
+      node.close();
+      if(trigger?.isConnected)trigger.focus({preventScroll:true});
+    };
+  },[]);
   async function save(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
     if(saving.current)return;
@@ -32,7 +45,7 @@ function CostDialog({homeId,batch,currency,onClose,onSaved}:{homeId:string;batch
     <div className="modal-head"><h2 id="cost-dialog-title">{t("补录成本")}</h2><button type="button" className="close" aria-label={t("关闭")} disabled={busy} onClick={onClose}>×</button></div>
     <p><strong>{batch.itemName}</strong></p><p className="muted">{batch.receivedAt.slice(0,10)} · {batch.label||batch.batchId.slice(0,8)} · {batch.quantity} {displayUnit(batch.unit)}</p>
     <form onSubmit={save}>
-      <label>{t("整批实付总价")} ({currency})<input autoFocus name="totalPrice" type="number" required min="0" max="1000000000" step="0.01" placeholder="0.00" disabled={busy} aria-describedby="cost-dialog-hint"/></label>
+      <label>{t("整批实付总价")} ({currency})<input ref={amountInput} name="totalPrice" type="number" required min="0" max="1000000000" step="0.01" placeholder="0.00" disabled={busy} aria-describedby="cost-dialog-hint"/></label>
       <p id="cost-dialog-hint" className="muted">{t("填写入库时整批的实际金额，非剩余库存金额；免费获得可填 0。")}</p>
       {error&&<p className="setup-error" role="alert">{error}</p>}
       <div className="delete-dialog-actions"><button type="button" className="secondary" disabled={busy} onClick={onClose}>{t("取消")}</button><button type="submit" className="primary" disabled={busy}>{busy?t("保存中…"):t("保存")}</button></div>

@@ -73,6 +73,6 @@
 .missing-cost-entry small { font-size: 11px; color: var(--aris-muted); overflow-wrap: anywhere; }
 .missing-cost-entry button { flex-shrink: 0; }
 .missing-cost-entry button:disabled { opacity: .5; cursor: default; }
-dialog.missing-cost-dialog { border: 1px solid var(--aris-line); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; color: var(--aris-ink); }
+dialog.missing-cost-dialog { position: fixed; inset: 0; margin: auto; border: 1px solid var(--aris-line); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; color: var(--aris-ink); }
 dialog.missing-cost-dialog::backdrop { background: #17202b66; }
 .missing-cost-dialog .muted { font-size: 12px; }
