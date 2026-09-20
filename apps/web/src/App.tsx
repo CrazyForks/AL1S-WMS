@@ -18,7 +18,7 @@ import { BarcodeScanner } from "./BarcodeScanner.js";
 import { ItemCombobox } from "./ItemCombobox.js";
 import { ItemDetail } from "./ItemDetail.js";
 import { categoryLabel, channelLabel } from "./systemLabels.js";
-import { FinanceTrend, FinancePurchases } from "./FinanceReports.js";
+import { FinanceTrend, FinancePurchases, InventoryCostWaste } from "./FinanceReports.js";
 import { adjacentMonth, isPurchaseOverdue } from "./purchaseSchedule.js";
 import { BudgetCategoryPicker, BudgetAllocationEditor, BudgetExecution } from "./BudgetCategories.js";
 import { budgetAllocations, completeBudgetTree, setBudgetAllocation, removeBudgetAllocation, type CategorySpending } from "./budgetTree.js";
@@ -242,7 +242,7 @@ type ShoppingChannel = {
   isSystem: boolean;
   sortOrder: number;
 };
-type FinancialSummary={month:string;currency:string;budgetTotal:number|null;budgetSourceMonth:string|null;budgetMode:"none"|"explicit"|"inherited";spendingTotal:number;estimatedTotal:number;forecastTotal:number;remainingBudget:number|null;variance:number;inventoryValue:number;pricedBatchCount:number;unknownBatchCount:number;categoryBudgets:{category:string;amount:number}[];categorySpending:CategorySpending[];byCategory:{category:string;actual:number;planned:number;budget:number|null}[];byChannel:{channelId:string|null;channelName:string;total:number}[];purchases:{batchId:string;itemId:string;itemName:string;category:string;purchaseDate:string;receivedDate:string;quantity:number;unitPrice:number|null;totalPrice:number;channelName:string;estimatedTotal:number|null;variance:number|null}[];trend:{month:string;actual:number;planned:number;budget:number|null}[];valuation:{byItem:{itemId:string;itemName:string;category:string;quantity:number;unit:string;locations:string[];value:number}[];byCategory:{category:string;value:number}[];byLocation:{locationId:string|null;locationName:string;value:number}[]}};
+type FinancialSummary={month:string;currency:string;budgetTotal:number|null;budgetSourceMonth:string|null;budgetMode:"none"|"explicit"|"inherited";spendingTotal:number;estimatedTotal:number;forecastTotal:number;remainingBudget:number|null;variance:number;categoryBudgets:{category:string;amount:number}[];categorySpending:CategorySpending[];byCategory:{category:string;actual:number;planned:number;budget:number|null}[];byChannel:{channelId:string|null;channelName:string;total:number}[];purchases:{batchId:string;itemId:string;itemName:string;category:string;purchaseDate:string;receivedDate:string;quantity:number;unitPrice:number|null;totalPrice:number;channelName:string;estimatedTotal:number|null;variance:number|null}[];trend:{month:string;actual:number;planned:number;budget:number|null}[]};
 type ApiToken = {
   id: string;
   name: string;
@@ -745,7 +745,6 @@ export function App() {
   const [calendarFinancial,setCalendarFinancial]=useState<FinancialSummary|null>(null);
   const [financeMonth,setFinanceMonth]=useState(() => new Date().toISOString().slice(0,7));
   const [financeDashboard,setFinanceDashboard]=useState<FinancialSummary|null>(null);
-  const [financeValuationView,setFinanceValuationView]=useState<"item"|"category"|"location">("item");
   const [financeSaving,setFinanceSaving]=useState(false);
   const [financeBudgetTotal,setFinanceBudgetTotal]=useState("");
   const [financeBudgetEntries,setFinanceBudgetEntries]=useState<{category:string;amount:string}[]>([]);
@@ -2126,7 +2125,7 @@ export function App() {
                       : activePage === "shopping"
                         ? t("管理自动建议和手动采购项。")
                         : activePage === "finance"
-                          ? t("查看预算、采购支出和库存价值。")
+                          ? t("查看预算、采购支出、库存成本与损耗。")
                         : t("管理家庭、Agent 访问令牌与登录会话。")}
             </p>
           </div>
@@ -2194,6 +2193,7 @@ export function App() {
         )}
         {activePage === "finance" && financeDashboard && (
           <div className="finance-page">
+            <div className="finance-section-title"><div><h2>{t("预算与支出")}</h2><p>{t("安排采购预算，追踪实际支出与待采购计划")}</p></div></div>
             <section className="finance-toolbar">
               <div className="finance-month-nav"><button type="button" className="secondary" aria-label={t("上个月")} onClick={()=>setFinanceMonth(month=>adjacentMonth(month,-1))}><ArrowLeft size={16}/></button><label>{t("统计月份")}<input type="month" value={financeMonth} onChange={event=>{if(event.target.value)setFinanceMonth(event.target.value);}} /></label><button type="button" className="secondary" aria-label={t("下个月")} onClick={()=>setFinanceMonth(month=>adjacentMonth(month,1))}><ArrowRight size={16}/></button></div>
               <span>{t("入库日期决定实际支出归属月份")}</span>
@@ -2217,7 +2217,7 @@ export function App() {
               <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("渠道支出")}</h2><p className="muted">{t("已完成采购")}</p></div></div><div className="bar-list">{financeDashboard.byChannel.length?financeDashboard.byChannel.map(row=>{const max=Math.max(1,...financeDashboard.byChannel.map(item=>item.total));return <div className="bar-row" key={row.channelId??"none"}><span>{channelLabel(row.channelName)}</span><div><i style={{width:`${row.total/max*100}%`}} /></div><b>{formatMoney(row.total,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无渠道支出")}</p>}</div></section>
             </section>
             <FinancePurchases key={getHomeId()} homeId={getHomeId()} revision={financeDashboard} onOpenItem={openItemDetail}/>
-            <section className="panel finance-valuation"><div className="panel-head"><div><h2>{t("库存价值")}</h2><p className="muted">{t("按剩余数量和批次单位成本估值")}</p></div><strong>{formatMoney(financeDashboard.inventoryValue,financeDashboard.currency)}</strong></div><div className="valuation-meta"><span>{t("已计价批次")} {financeDashboard.pricedBatchCount}</span><span>{t("未知成本批次")} {financeDashboard.unknownBatchCount}</span><div className="valuation-switch" role="tablist" aria-label={t("库存价值")}><button type="button" role="tab" aria-selected={financeValuationView==="item"} className={financeValuationView==="item"?"active":""} onClick={()=>setFinanceValuationView("item")}>{t("按物资")}</button><button type="button" role="tab" aria-selected={financeValuationView==="category"} className={financeValuationView==="category"?"active":""} onClick={()=>setFinanceValuationView("category")}>{t("按分类")}</button><button type="button" role="tab" aria-selected={financeValuationView==="location"} className={financeValuationView==="location"?"active":""} onClick={()=>setFinanceValuationView("location")}>{t("按地点")}</button></div></div><div className="valuation-list">{financeValuationView==="item"?financeDashboard.valuation.byItem.map(row=><div className="valuation-row" key={row.itemId}><div><button type="button" className="item-link" onClick={()=>openItemDetail(row.itemId)}>{row.itemName}</button><small>{categoryLabel(row.category)} · {row.quantity} {displayUnit(row.unit)}{row.locations.length?` · ${row.locations.join("、")}`:""}</small></div><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):(financeValuationView==="category"?financeDashboard.valuation.byCategory.map(row=><div className="valuation-row" key={row.category}><strong>{categoryLabel(row.category)}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>):financeDashboard.valuation.byLocation.map(row=><div className="valuation-row" key={row.locationId??"none"}><strong>{row.locationName}</strong><b>{formatMoney(row.value,financeDashboard.currency)}</b></div>))}</div></section>
+            <InventoryCostWaste key={`${getHomeId()}:inventory-cost`} homeId={getHomeId()} revision={financeDashboard} onOpenItem={openItemDetail}/>
           </div>
         )}
         {activePage === "profile" && (

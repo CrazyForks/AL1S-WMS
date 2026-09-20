@@ -4,7 +4,7 @@ import { listItems, listTransactions, listBatches, getHomeOverview } from "./que
 import { atomic, batchDates, batchBalanceQuery, exhaustOpenedConsumable, InventoryError, listOpenedConsumables, moneySchema, reconcileStock, recordItemEvent, recordStock, refreshItemDates, requireStockTarget, transferStock, validateDates } from "./stock.js";
 import { saveShopping, receiveShopping } from "./shopping.js";
 import { lookupBarcode, normalizeBarcode } from "./barcodes.js";
-import { financialDashboard, financialSummary, financialTrend, listPurchaseRecords, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
+import { financialDashboard, financialSummary, financialTrend, inventoryCostAnalysis, listPurchaseRecords, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
 import fastifyStatic from "@fastify/static";
 import {
   createHash,
@@ -385,6 +385,7 @@ app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/overview", async 
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/financial-summary",async request=>financialSummary(db,request.params.homeId,request.query));
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/financial-dashboard",async request=>financialDashboard(db,request.params.homeId,request.query));
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/financial-trend",async request=>financialTrend(db,request.params.homeId,request.query));
+app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/inventory-cost-analysis",async request=>inventoryCostAnalysis(db,request.params.homeId,request.query));
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/purchase-records",async request=>listPurchaseRecords(db,request.params.homeId,request.query));
 app.patch<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/financial-budget",async request=>saveFinancialBudget(db,request.params.homeId,request.body));
 app.get<{Params:{homeId:string;itemId:string}}>("/api/v1/homes/:homeId/items/:itemId/price-history",async request=>itemPriceHistory(db,request.params.homeId,request.params.itemId));

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test, beforeEach, afterEach, mock } from "node:test";
 import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
-import { financialDashboard, financialSummary, financialTrend, listPurchaseRecords, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
+import { financialDashboard, financialSummary, financialTrend, inventoryCostAnalysis, listPurchaseRecords, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
 import { listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
 import { recordStock } from "./stock.js";
@@ -146,7 +146,7 @@ test("category-only budgets persist and descendants share their ancestor budget"
   db.close();
 });
 
-test("batch costs produce price history, spending, budget, and remaining inventory value",()=>{
+test("batch costs produce price history, spending, and budget data",()=>{
   const {db,homeId,locationId,itemId,channelId}=fixture();
   recordStock(db,homeId,"receipt",{itemId,locationId,quantity:10,totalPrice:20,purchaseDate:"2026-09-03",expiryDate:"2027-01-01",channelId,idempotencyKey:"priced"});
   recordStock(db,homeId,"receipt",{itemId,locationId,quantity:5,idempotencyKey:"unknown"});
@@ -156,9 +156,6 @@ test("batch costs produce price history, spending, budget, and remaining invento
   assert.equal(summary.spendingTotal,20);
   assert.equal(summary.estimatedTotal,30);
   assert.equal(summary.variance,-10);
-  assert.equal(summary.inventoryValue,12);
-  assert.equal(summary.pricedBatchCount,1);
-  assert.equal(summary.unknownBatchCount,1);
   assert.equal(summary.byChannel[0].channelName,"京东");
   const history=itemPriceHistory(db,homeId,itemId);
   assert.equal(history.items[0].totalPrice,20);
@@ -225,7 +222,7 @@ test("shopping receipt inherits channel and records actual total on its batch",(
   db.close();
 });
 
-test("financial dashboard combines budgets, plans, purchases, and valuation",()=>{
+test("financial dashboard combines budgets, plans, and purchases",()=>{
   const {db,homeId,locationId,itemId,channelId}=fixture();
   recordStock(db,homeId,"receipt",{itemId,locationId,quantity:4,totalPrice:12,purchaseDate:"2026-09-04",channelId,idempotencyKey:"dashboard-receipt"});
   saveShopping(db,homeId,{itemId,quantity:2,plannedDate:"2026-09-18",estimatedTotal:8});
@@ -237,11 +234,6 @@ test("financial dashboard combines budgets, plans, purchases, and valuation",()=
   assert.equal(dashboard.byCategory[0].budget,20);
   assert.deepEqual(dashboard.byCategory.find(row=>row.category==="食品"),{category:"食品",actual:0,planned:0,budget:5});
   assert.equal(dashboard.purchases[0].variance,null);
-  assert.equal(dashboard.valuation.byItem[0].itemName,"乌龙茶");
-  assert.equal(dashboard.valuation.byItem[0].value,12);
-  assert.deepEqual(dashboard.valuation.byItem[0].locations,["储物柜"]);
-  assert.equal(dashboard.valuation.byCategory[0].category,"饮品");
-  assert.equal(dashboard.valuation.byLocation[0].locationId,locationId);
   assert.equal(dashboard.trend.length,12);
   const inherited=financialDashboard(db,homeId,{month:"2026-10"});
   assert.equal(inherited.budgetTotal,30);
@@ -251,13 +243,32 @@ test("financial dashboard combines budgets, plans, purchases, and valuation",()=
   db.close();
 });
 
-test("inventory valuation lists every location for an item",()=>{
+test("inventory cost analysis uses historical batch cost and separates waste reasons",()=>{
   const {db,homeId,locationId,itemId}=fixture();
-  const secondLocationId=randomUUID();
-  db.prepare("INSERT INTO locations(id,home_id,name) VALUES (?,?,?)").run(secondLocationId,homeId,"客厅储物架");
-  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:4,idempotencyKey:"valuation-first"});
-  recordStock(db,homeId,"receipt",{itemId,locationId:secondLocationId,quantity:2,totalPrice:6,idempotencyKey:"valuation-second"});
-  const valuation=financialDashboard(db,homeId,{month:"2026-09"}).valuation.byItem;
-  assert.deepEqual(valuation,[{itemId,itemName:"乌龙茶",category:"饮品",quantity:3,unit:"瓶",locations:["储物柜","客厅储物架"],value:10}]);
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:10,totalPrice:20,expiryDate:"2026-09-25",idempotencyKey:"cost-first"});
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:4,totalPrice:8,idempotencyKey:"cost-second"});
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:2,idempotencyKey:"cost-unknown"});
+  const batch=(key:string)=>(db.prepare("SELECT batch_id AS id FROM stock_transactions WHERE idempotency_key=?").get(`${key}:0`) as {id:string}).id;
+  const first=batch("cost-first"),second=batch("cost-second"),unknown=batch("cost-unknown");
+  recordStock(db,homeId,"issue",{itemId,locationId,batchId:first,quantity:2,issueReason:"used",idempotencyKey:"cost-used"});
+  recordStock(db,homeId,"issue",{itemId,locationId,batchId:first,quantity:3,issueReason:"expired",idempotencyKey:"cost-expired"});
+  recordStock(db,homeId,"issue",{itemId,locationId,batchId:first,quantity:1,issueReason:"damaged",idempotencyKey:"cost-damaged"});
+  recordStock(db,homeId,"issue",{itemId,locationId,batchId:first,quantity:1,issueReason:"adjustment",idempotencyKey:"cost-adjustment"});
+  recordStock(db,homeId,"issue",{itemId,locationId,batchId:second,quantity:4,issueReason:"damaged",idempotencyKey:"cost-unused-waste"});
+  recordStock(db,homeId,"issue",{itemId,locationId,batchId:unknown,quantity:1,issueReason:"expired",idempotencyKey:"cost-unknown-waste"});
+  const result=inventoryCostAnalysis(db,homeId,{start:"2026-09",end:"2026-09",granularity:"month"});
+  assert.deepEqual(result.totals,{inbound:28,consumed:4,wasted:16,expired:6,damaged:10,adjustment:2,wasteRate:80});
+  assert.deepEqual(result.points,[{label:"2026-09",inbound:28,consumed:4,expired:6,damaged:10,adjustment:2}]);
+  assert.equal(result.dataQuality.unknownInboundBatchCount,1);
+  assert.equal(result.dataQuality.unknownCostIssueCount,1);
+  assert.equal(result.waste.byItem[0]?.wastedValue,16);
+  assert.equal(result.waste.byCategory[0]?.category,"饮品");
+  assert.equal(result.waste.byLocation[0]?.locationId,locationId);
+  assert.equal(result.waste.completelyUnusedQuantity,4);
+  assert.equal(result.waste.partiallyUsedQuantity,4);
+  assert.equal(result.waste.utilizationRate,20);
+  assert.equal(result.expiryRisk.value,6);
+  assert.equal(result.expiryRisk.items[0]?.quantity,3);
+  assert.throws(()=>inventoryCostAnalysis(db,homeId,{start:"2026-10",end:"2026-09",granularity:"month"}));
   db.close();
 });
