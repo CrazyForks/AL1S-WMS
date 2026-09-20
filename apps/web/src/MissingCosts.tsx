@@ -1,3 +1,4 @@
+import {PageSizeSelect} from "./PageSizeSelect.js";
 import {useEffect,useLayoutEffect,useRef,useState,type FormEvent} from "react";
 import {useTranslation} from "react-i18next";
 import {apiFetch} from "./i18n/apiFetch.js";
@@ -59,22 +60,23 @@ function CostDialog({homeId,batch,currency,onClose,onSaved}:{homeId:string;batch
 
 export function MissingCosts({homeId,revision,onSaved}:{homeId:string;revision:unknown;onSaved:()=>void}) {
   const {t}=useTranslation();
+  const [pageSize,setPageSize]=useState(10);
   const [page,setPage]=useState(1),[refresh,setRefresh]=useState(0);
   const [data,setData]=useState<MissingReport|null>(null),[error,setError]=useState("");
   const [loading,setLoading]=useState(true),[editing,setEditing]=useState<MissingBatch|null>(null);
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError("");
-    apiFetch(`/api/v1/homes/${homeId}/missing-costs?page=${page}`,{signal:controller.signal}).then(async response=>{
+    apiFetch(`/api/v1/homes/${homeId}/missing-costs?page=${page}&pageSize=${pageSize}`,{signal:controller.signal}).then(async response=>{
       const body=await response.json();if(!response.ok)throw new Error(body.message||String(response.status));return body as MissingReport;
     }).then(body=>{if(!controller.signal.aborted){setData(body);setLoading(false);}}).catch(error=>{if(!controller.signal.aborted){setError(error.message);setLoading(false);}});
     return ()=>controller.abort();
-  },[homeId,revision,page,refresh]);
+  },[homeId,revision,page,pageSize,refresh]);
   if(!error&&(!data||data.total===0))return null;
   return <section className="panel missing-cost-panel" aria-labelledby="missing-cost-title">
     <div className="panel-head cost-card-head"><div><h3 id="missing-cost-title">{t("成本缺失记录")}</h3><p>{t("按采购批次补录，包含已用完的批次")}</p></div>{data&&<span>{t("待补录 {{count}} 个批次",{count:data.total})}</span>}</div>
     {error?<p className="empty" role="alert">{error} <button type="button" onClick={()=>setRefresh(value=>value+1)}>{t("重试")}</button></p>:<>
       <div className="missing-cost-list" aria-busy={loading}>{data?.items.map(batch=><div className="missing-cost-entry" key={batch.batchId}><div><strong>{batch.itemName}</strong><small>{batch.receivedAt.slice(0,4)===String(new Date().getFullYear())?batch.receivedAt.slice(5,10):batch.receivedAt.slice(0,10)} · {t("入库")} {batch.quantity} {displayUnit(batch.unit)} · {t("剩余")} {batch.remainingQuantity} {displayUnit(batch.unit)}{batch.issueCount>0?` · ${t("出库 {{count}} 笔",{count:batch.issueCount})}`:""}</small>{batch.quantity<=0&&<small>{t("入库数量异常，需先核对库存记录")}</small>}</div><button type="button" className="text-button" disabled={loading||batch.quantity<=0} onClick={()=>setEditing(batch)}>{t("补录成本")}</button></div>)}</div>
-      {data&&data.totalPages>1&&<div className="report-pagination"><span>{data.page} / {data.totalPages}</span><button type="button" disabled={loading||data.page<=1} onClick={()=>setPage(data.page-1)}>{t("上一页")}</button><button type="button" disabled={loading||data.page>=data.totalPages} onClick={()=>setPage(data.page+1)}>{t("下一页")}</button></div>}
+      {data&&<div className="report-pagination"><PageSizeSelect value={pageSize} onChange={size=>{setPageSize(size);setPage(1);}}/><span>{data.page} / {data.totalPages}</span><button type="button" disabled={loading||data.page<=1} onClick={()=>setPage(data.page-1)}>{t("上一页")}</button><button type="button" disabled={loading||data.page>=data.totalPages} onClick={()=>setPage(data.page+1)}>{t("下一页")}</button></div>}
     </>}
     {editing&&data&&<CostDialog homeId={homeId} batch={editing} currency={data.currency} onClose={()=>setEditing(null)} onSaved={()=>{setEditing(null);setData(null);setRefresh(value=>value+1);onSaved();}}/>}
   </section>;

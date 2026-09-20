@@ -43,7 +43,7 @@ function dayAfter(date:string) {
 }
 
 const dateSchema=z.string().date();
-const purchaseFilters=z.object({start:dateSchema,end:dateSchema,page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).strict().refine(value=>value.start<=value.end,{message:"Invalid date range"});
+const purchaseFilters=z.object({start:dateSchema,end:dateSchema,page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(10)}).strict().refine(value=>value.start<=value.end,{message:"Invalid date range"});
 export function listPurchaseRecords(db:DatabaseSync,homeId:string,raw:unknown){
   const input=purchaseFilters.parse(raw);
   const home=requireHome(db,homeId);
@@ -318,7 +318,7 @@ export function itemPriceHistory(db:DatabaseSync,homeId:string,itemId:string) {
 
 
 export function listMissingCosts(db:DatabaseSync,homeId:string,raw:unknown) {
-  const {page,pageSize}=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).strict().parse(raw);
+  const {page,pageSize}=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(10)}).strict().parse(raw);
   const home=db.prepare("SELECT default_currency AS currency FROM homes WHERE id=?").get(homeId) as {currency:string}|undefined;
   if(!home)throw new InventoryError(404,"HOME_NOT_FOUND","error.homeNotFound");
   const from="FROM stock_batches b JOIN items i ON i.id=b.item_id AND i.home_id=b.home_id WHERE b.home_id=? AND i.active=1 AND b.purchase_total_minor IS NULL";

@@ -1,3 +1,4 @@
+import {PageSizeSelect} from "./PageSizeSelect.js";
 import { useEffect, useState, type FormEvent } from "react";
 import i18n, { displayUnit, localeForDates } from "./i18n/index.js";
 import { apiFetch } from "./i18n/apiFetch.js";
@@ -35,6 +36,7 @@ export function Batches({
   onClose: () => void;
   onChange: () => void;
 }) {
+  const [pageSize,setPageSize]=useState(10);
   const [rows, setRows] = useState<Batch[]>([]),
     [page, setPage] = useState(1),
     [total, setTotal] = useState(0),
@@ -49,7 +51,7 @@ export function Batches({
     const controller = new AbortController();
     setError("");
     apiFetch(
-      `/api/v1/homes/${homeId}/batches?itemId=${item.id}&includeEmpty=${includeEmpty}&limit=10&offset=${(page - 1) * 10}`,
+      `/api/v1/homes/${homeId}/batches?itemId=${item.id}&includeEmpty=${includeEmpty}&limit=${pageSize}&offset=${(page - 1) * pageSize}`,
       { signal: controller.signal },
     )
       .then(async (response) => {
@@ -64,7 +66,7 @@ export function Batches({
         if (error.name !== "AbortError") setError(error.message);
       });
     return () => controller.abort();
-  }, [homeId, item.id, page, includeEmpty, revision]);
+  }, [homeId, item.id, page, pageSize, includeEmpty, revision]);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!edit || busy) return;
@@ -225,7 +227,7 @@ export function Batches({
               </table>
               {!rows.length && <p className="empty">{t("暂无批次")}</p>}
             </div>
-            <div className="pagination">
+            <div className="pagination"><PageSizeSelect value={pageSize} onChange={size=>{setPageSize(size);setPage(1);}}/>
               <span>
                 {t("共")}
                 {total} {t("条")}
@@ -234,10 +236,10 @@ export function Batches({
                 {t("上一页")}
               </button>
               <span>
-                {page} / {Math.max(1, Math.ceil(total / 10))}
+                {page} / {Math.max(1, Math.ceil(total / pageSize))}
               </span>
               <button
-                disabled={page * 10 >= total}
+                disabled={page * pageSize >= total}
                 onClick={() => setPage(page + 1)}
               >
                 {t("下一页")}

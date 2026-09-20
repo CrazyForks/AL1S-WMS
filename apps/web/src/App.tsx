@@ -1,3 +1,4 @@
+import {PageSizeSelect} from "./PageSizeSelect.js";
 import { MaterialIcon, IconPicker, itemIconFor } from "./Icons.js";
 import "./treeDrag.css";
 import i18n, {
@@ -352,9 +353,9 @@ async function getLocations() {
   if (!response.ok) throw new Error(t("无法加载地点"));
   return response.json() as Promise<Location[]>;
 }
-async function getTransactions(page = 1, snapshotAt = "") {
+async function getTransactions(page = 1, snapshotAt = "", pageSize = 10) {
   const response = await apiFetch(
-    `/api/v1/homes/${getHomeId()}/transactions?limit=10&offset=${(page - 1) * 10}${snapshotAt ? `&snapshotAt=${encodeURIComponent(snapshotAt)}` : ""}`,
+    `/api/v1/homes/${getHomeId()}/transactions?limit=${pageSize}&offset=${(page - 1) * pageSize}${snapshotAt ? `&snapshotAt=${encodeURIComponent(snapshotAt)}` : ""}`,
   );
   if (!response.ok) throw new Error(t("无法加载变动记录"));
   return response.json() as Promise<TransactionPage>;
@@ -686,6 +687,8 @@ export function App() {
   const [showHomeIssuePicker,setShowHomeIssuePicker]=useState(false);
   const [homeIssueQuery,setHomeIssueQuery]=useState("");
   const [page, setPage] = useState(1);
+  const [pageSize,setPageSize]=useState(10);
+  const [transactionPageSize,setTransactionPageSize]=useState(10);
   const [locationFilter, setLocationFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [stockStatusFilter, setStockStatusFilter] = useState("");
@@ -817,7 +820,7 @@ export function App() {
     const name = shoppingChannels.find((channel) => channel.id === item.channelId)?.name;
     return name ? channelLabel(name) : t("未指定");
   };
-  const transactionPageCount = Math.max(1, Math.ceil(transactionTotal / 10));
+  const transactionPageCount = Math.max(1, Math.ceil(transactionTotal / transactionPageSize));
   const pagedTransactions = transactions;
   useEffect(() => {
     if (transactionPage > transactionPageCount)
@@ -828,6 +831,7 @@ export function App() {
     getTransactions(
       transactionPage,
       transactionPage === 1 ? "" : transactionSnapshot,
+      transactionPageSize,
     )
       .then((next) => {
         setTransactions(next.items);
@@ -835,7 +839,7 @@ export function App() {
         if (transactionPage === 1) setTransactionSnapshot(next.snapshotAt);
       })
       .catch((error) => setNotice(error.message));
-  }, [authenticated, homeReady, transactionPage]);
+  }, [authenticated, homeReady, transactionPage, transactionPageSize]);
 
   const load = () =>
     Promise.all([
@@ -846,6 +850,7 @@ export function App() {
       getTransactions(
         transactionPage,
         transactionPage === 1 ? "" : transactionSnapshot,
+        transactionPageSize,
       ),
       getShoppingList(),
       getCategories(),
@@ -1097,10 +1102,10 @@ export function App() {
       activeI18n.resolvedLanguage,
     ],
   );
-  const pageCount = Math.max(1, Math.ceil(filtered.length / 10));
-  const pagedItems = filtered.slice((page - 1) * 10, page * 10);
-  const pageStart = filtered.length ? (page - 1) * 10 + 1 : 0;
-  const pageEnd = Math.min(page * 10, filtered.length);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pagedItems = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const pageStart = filtered.length ? (page - 1) * pageSize + 1 : 0;
+  const pageEnd = Math.min(page * pageSize, filtered.length);
   useEffect(() => {
     setPage(1);
   }, [query, locationFilter, categoryFilter, stockStatusFilter, expiryFilter, inventorySort]);
@@ -2985,11 +2990,11 @@ export function App() {
                       ))}
                     </div>
                   )}
-                  {transactionPageCount > 1 && (
-                    <div className="pagination">
+                  {transactionTotal > 0 && (
+                    <div className="pagination"><PageSizeSelect value={transactionPageSize} onChange={size=>{setTransactionPageSize(size);setTransactionPage(1);}}/>
                       <span>
-                        {(transactionPage - 1) * 10 + 1}–
-                        {Math.min(transactionPage * 10, transactionTotal)}{" "}
+                        {(transactionPage - 1) * transactionPageSize + 1}–
+                        {Math.min(transactionPage * transactionPageSize, transactionTotal)}{" "}
                         {t("/ 共")} {transactionTotal} {t("条")}
                       </span>
                       <button
@@ -3424,7 +3429,7 @@ export function App() {
                 </table>
               </div>
               {filtered.length > 0 && (
-                <div className="pagination">
+                <div className="pagination"><PageSizeSelect value={pageSize} onChange={size=>{setPageSize(size);setPage(1);}}/>
                   <span>
                     {pageStart}–{pageEnd} {t("/ 共")}
                     {filtered.length} {t("项")}
@@ -3476,11 +3481,11 @@ export function App() {
                 ))}
               </div>
             )}
-            {transactionPageCount > 1 && (
-              <div className="pagination">
+            {transactionTotal > 0 && (
+              <div className="pagination"><PageSizeSelect value={transactionPageSize} onChange={size=>{setTransactionPageSize(size);setTransactionPage(1);}}/>
                 <span>
-                  {(transactionPage - 1) * 10 + 1}–
-                  {Math.min(transactionPage * 10, transactionTotal)} {t("/ 共")}{" "}
+                  {(transactionPage - 1) * transactionPageSize + 1}–
+                  {Math.min(transactionPage * transactionPageSize, transactionTotal)} {t("/ 共")}{" "}
                   {transactionTotal} {t("条")}
                 </span>
                 <button
