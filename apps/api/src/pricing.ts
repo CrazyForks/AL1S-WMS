@@ -87,14 +87,16 @@ export function financialTrend(db:DatabaseSync,homeId:string,raw:unknown){
   return {granularity:"month",start,end,currency:home.currency,current,previous:comparison(previous),yearAgo:comparison(yearAgo),points};
 }
 
-const costAnalysisFilters=z.object({start:z.string(),end:z.string(),granularity:z.enum(["month","day"]).default("month")}).strict();
+const costAnalysisFilters=z.object({start:z.string(),end:z.string(),granularity:z.enum(["month","day"]).default("month"),asOf:z.string().date().optional()}).strict();
 type CostPoint={label:string;inbound:number;consumed:number;expired:number;damaged:number;adjustment:number};
-type WasteValue={originalCost:number;usedCost:number;wastedValue:number;expiredValue:number;damagedValue:number;wastedQuantity:number;utilizationRate:number|null};
+type WasteValue={wastedValue:number;expiredValue:number;damagedValue:number;batchIds:Set<string>};
 const rounded=(value:number)=>Math.round(value*100)/100;
 
 export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown) {
   const input=costAnalysisFilters.parse(raw);
   const home=requireHome(db,homeId);
+  const asOf=input.asOf??new Date().toISOString().slice(0,10);
+  const cutoff=`${dayAfter(asOf)}T00:00:00.000Z`;
   let start:string,end:string,until:string,labels:string[];
   if(input.granularity==="day") {
     start=dateSchema.parse(input.start);end=dateSchema.parse(input.end);
@@ -107,7 +109,7 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
     if(months<1||months>36)throw new InventoryError(400,"INVALID_COST_RANGE","error.validation");
     start=`${startMonth}-01`;end=monthEnd(endMonth);until=`${shiftMonth(endMonth,1)}-01`;labels=Array.from({length:months},(_,index)=>shiftMonth(startMonth,index));
   }
-  const fromIso=`${start}T00:00:00.000Z`,untilIso=`${until}T00:00:00.000Z`;
+  const fromIso=`${start}T00:00:00.000Z`,untilIso=`${until}T00:00:00.000Z`<cutoff?`${until}T00:00:00.000Z`:cutoff;
   const labelFor=(timestamp:string)=>input.granularity==="day"?timestamp.slice(0,10):timestamp.slice(0,7);
   const points=new Map(labels.map(label=>[label,{label,inbound:0,consumed:0,expired:0,damaged:0,adjustment:0} satisfies CostPoint]));
   const inboundRows=db.prepare(`SELECT b.id AS batchId,b.received_at AS occurredAt,b.purchase_total_minor AS purchaseTotalMinor,
@@ -125,14 +127,10 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
     WHERE t.home_id=? AND t.type='issue' AND t.issue_reason IN ('used','expired','damaged','adjustment') AND t.occurred_at>=? AND t.occurred_at<?`).all(homeId,fromIso,untilIso) as {id:string;batchId:string;itemId:string;itemName:string;category:string;locationId:string|null;locationName:string;quantity:number;issueReason:"used"|"expired"|"damaged"|"adjustment";occurredAt:string;purchaseTotalMinor:number|null;initialQuantity:number}[];
   const totals={inbound,consumed:0,wasted:0,expired:0,damaged:0,adjustment:0,wasteRate:null as number|null};
   let unknownCostIssueCount=0;
-  const affectedBatchIds=new Set<string>();
   const wasteByItem=new Map<string,WasteValue&{itemId:string;itemName:string;category:string}>();
   const wasteByCategory=new Map<string,WasteValue&{category:string}>();
   const wasteByLocation=new Map<string,WasteValue&{locationId:string|null;locationName:string}>();
-  const currentWasteByBatch=new Map<string,number>();
-  const wasteLocationsByBatch=new Map<string,Map<string,{locationId:string|null;locationName:string;quantity:number}>>();
-  const batchMeta=new Map<string,{itemId:string;category:string;purchaseTotalMinor:number;initialQuantity:number}>();
-  const addWaste=(target:WasteValue,reason:"expired"|"damaged",quantity:number,value:number)=>{target.wastedValue+=value;target.wastedQuantity+=quantity;if(reason==="expired")target.expiredValue+=value;else target.damagedValue+=value;};
+  const addWaste=(target:WasteValue,reason:"expired"|"damaged",batchId:string,value:number)=>{target.batchIds.add(batchId);target.wastedValue+=value;if(reason==="expired")target.expiredValue+=value;else target.damagedValue+=value;};
   for(const row of issues) {
     if(row.purchaseTotalMinor===null||row.initialQuantity<=0){unknownCostIssueCount++;continue;}
     const value=row.purchaseTotalMinor/100/row.initialQuantity*row.quantity;
@@ -140,33 +138,37 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
     if(row.issueReason==="used")totals.consumed+=value;
     else if(row.issueReason==="adjustment")totals.adjustment+=value;
     else {
-      totals[row.issueReason]+=value;totals.wasted+=value;affectedBatchIds.add(row.batchId);
-      currentWasteByBatch.set(row.batchId,(currentWasteByBatch.get(row.batchId)??0)+row.quantity);
-      batchMeta.set(row.batchId,{itemId:row.itemId,category:row.category,purchaseTotalMinor:row.purchaseTotalMinor,initialQuantity:row.initialQuantity});
-      const locations=wasteLocationsByBatch.get(row.batchId)??new Map<string,{locationId:string|null;locationName:string;quantity:number}>();
-      const locationKey=row.locationId??"",batchLocation=locations.get(locationKey)??{locationId:row.locationId,locationName:row.locationName,quantity:0};batchLocation.quantity+=row.quantity;locations.set(locationKey,batchLocation);wasteLocationsByBatch.set(row.batchId,locations);
-      const base={originalCost:0,usedCost:0,wastedValue:0,expiredValue:0,damagedValue:0,wastedQuantity:0,utilizationRate:null};
-      const item=wasteByItem.get(row.itemId)??{...base,itemId:row.itemId,itemName:row.itemName,category:row.category};addWaste(item,row.issueReason,row.quantity,value);wasteByItem.set(row.itemId,item);
-      const category=wasteByCategory.get(row.category)??{...base,category:row.category};addWaste(category,row.issueReason,row.quantity,value);wasteByCategory.set(row.category,category);
-      const location=wasteByLocation.get(locationKey)??{...base,locationId:row.locationId,locationName:row.locationName};addWaste(location,row.issueReason,row.quantity,value);wasteByLocation.set(locationKey,location);
+      totals[row.issueReason]+=value;totals.wasted+=value;
+      const locationKey=row.locationId??"";
+      const base=()=>({wastedValue:0,expiredValue:0,damagedValue:0,batchIds:new Set<string>()});
+      const item=wasteByItem.get(row.itemId)??{...base(),itemId:row.itemId,itemName:row.itemName,category:row.category};addWaste(item,row.issueReason,row.batchId,value);wasteByItem.set(row.itemId,item);
+      const category=wasteByCategory.get(row.category)??{...base(),category:row.category};addWaste(category,row.issueReason,row.batchId,value);wasteByCategory.set(row.category,category);
+      const location=wasteByLocation.get(locationKey)??{...base(),locationId:row.locationId,locationName:row.locationName};addWaste(location,row.issueReason,row.batchId,value);wasteByLocation.set(locationKey,location);
     }
   }
-  const classified=new Map<string,{used:number;wasted:number}>();
-  if(affectedBatchIds.size) {
-    const ids=[...affectedBatchIds],marks=ids.map(()=>"?").join(",");
-    const rows=db.prepare(`SELECT batch_id AS batchId,COALESCE(SUM(CASE WHEN issue_reason='used' THEN quantity ELSE 0 END),0) AS used,COALESCE(SUM(CASE WHEN issue_reason IN ('expired','damaged') THEN quantity ELSE 0 END),0) AS wasted FROM stock_transactions WHERE home_id=? AND type='issue' AND occurred_at<? AND batch_id IN (${marks}) GROUP BY batch_id`).all(homeId,untilIso,...ids) as {batchId:string;used:number;wasted:number}[];
-    for(const row of rows)classified.set(row.batchId,row);
-  }
-  let completelyUnusedWaste=0,partiallyUsedWaste=0,usedFromWastedBatches=0,wastedFromWastedBatches=0;
-  for(const batchId of affectedBatchIds){
-    const row=classified.get(batchId)??{used:0,wasted:0},currentWaste=currentWasteByBatch.get(batchId)??0,meta=batchMeta.get(batchId)!;
-    const originalCost=meta.purchaseTotalMinor/100,usedCost=originalCost/meta.initialQuantity*row.used;
-    usedFromWastedBatches+=row.used;wastedFromWastedBatches+=row.wasted;if(row.used>0)partiallyUsedWaste+=currentWaste;else completelyUnusedWaste+=currentWaste;
-    const item=wasteByItem.get(meta.itemId)!;item.originalCost+=originalCost;item.usedCost+=usedCost;
-    const category=wasteByCategory.get(meta.category)!;category.originalCost+=originalCost;category.usedCost+=usedCost;
-    const locations=wasteLocationsByBatch.get(batchId)!;
-    for(const [locationKey,locationShare] of locations){const location=wasteByLocation.get(locationKey)!;const share=currentWaste>0?locationShare.quantity/currentWaste:0;location.originalCost+=originalCost*share;location.usedCost+=usedCost*share;}
-  }
+  // Batch lifetimes use one explicit cutoff, regardless of the selected event window.
+  const batchRows=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,b.received_at AS receivedAt,b.purchase_total_minor AS cost,
+    SUM(CASE WHEN t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%' THEN t.quantity ELSE 0 END) AS initialQuantity,
+    SUM(CASE WHEN t.type='issue' AND t.issue_reason='used' AND t.occurred_at<? THEN t.quantity ELSE 0 END) AS used,
+    SUM(CASE WHEN t.type='issue' AND t.issue_reason IN ('expired','damaged') AND t.occurred_at<? THEN t.quantity ELSE 0 END) AS wasted,
+    SUM(CASE WHEN t.type='issue' AND t.idempotency_key NOT LIKE 'event:%' AND (t.issue_reason='adjustment' OR t.issue_reason IS NULL) AND t.occurred_at<? THEN t.quantity ELSE 0 END) AS adjusted
+    FROM stock_batches b JOIN items i ON i.id=b.item_id JOIN stock_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
+    WHERE b.home_id=? AND b.received_at<? GROUP BY b.id`).all(cutoff,cutoff,cutoff,homeId,cutoff) as {batchId:string;itemId:string;itemName:string;receivedAt:string;cost:number|null;initialQuantity:number;used:number;wasted:number;adjusted:number}[];
+  const batches=batchRows.map(row=>{
+    const originalCost=row.cost===null||row.initialQuantity<=0?null:row.cost/100;
+    const unit=originalCost===null?null:originalCost/row.initialQuantity;
+    return {batchId:row.batchId,itemId:row.itemId,itemName:row.itemName,receivedDate:row.receivedAt.slice(0,10),originalCost,
+      usedCost:unit===null?null:rounded(unit*row.used),wastedCost:unit===null?null:rounded(unit*row.wasted),
+      adjustmentCost:unit===null?null:rounded(unit*row.adjusted),remainingCost:unit===null?null:rounded(originalCost!-rounded(unit*row.used)-rounded(unit*row.wasted)-rounded(unit*row.adjusted)),
+      usedShare:originalCost===null||originalCost===0?null:rounded(row.used/row.initialQuantity*100)};
+  });
+  const cohortPoints=labels.map(label=>{
+    const selected=batches.filter(batch=>labelFor(batch.receivedDate)===label);
+    const known=selected.filter(batch=>batch.originalCost!==null);
+    const sum=(key:"originalCost"|"usedCost"|"wastedCost"|"adjustmentCost"|"remainingCost")=>rounded(known.reduce((total,batch)=>total+(batch[key]??0),0));
+    const originalCost=sum("originalCost"),usedCost=sum("usedCost");
+    return {label,originalCost,usedCost,wastedCost:sum("wastedCost"),adjustmentCost:sum("adjustmentCost"),remainingCost:sum("remainingCost"),unknownCostBatchCount:selected.length-known.length,usedShare:originalCost>0?rounded(usedCost/originalCost*100):null};
+  });
   const denominator=totals.consumed+totals.wasted;totals.wasteRate=denominator>0?rounded(totals.wasted/denominator*100):null;
   const today=new Date().toISOString().slice(0,10),riskThrough=shiftDay(today,30);
   const riskRows=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,b.expiry_date AS expiryDate,i.base_unit AS unit,b.purchase_total_minor AS purchaseTotalMinor,
@@ -176,8 +178,13 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
     WHERE b.home_id=? AND b.expiry_date>=? AND b.expiry_date<=? GROUP BY b.id HAVING quantity>0 ORDER BY b.expiry_date,i.name`).all(homeId,today,riskThrough) as {batchId:string;itemId:string;itemName:string;expiryDate:string;unit:string;purchaseTotalMinor:number|null;initialQuantity:number;quantity:number}[];
   let riskValue=0,unknownRiskBatchCount=0;
   const riskItems=riskRows.map(row=>{const value=row.purchaseTotalMinor===null||row.initialQuantity<=0?null:rounded(row.purchaseTotalMinor/100/row.initialQuantity*row.quantity);if(value===null)unknownRiskBatchCount++;else riskValue+=value;return {...row,value};});
-  const cleanWaste=<T extends WasteValue>(row:T)=>{const denominator=row.usedCost+row.wastedValue;return {...row,originalCost:rounded(row.originalCost),usedCost:rounded(row.usedCost),wastedValue:rounded(row.wastedValue),expiredValue:rounded(row.expiredValue),damagedValue:rounded(row.damagedValue),wastedQuantity:rounded(row.wastedQuantity),utilizationRate:denominator>0?rounded(row.usedCost/denominator*100):null};};
-  return {granularity:input.granularity,start:input.start,end:input.end,currency:home.currency,totals:{...totals,inbound:rounded(totals.inbound),consumed:rounded(totals.consumed),wasted:rounded(totals.wasted),expired:rounded(totals.expired),damaged:rounded(totals.damaged),adjustment:rounded(totals.adjustment)},points:[...points.values()].map(point=>Object.fromEntries(Object.entries(point).map(([key,value])=>[key,typeof value==="number"?rounded(value):value])) as CostPoint),waste:{byItem:[...wasteByItem.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue),byCategory:[...wasteByCategory.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue),byLocation:[...wasteByLocation.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue),completelyUnusedQuantity:rounded(completelyUnusedWaste),partiallyUsedQuantity:rounded(partiallyUsedWaste),utilizationRate:usedFromWastedBatches+wastedFromWastedBatches>0?rounded(usedFromWastedBatches/(usedFromWastedBatches+wastedFromWastedBatches)*100):null},expiryRisk:{asOf:today,through:riskThrough,value:rounded(riskValue),unknownCostBatchCount:unknownRiskBatchCount,items:riskItems},dataQuality:{unknownInboundBatchCount,unknownCostIssueCount}};
+  const cleanWaste=<T extends WasteValue>({batchIds,...row}:T)=>{
+    const related=batches.filter(batch=>batchIds.has(batch.batchId));
+    return {...row,wastedValue:rounded(row.wastedValue),expiredValue:rounded(row.expiredValue),damagedValue:rounded(row.damagedValue),
+      originalCost:rounded(related.reduce((sum,batch)=>sum+(batch.originalCost??0),0)),batches:related};
+  };
+
+  return {granularity:input.granularity,start:input.start,end:input.end,asOf,currency:home.currency,cohorts:{asOf,points:cohortPoints},totals:{...totals,inbound:rounded(totals.inbound),consumed:rounded(totals.consumed),wasted:rounded(totals.wasted),expired:rounded(totals.expired),damaged:rounded(totals.damaged),adjustment:rounded(totals.adjustment)},points:[...points.values()].map(point=>Object.fromEntries(Object.entries(point).map(([key,value])=>[key,typeof value==="number"?rounded(value):value])) as CostPoint),waste:{byItem:[...wasteByItem.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue),byCategory:[...wasteByCategory.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue),byLocation:[...wasteByLocation.values()].map(cleanWaste).sort((a,b)=>b.wastedValue-a.wastedValue)},expiryRisk:{asOf:today,through:riskThrough,value:rounded(riskValue),unknownCostBatchCount:unknownRiskBatchCount,items:riskItems},dataQuality:{unknownInboundBatchCount,unknownCostIssueCount}};
 }
 function dailyFinancialTrend(db:DatabaseSync,homeId:string,start:string,end:string) {
   const from=dateSchema.parse(start),to=dateSchema.parse(end);

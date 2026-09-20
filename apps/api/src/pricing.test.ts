@@ -5,7 +5,7 @@ import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
 import { financialDashboard, financialSummary, financialTrend, inventoryCostAnalysis, listPurchaseRecords, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
 import { listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
-import { recordStock } from "./stock.js";
+import { recordStock, transferStock } from "./stock.js";
 
 beforeEach(()=>mock.timers.enable({apis:["Date"],now:new Date("2026-09-18T12:00:00Z")}));
 afterEach(()=>mock.timers.reset());
@@ -263,15 +263,64 @@ test("inventory cost analysis uses historical batch cost and separates waste rea
   assert.equal(result.dataQuality.unknownCostIssueCount,1);
   assert.equal(result.waste.byItem[0]?.wastedValue,16);
   assert.equal(result.waste.byItem[0]?.originalCost,28);
-  assert.equal(result.waste.byItem[0]?.usedCost,4);
-  assert.equal(result.waste.byItem[0]?.utilizationRate,20);
+  assert.equal(result.waste.byItem[0]?.batches.reduce((sum,batch)=>sum+(batch.usedCost??0),0),4);
   assert.equal(result.waste.byCategory[0]?.category,"饮品");
   assert.equal(result.waste.byLocation[0]?.locationId,locationId);
-  assert.equal(result.waste.completelyUnusedQuantity,4);
-  assert.equal(result.waste.partiallyUsedQuantity,4);
-  assert.equal(result.waste.utilizationRate,20);
+  assert.equal(result.cohorts.points[0]?.usedShare,14.29);
+  assert.equal(result.cohorts.points[0]?.remainingCost,6);
   assert.equal(result.expiryRisk.value,6);
   assert.equal(result.expiryRisk.items[0]?.quantity,3);
   assert.throws(()=>inventoryCostAnalysis(db,homeId,{start:"2026-10",end:"2026-09",granularity:"month"}));
+  db.close();
+});
+
+
+test("batch cohorts preserve cross-year history, snapshot cutoff and original-cost denominator",()=>{
+  const {db,homeId,itemId,locationId}=fixture();
+  const receipt=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:6,totalPrice:150,idempotencyKey:"cohort-original"});
+  const batchId=receipt.transactions[0].batchId;
+  db.prepare("UPDATE stock_batches SET received_at='2025-09-01T00:00:00.000Z' WHERE id=?").run(batchId);
+  db.prepare("UPDATE stock_transactions SET occurred_at='2025-09-01T00:00:00.000Z' WHERE batch_id=?").run(batchId);
+  for(const [key,date,reason,quantity] of [["drink","2026-02-01","used",2],["old-waste","2026-06-01","expired",1],["new-waste","2026-09-18","damaged",1],["future-use","2026-10-01","used",2]] as const){
+    recordStock(db,homeId,"issue",{itemId,locationId,batchId,quantity,issueReason:reason,idempotencyKey:key});
+    db.prepare("UPDATE stock_transactions SET occurred_at=? WHERE idempotency_key=?").run(`${date}T00:00:00.000Z`,`${key}:0`);
+  }
+  const report=inventoryCostAnalysis(db,homeId,{start:"2026-09",end:"2026-09",asOf:"2026-09-18"});
+  assert.equal(report.totals.inbound,0);
+  assert.equal(report.totals.consumed,0);
+  assert.equal(report.totals.wasted,25);
+  const batch=report.waste.byItem[0].batches[0];
+  assert.equal(batch.originalCost,150);
+  assert.equal(batch.usedCost,50);
+  assert.equal(batch.wastedCost,50);
+  assert.equal(batch.remainingCost,50);
+  assert.equal(batch.usedShare,33.33);
+  const purchased=inventoryCostAnalysis(db,homeId,{start:"2025-09",end:"2025-09",asOf:"2026-09-18"});
+  assert.deepEqual(purchased.cohorts.points[0],{label:"2025-09",originalCost:150,usedCost:50,wastedCost:50,adjustmentCost:0,remainingCost:50,unknownCostBatchCount:0,usedShare:33.33});
+  const earlier=inventoryCostAnalysis(db,homeId,{start:"2025-09",end:"2025-09",asOf:"2026-05-31"});
+  assert.equal(earlier.cohorts.points[0].wastedCost,0);
+  assert.equal(earlier.cohorts.points[0].remainingCost,100);
+  const later=inventoryCostAnalysis(db,homeId,{start:"2025-09",end:"2025-09",asOf:"2026-10-01"});
+  assert.equal(later.cohorts.points[0].remainingCost,0);
+  const otherHome=randomUUID();db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(otherHome,"Other");
+  assert.equal(inventoryCostAnalysis(db,otherHome,{start:"2025-09",end:"2025-09"}).cohorts.points[0].originalCost,0);
+  db.close();
+});
+
+test("transfers do not invent location costs or double-count batch costs",()=>{
+  const {db,homeId,itemId,locationId}=fixture();
+  const target=randomUUID();db.prepare("INSERT INTO locations(id,home_id,name) VALUES (?,?,?)").run(target,homeId,"Other shelf");
+  const receipt=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:6,totalPrice:150,idempotencyKey:"move-original"});
+  const batchId=receipt.transactions[0].batchId;
+  transferStock(db,homeId,{itemId,sourceLocationId:locationId,targetLocationId:target,batchId,quantity:3,idempotencyKey:"move"});
+  for(const location of [locationId,target])recordStock(db,homeId,"issue",{itemId,locationId:location,batchId,quantity:1,issueReason:"expired",idempotencyKey:`waste-${location}`});
+  const report=inventoryCostAnalysis(db,homeId,{start:"2026-09-18",end:"2026-09-18",granularity:"day"});
+  assert.equal(report.totals.inbound,150);
+  assert.equal(report.totals.consumed,0);
+  assert.equal(report.waste.byItem[0].originalCost,150);
+  assert.equal(report.waste.byCategory[0].originalCost,150);
+  assert.deepEqual(report.waste.byLocation.map(row=>row.originalCost),[150,150]);
+  assert.equal(report.cohorts.points[0].remainingCost,100);
+  assert.equal(inventoryCostAnalysis(db,homeId,{start:"2026-09-19",end:"2026-09-19",granularity:"day"}).totals.wasted,0);
   db.close();
 });
