@@ -58,10 +58,16 @@
   .inventory-cost-section .cost-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inventory-cost-section .cost-kpi:last-child { grid-column: auto; }
 }
-.missing-cost-panel { min-width: 0; overflow: hidden; }
+.missing-cost-panel { min-width: 0; overflow: hidden; container-type: inline-size; }
 .missing-cost-panel .panel-head > span { color: var(--aris-muted); font-size: 11px; }
-.missing-cost-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--aris-line); }
-.missing-cost-entry:last-child { border-bottom: 0; }
+.missing-cost-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: var(--aris-line); }
+.missing-cost-entry { display: flex; align-items: center; justify-content: space-between; min-width: 0; gap: 12px; padding: 12px 16px; background: #fff; }
+@container (min-width: 640px) {
+  .missing-cost-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (min-width: 1080px) {
+  .missing-cost-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 .missing-cost-entry > div { min-width: 0; display: grid; gap: 4px; }
 .missing-cost-entry strong { font-size: 12px; overflow-wrap: anywhere; }
 .missing-cost-entry small { font-size: 11px; color: var(--aris-muted); overflow-wrap: anywhere; }
