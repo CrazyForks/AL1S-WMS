@@ -10,6 +10,22 @@ import { recordStock, transferStock } from "./stock.js";
 beforeEach(()=>mock.timers.enable({apis:["Date"],now:new Date("2026-09-18T12:00:00Z")}));
 afterEach(()=>mock.timers.reset());
 
+test("expiry risk excludes exhausted batches while preserving other stock of the same item",()=>{
+  const {db,homeId,itemId,locationId}=fixture();
+  const received=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,expiryDate:"2026-09-27",idempotencyKey:"risk-old"});
+  recordStock(db,homeId,"issue",{itemId,locationId,batchId:received.transactions[0].batchId,quantity:1,idempotencyKey:"risk-empty"});
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:2,idempotencyKey:"risk-undated"});
+  const empty=inventoryCostAnalysis(db,homeId,{start:"2026-09",end:"2026-09"}).expiryRisk;
+  assert.equal(empty.items.length,0);
+  assert.equal(empty.unknownCostBatchCount,0);
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:3,totalPrice:30,expiryDate:"2026-09-27",idempotencyKey:"risk-live"});
+  const live=inventoryCostAnalysis(db,homeId,{start:"2026-09",end:"2026-09"}).expiryRisk;
+  assert.equal(live.items.length,1);
+  assert.equal(live.items[0].quantity,3);
+  assert.equal(live.value,30);
+  db.close();
+});
+
 test("trend ranges compare matching elapsed dates and historical full periods",()=>{
   const {db,homeId,itemId,locationId}=fixture();
   for(const [date,total] of [["2025-09-10",10],["2026-08-10",20],["2026-08-25",100],["2026-09-10",40]] as const){

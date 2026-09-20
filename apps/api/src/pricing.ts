@@ -175,7 +175,9 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
     COALESCE((SELECT SUM(origin.quantity) FROM stock_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity,
     COALESCE(SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END),0) AS quantity
     FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN stock_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
-    WHERE b.home_id=? AND b.expiry_date>=? AND b.expiry_date<=? GROUP BY b.id HAVING quantity>0 ORDER BY b.expiry_date,i.name`).all(homeId,today,riskThrough) as {batchId:string;itemId:string;itemName:string;expiryDate:string;unit:string;purchaseTotalMinor:number|null;initialQuantity:number;quantity:number}[];
+    WHERE b.home_id=? AND b.expiry_date>=? AND b.expiry_date<=? GROUP BY b.id
+    HAVING SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END)>0
+    ORDER BY b.expiry_date,i.name`).all(homeId,today,riskThrough) as {batchId:string;itemId:string;itemName:string;expiryDate:string;unit:string;purchaseTotalMinor:number|null;initialQuantity:number;quantity:number}[];
   let riskValue=0,unknownRiskBatchCount=0;
   const riskItems=riskRows.map(row=>{const value=row.purchaseTotalMinor===null||row.initialQuantity<=0?null:rounded(row.purchaseTotalMinor/100/row.initialQuantity*row.quantity);if(value===null)unknownRiskBatchCount++;else riskValue+=value;return {...row,value};});
   const cleanWaste=<T extends WasteValue>({batchIds,...row}:T)=>{
