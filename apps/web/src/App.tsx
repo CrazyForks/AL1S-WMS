@@ -10,8 +10,8 @@ import i18n, {
 import { apiFetch } from "./i18n/apiFetch.js";
 const t = i18n.t.bind(i18n);
 const unitOptions = ["个","瓶","盒","包","箱","袋","罐","桶","卷","支","根","条","片","张","块","颗","把","双","套","份","克","市斤","千克","毫升","升","厘米","米","其他"] as const;
-function UnitOptions() {
-  return <>{unitOptions.map(unit=><option key={unit} value={unit}>{displayUnit(unit)}</option>)}</>;
+function UnitOptions({current}:{current?:string|null}) {
+  return <>{current&&!unitOptions.some(unit=>unit===current)&&<option value={current}>{displayUnit(current)}</option>}{unitOptions.map(unit=><option key={unit} value={unit}>{displayUnit(unit)}</option>)}</>;
 }
 import { BatchFields } from "./BatchFields.js";
 import { Batches, BatchSelect } from "./Batches.js";
@@ -3698,7 +3698,7 @@ export function App() {
                   required
                   defaultValue={detailItem.baseUnit}
                 >
-                  <UnitOptions />
+                  <UnitOptions current={detailItem.baseUnit} />
                 </select>
                 <small className="form-hint">
                   {t("已有库存流水后不可更改单位")}
@@ -3953,7 +3953,7 @@ export function App() {
                   defaultValue={linkedShoppingItem?.baseUnit || "个"}
                   disabled={Boolean(linkedShoppingItem)}
                 >
-                  <UnitOptions />
+                  <UnitOptions current={linkedShoppingItem?.baseUnit} />
                 </select>
               </label>
             </div>
@@ -4080,7 +4080,7 @@ export function App() {
                   }
                   disabled={Boolean(linkedEditShoppingItem)}
                 >
-                  <UnitOptions />
+                  <UnitOptions current={linkedEditShoppingItem?.baseUnit || editShoppingItem.unit} />
                 </select>
               </label>
             </div>
@@ -4318,7 +4318,7 @@ export function App() {
               <label>
                 {t("单位")}
                 <select name="baseUnit" defaultValue={prefillUnit}>
-                  <UnitOptions />
+                  <UnitOptions current={prefillUnit} />
                 </select>
               </label>
               <label>
