@@ -2217,7 +2217,7 @@ export function App() {
               <section className="panel finance-bars"><div className="panel-head"><div><h2>{t("渠道支出")}</h2><p className="muted">{t("已完成采购")}</p></div></div><div className="bar-list">{financeDashboard.byChannel.length?financeDashboard.byChannel.map(row=>{const max=Math.max(1,...financeDashboard.byChannel.map(item=>item.total));return <div className="bar-row" key={row.channelId??"none"}><span>{channelLabel(row.channelName)}</span><div><i style={{width:`${row.total/max*100}%`}} /></div><b>{formatMoney(row.total,financeDashboard.currency)}</b></div>}):<p className="empty">{t("本月暂无渠道支出")}</p>}</div></section>
             </section>
             <FinancePurchases key={getHomeId()} homeId={getHomeId()} revision={financeDashboard} onOpenItem={openItemDetail}/>
-            <InventoryCostWaste key={`${getHomeId()}:inventory-cost`} homeId={getHomeId()} revision={financeDashboard} onOpenItem={openItemDetail}/>
+            <InventoryCostWaste key={`${getHomeId()}:inventory-cost`} homeId={getHomeId()} revision={financeDashboard} onOpenItem={openItemDetail} onCostsChanged={()=>{void getFinancialSummary(financeMonth).then(setFinanceDashboard).catch(error=>setNotice(error.message));void load();}}/>
           </div>
         )}
         {activePage === "profile" && (

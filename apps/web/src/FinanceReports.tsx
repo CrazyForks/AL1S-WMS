@@ -7,6 +7,7 @@ import { categoryLabel, channelLabel } from "./systemLabels.js";
 import "./financeReports.css";
 import {groupCohorts,type CohortPoint,type CohortGrain} from "./inventoryCohorts.js";
 import "./inventoryCompact.css";
+import {MissingCosts} from "./MissingCosts.js";
 
 function useReport<T>(url:string,revision:unknown){
   const [result,setResult]=useState<{url:string;data:T}|null>(null);
@@ -168,11 +169,12 @@ function InventoryWasteRanking({homeId,revision,onOpenItem}:InventoryReportProps
   return <section className="panel cost-ranking-card"><><div className="panel-head cost-card-head"><div><h3>{t("浪费排行")}</h3><p>{t("定位最值得调整采购量或储存方式的对象")}</p></div><div className="cost-tabs" role="tablist">{(["item","category","location"] as const).map(value=><button key={value} type="button" role="tab" aria-selected={view===value} onClick={()=>setView(value)}>{value==="item"?t("按物资"):value==="category"?t("按分类"):t("按地点")}</button>)}</div></div>{controls}{status}<div className="cost-ranking">{!data?null:rankingRows.length?rankingRows.map((row,index)=><div key={row.key}><span>{index+1}</span><div>{row.itemId?<button type="button" className="item-link" onClick={()=>onOpenItem(row.itemId!)}>{row.name}</button>:<strong>{row.name}</strong>}<small>{t("涉及批次原始成本")} {money(row.originalCost)}</small><details><summary>{t("查看批次去向")} · {data?.asOf}</summary>{view==="location"&&<p>{t("以下为整批成本，同一批次可能涉及多个地点，请勿跨地点相加")}</p>}{row.batches.map(batch=><div className="cost-batch-detail" key={batch.batchId}><strong>{batch.itemName} · {batch.receivedDate}</strong><small>{t("原始成本")} {money(batch.originalCost??0)} · {t("已使用成本")} {money(batch.usedCost??0)} · {t("累计浪费成本")} {money(batch.wastedCost??0)} · {t("调整成本")} {money(batch.adjustmentCost??0)} · {t("剩余库存成本")} {money(batch.remainingCost??0)} · {t("已使用占比")} {batch.usedShare===null?"—":`${batch.usedShare}%`}</small></div>)}</details></div><b><small>{t("期间浪费")}</small>{money(row.wastedValue)}</b></div>):<p className="empty">{t("所选范围暂无浪费记录")}</p>}</div></></section>;
 }
 
-export function InventoryCostWaste(props:InventoryReportProps){
+export function InventoryCostWaste(props:InventoryReportProps&{onCostsChanged:()=>void}){
   const {t}=useTranslation();
   return <section className="inventory-cost-section" aria-labelledby="inventory-cost-title">
     <div className="finance-section-title"><div><h2 id="inventory-cost-title">{t("库存成本与损耗")}</h2><p>{t("看清物资花在哪里、如何被消耗，以及哪些成本最终成为浪费")}</p></div></div>
     <InventoryCohorts {...props}/>
     <InventoryWasteRanking {...props}/>
+    <MissingCosts homeId={props.homeId} revision={props.revision} onSaved={props.onCostsChanged}/>
   </section>;
 }

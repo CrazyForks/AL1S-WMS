@@ -315,3 +315,18 @@ export function itemPriceHistory(db:DatabaseSync,homeId:string,itemId:string) {
   const items=db.prepare(`SELECT b.id AS batchId,b.purchased_date AS purchaseDate,b.channel_id AS channelId,c.name AS channelName,b.purchase_currency AS currency,b.purchase_total_minor/100.0 AS totalPrice,COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity FROM stock_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND b.item_id=? AND b.purchase_total_minor IS NOT NULL ORDER BY b.purchased_date DESC,b.received_at DESC`).all(homeId,itemId) as {batchId:string;purchaseDate:string|null;channelId:string|null;channelName:string|null;currency:string;totalPrice:number;quantity:number}[];
   return {itemId,items:items.map(item=>({...item,unitPrice:item.quantity>0?Math.round(item.totalPrice/item.quantity*100)/100:null}))};
 }
+
+
+export function listMissingCosts(db:DatabaseSync,homeId:string,raw:unknown) {
+  const {page,pageSize}=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).strict().parse(raw);
+  const home=db.prepare("SELECT default_currency AS currency FROM homes WHERE id=?").get(homeId) as {currency:string}|undefined;
+  if(!home)throw new InventoryError(404,"HOME_NOT_FOUND","error.homeNotFound");
+  const from="FROM stock_batches b JOIN items i ON i.id=b.item_id AND i.home_id=b.home_id WHERE b.home_id=? AND i.active=1 AND b.purchase_total_minor IS NULL";
+  const {total}=db.prepare(`SELECT COUNT(*) AS total ${from}`).get(homeId) as {total:number};
+  const totalPages=Math.max(1,Math.ceil(total/pageSize)),currentPage=Math.min(page,totalPages);
+  const items=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS unit,b.label,b.received_at AS receivedAt,
+    COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity,
+    (SELECT COUNT(*) FROM stock_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id AND t.type='issue' AND t.idempotency_key NOT LIKE 'event:%') AS issueCount
+    ${from} ORDER BY b.received_at DESC,b.id LIMIT ? OFFSET ?`).all(homeId,pageSize,(currentPage-1)*pageSize) as {batchId:string;itemId:string;itemName:string;unit:string;label:string|null;receivedAt:string;quantity:number;issueCount:number}[];
+  return {currency:home.currency,total,page:currentPage,totalPages,items};
+}

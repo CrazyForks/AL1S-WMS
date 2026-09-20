@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test, beforeEach, afterEach, mock } from "node:test";
 import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
-import { financialDashboard, financialSummary, financialTrend, inventoryCostAnalysis, listPurchaseRecords, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
+import { financialDashboard, financialSummary, financialTrend, inventoryCostAnalysis, listMissingCosts, listPurchaseRecords, itemPriceHistory, saveFinancialBudget } from "./pricing.js";
 import { listItems } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
 import { recordStock, transferStock } from "./stock.js";
@@ -345,5 +345,34 @@ test("transfers do not invent location costs or double-count batch costs",()=>{
   assert.deepEqual(report.waste.byLocation.map(row=>row.originalCost),[150,150]);
   assert.equal(report.cohorts.points[0].remainingCost,100);
   assert.equal(inventoryCostAnalysis(db,homeId,{start:"2026-09-19",end:"2026-09-19",granularity:"day"}).totals.wasted,0);
+  db.close();
+});
+
+
+test("missing costs are unique per batch, include depleted history and disappear after pricing",()=>{
+  const {db,homeId,locationId,itemId}=fixture();
+  const first=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:4,idempotencyKey:"missing-old"}).transactions[0].batchId!;
+  db.prepare("UPDATE stock_batches SET received_at='2020-01-01T00:00:00.000Z' WHERE id=?").run(first);
+  recordStock(db,homeId,"issue",{itemId,locationId,batchId:first,quantity:2,issueReason:"used",idempotencyKey:"missing-used"});
+  recordStock(db,homeId,"issue",{itemId,locationId,batchId:first,quantity:2,issueReason:"expired",idempotencyKey:"missing-expired"});
+  const second=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,idempotencyKey:"missing-new"}).transactions[0].batchId!;
+  recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,totalPrice:0,idempotencyKey:"free"});
+  const result=listMissingCosts(db,homeId,{pageSize:1});
+  assert.equal(result.total,2);
+  assert.equal(result.totalPages,2);
+  assert.equal(result.items[0].batchId,second);
+  const history=listMissingCosts(db,homeId,{pageSize:1,page:2}).items[0];
+  assert.equal(history.batchId,first);
+  assert.equal(history.quantity,4);
+  assert.equal(history.issueCount,2);
+  const otherHome=randomUUID();db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(otherHome,"other");
+  assert.equal(listMissingCosts(db,otherHome,{}).total,0);
+  db.prepare("UPDATE stock_batches SET purchase_total_minor=2000,purchase_currency='CNY' WHERE id=?").run(first);
+  db.prepare("UPDATE stock_batches SET purchase_total_minor=0,purchase_currency='CNY' WHERE id=?").run(second);
+  const empty=listMissingCosts(db,homeId,{page:2});
+  assert.equal(empty.total,0);assert.equal(empty.page,1);assert.deepEqual(empty.items,[]);
+  const costs=inventoryCostAnalysis(db,homeId,{start:"2026-09",end:"2026-09"});
+  assert.equal(costs.totals.consumed,10);assert.equal(costs.totals.wasted,10);
+  assert.throws(()=>listMissingCosts(db,homeId,{page:0}));
   db.close();
 });
