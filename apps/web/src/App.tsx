@@ -1,265 +1,66 @@
-import {PageSizeSelect} from "./PageSizeSelect.js";
-import { MaterialIcon, IconPicker, itemIconFor } from "./Icons.js";
-import "./treeDrag.css";
-import i18n, {
-  displayUnit,
-  localeForDates,
-  setLocale,
-  type Locale,
-} from "./i18n/index.js";
+import { AvatarIcon,avatarOptions,BrandWordmark,TransactionRow,UnitOptions } from "./AppElements.js";
+import { Login,Setup } from "./AuthScreens.js";
+import { IconPicker,itemIconFor,MaterialIcon } from "./Icons.js";
+import { PageSizeSelect } from "./PageSizeSelect.js";
+import { getCategories,getFinancialSummary,getHomeId,getItems,getLocations,getOpenedConsumables,getShoppingCalendar,getShoppingChannels,getShoppingList,getStock,getTransactions } from "./apiClient.js";
+import { formatDateTime,openedExpiryForDisplay } from "./displayDates.js";
 import { apiFetch } from "./i18n/apiFetch.js";
+import i18n,{
+displayUnit,
+localeForDates,
+setLocale,
+type Locale,
+} from "./i18n/index.js";
+import { itemDetailIdFromUrl,itemDetailSourcePage,pageFromUrl,pagePaths,type Page } from "./navigation.js";
+import "./treeDrag.css";
+import type { ApiToken,Category,CurrentUser,FinancialSummary,Item,Location,LocationScopedItem,OpenedConsumable,ShoppingChannel,ShoppingItem,Stock,Transaction,UserAvatar } from "./webTypes.js";
 const t = i18n.t.bind(i18n);
-const unitOptions = ["个","瓶","盒","包","箱","袋","罐","桶","卷","支","根","条","片","张","块","颗","把","双","套","份","克","市斤","千克","毫升","升","厘米","米","其他"] as const;
-function UnitOptions({current}:{current?:string|null}) {
-  return <>{current&&!unitOptions.some(unit=>unit===current)&&<option value={current}>{displayUnit(current)}</option>}{unitOptions.map(unit=><option key={unit} value={unit}>{displayUnit(unit)}</option>)}</>;
-}
-import { BatchFields } from "./BatchFields.js";
-import { Batches, BatchSelect } from "./Batches.js";
-import { BarcodeScanner } from "./BarcodeScanner.js";
-import { ItemCombobox } from "./ItemCombobox.js";
-import { ItemDetail } from "./ItemDetail.js";
-import { categoryLabel, channelLabel } from "./systemLabels.js";
-import { FinanceTrend, FinancePurchases, InventoryCostWaste } from "./FinanceReports.js";
-import { adjacentMonth, isPurchaseOverdue } from "./purchaseSchedule.js";
-import { BudgetCategoryPicker, BudgetAllocationEditor, BudgetExecution } from "./BudgetCategories.js";
-import { budgetAllocations, completeBudgetTree, setBudgetAllocation, removeBudgetAllocation, type CategorySpending } from "./budgetTree.js";
-import { flattenHierarchy, summarizeHierarchy } from "./hierarchy.js";
+
 import {
-  type CSSProperties,
-  FormEvent,
-  type KeyboardEvent,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
+ArrowLeft,
+ArrowRight,
+CalendarClock,
+Check,
+ChevronDown,
+ChevronRight,
+CircleMinus,
+ClipboardList,
+Package,
+Pencil,
+Plus,
+Search,
+ShoppingCart,
+SlidersHorizontal,
+Trash2,
+TriangleAlert,
+Wallet,
+X
+} from "lucide-react";
+import {
+FormEvent,
+useEffect,
+useLayoutEffect,
+useMemo,
+useRef,
+useState,
+type CSSProperties,
+type KeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ArrowLeft,
-  ArrowRight,
-  CalendarClock,
-  Check,
-  CircleMinus,
-  ChevronDown,
-  ChevronRight,
-  ClipboardList,
-  Package,
-  Pencil,
-  Plus,
-  Search,
-  ShoppingCart,
-  SlidersHorizontal,
-  TriangleAlert,
-  Trash2,
-  UserRound,
-  Venus,
-  Cat,
-  Dog,
-  Bot,
-  Wallet,
-  X,
-} from "lucide-react";
+import { BarcodeScanner } from "./BarcodeScanner.js";
+import { BatchFields } from "./BatchFields.js";
+import { Batches,BatchSelect } from "./Batches.js";
+import { BudgetAllocationEditor,BudgetCategoryPicker,BudgetExecution } from "./BudgetCategories.js";
+import { FinancePurchases,FinanceTrend,InventoryCostWaste } from "./FinanceReports.js";
+import { ItemCombobox } from "./ItemCombobox.js";
+import { ItemDetail } from "./ItemDetail.js";
+import { budgetAllocations,completeBudgetTree,removeBudgetAllocation,setBudgetAllocation } from "./budgetTree.js";
+import { flattenHierarchy,summarizeHierarchy } from "./hierarchy.js";
+import { adjacentMonth,isPurchaseOverdue } from "./purchaseSchedule.js";
+import { categoryLabel,channelLabel } from "./systemLabels.js";
 
-const pagePaths = {
-  home: "/",
-  count: "/count",
-  shopping: "/shopping",
-  finance: "/finance",
-  locations: "/locations",
-  categories: "/categories",
-  profile: "/profile",
-} as const;
-type Page = keyof typeof pagePaths;
-type UserAvatar = "user" | "woman" | "cat" | "dog" | "bot";
-type CurrentUser = { id:string; username:string; role:string; avatar:UserAvatar };
-const avatarOptions: {value:UserAvatar;label:string;Icon:typeof UserRound}[] = [
-  {value:"user",label:"男",Icon:UserRound},
-  {value:"woman",label:"女",Icon:Venus},
-  {value:"cat",label:"猫",Icon:Cat},
-  {value:"dog",label:"狗",Icon:Dog},
-  {value:"bot",label:"机器人",Icon:Bot},
-];
-function AvatarIcon({avatar,size=16}:{avatar?:UserAvatar|null;size?:number}) {
-  const Icon=avatarOptions.find(option=>option.value===avatar)?.Icon??UserRound;
-  return <Icon size={size} aria-hidden="true"/>;
-}
-function pageFromUrl(): Page {
-  const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  return (
-    (Object.keys(pagePaths) as Page[]).find(
-      (page) => pagePaths[page] === path,
-    ) ?? "home"
-  );
-}
-function itemDetailIdFromUrl() {
-  const match=window.location.pathname.match(/^\/items\/([0-9a-f-]{36})\/?$/i);
-  return match?.[1]??null;
-}
-function itemDetailSourcePage():Page|null {
-  const source=window.history.state?.itemDetailSource;
-  return typeof source==="string"&&Object.keys(pagePaths).includes(source)?source as Page:null;
-}
-
-type Item = {
-  icon?: string | null;
-  id: string;
-  homeId: string;
-  sku: string;
-  barcode?: string | null;
-  name: string;
-  category: string;
-  baseUnit: string;
-  consumptionType: "non_consumable" | "consumable" | "long_term_consumable";
-  openedShelfLifeDays?:number|null;
-  reorderPoint: number;
-  reorderQuantity: number;
-  active: boolean;
-  locationName?: string | null;
-  locationId?: string | null;
-  manufacturedDate?: string | null;
-  expiryDate?: string | null;
-  lastUnitPrice?:number|null;
-  latestReceivedAt?:string|null;
-  currency?:string|null;
-};
-type LocationScopedItem=Item&{treeQuantity?:number};
-type Stock = { itemId: string; locationId: string; quantity: number; latestReceivedAt?:string|null };
-type OpenedConsumable={id:string;itemId:string;itemName:string;baseUnit:string;locationId:string;locationName:string|null;batchId:string;batchLabel:string|null;manufacturedDate:string|null;expiryDate:string|null;openedExpiryDate:string|null;quantity:number;openedAt:string};
-function formatDateTime(value:string) {
-  const date=new Date(value);
-  if(!Number.isFinite(date.getTime()))return value;
-  const pad=(part:number)=>String(part).padStart(2,"0");
-  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-function openedExpiryForDisplay(opened: Pick<OpenedConsumable,"openedExpiryDate"|"expiryDate">) {
-  const dates=[opened.openedExpiryDate,opened.expiryDate].filter((value):value is string=>Boolean(value)).map(value=>({value,time:/^\d{4}-\d{2}-\d{2}$/.test(value)?new Date(`${value}T23:59:59`).getTime():new Date(value).getTime()})).filter(value=>Number.isFinite(value.time));
-  if(!dates.length)return null;
-  const earliest=dates.reduce((result,date)=>date.time<result.time?date:result);
-  return /^\d{4}-\d{2}-\d{2}$/.test(earliest.value)?earliest.value:formatDateTime(earliest.value);
-}
-type Location = {
-  id: string;
-  homeId: string;
-  parentId: string | null;
-  name: string;
-  active: boolean;
-};
-type Category = {
-  id: string;
-  parentId: string | null;
-  name: string;
-  isSystem: boolean;
-  active: boolean;
-};
-type Transaction = {
-  itemId: string;
-  id: string;
-  itemName: string;
-  locationName: string;
-  type: "receipt" | "issue" | "delete" | "reclassify" | "move" | "update";
-  quantity: number | null;
-  reason?: string | null;
-  occurredAt: string;
-  batchId?: string | null;
-};
-type TransactionPage = {
-  items: Transaction[];
-  total: number;
-  limit: number;
-  offset: number;
-  hasMore: boolean;
-  nextOffset: number | null;
-  snapshotAt: string;
-};
-function TransactionRow({ transaction,onOpenItem }: { transaction: Transaction;onOpenItem?:(itemId:string)=>void }) {
-  const labels = {
-    receipt: t("入库"),
-    issue: t("领用"),
-    delete: t("删除"),
-    reclassify: t("分类变更"),
-    move: t("位置变更"),
-    update: t("批次变更"),
-  };
-  const stockChange =
-    transaction.type === "receipt" || transaction.type === "issue";
-  return (
-    <div className="log-row">
-      <span
-        className={`log-badge ${transaction.type}`}
-        title={labels[transaction.type]}
-      >
-        {transaction.type === "delete" ? (
-          <Trash2 size={14} />
-        ) : stockChange ? (
-          transaction.type === "receipt" ? (
-            "+"
-          ) : (
-            "−"
-          )
-        ) : (
-          <ArrowRight size={14} />
-        )}
-      </span>
-      <div>
-        {onOpenItem?<button type="button" className="item-link" onClick={()=>onOpenItem(transaction.itemId)}>{transaction.itemName}</button>:<strong>{transaction.itemName}</strong>}
-        <small>
-          {[
-            transaction.locationName,
-            transaction.reason || labels[transaction.type],
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </small>
-      </div>
-      <b className={transaction.type}>
-        {stockChange
-          ? `${transaction.type === "receipt" ? "+" : "−"}${transaction.quantity}`
-          : labels[transaction.type]}
-      </b>
-      <time>
-        {formatDateTime(transaction.occurredAt)}
-      </time>
-    </div>
-  );
-}
-type ShoppingItem = {
-  id: string;
-  itemId?: string | null;
-  name: string;
-  quantity: number;
-  unit?: string | null;
-  category?: string | null;
-  locationId?: string | null;
-  channelId?: string | null;
-  channelName?: string | null;
-  plannedDate?: string | null;
-  estimatedTotal?: number | null;
-  source: "manual" | "automatic";
-  completed: number;
-};
-type ShoppingChannel = {
-  id: string;
-  name: string;
-  isSystem: boolean;
-  sortOrder: number;
-};
-type FinancialSummary={month:string;currency:string;budgetTotal:number|null;budgetSourceMonth:string|null;budgetMode:"none"|"explicit"|"inherited";spendingTotal:number;estimatedTotal:number;forecastTotal:number;remainingBudget:number|null;variance:number;categoryBudgets:{category:string;amount:number}[];categorySpending:CategorySpending[];byCategory:{category:string;actual:number;planned:number;budget:number|null}[];byChannel:{channelId:string|null;channelName:string;total:number}[];purchases:{batchId:string;itemId:string;itemName:string;category:string;purchaseDate:string;receivedDate:string;quantity:number;unitPrice:number|null;totalPrice:number;channelName:string;estimatedTotal:number|null;variance:number|null}[];trend:{month:string;actual:number;planned:number;budget:number|null}[]};
-type ApiToken = {
-  id: string;
-  name: string;
-  homeId?: string | null;
-  homeName?: string | null;
-  tokenPrefix: string;
-  createdAt: string;
-  lastUsedAt?: string | null;
-  revokedAt?: string | null;
-};
-
-const fallbackHomeId = "11111111-1111-4111-8111-111111111111";
 const locationId = "22222222-2222-4222-8222-222222222222";
-const getHomeId = () =>
-  localStorage.getItem("al1s-wms-home-id") ?? fallbackHomeId;
+
 const itemCategories = [
   "食品",
   "饮品",
@@ -276,323 +77,6 @@ const newIdempotencyKey = () =>
   globalThis.crypto?.randomUUID?.() ??
   `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const formatMoney=(value:number,currency="CNY")=>new Intl.NumberFormat(localeForDates(),{style:"currency",currency,minimumFractionDigits:2}).format(value);
-function BrandWordmark() {
-  return (
-    <strong className="brand-wordmark">
-      <b>AL</b>
-      <i>1</i>
-      <b>S</b>
-      <small>WMS</small>
-    </strong>
-  );
-}
-async function getItems() {
-  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/items`);
-  if (!response.ok) throw new Error(t("无法加载物资"));
-  return response.json() as Promise<Item[]>;
-}
-async function getStock() {
-  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/stock`);
-  if (!response.ok) throw new Error(t("无法加载库存"));
-  return response.json() as Promise<Stock[]>;
-}
-async function getOpenedConsumables() {
-  const response=await apiFetch(`/api/v1/homes/${getHomeId()}/opened-consumables`);
-  if(!response.ok)throw new Error(t("无法加载已开封消耗品"));
-  return response.json() as Promise<OpenedConsumable[]>;
-}
-async function getLocations() {
-  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/locations`);
-  if (!response.ok) throw new Error(t("无法加载地点"));
-  return response.json() as Promise<Location[]>;
-}
-async function getTransactions(page = 1, snapshotAt = "", pageSize = 10) {
-  const response = await apiFetch(
-    `/api/v1/homes/${getHomeId()}/transactions?limit=${pageSize}&offset=${(page - 1) * pageSize}${snapshotAt ? `&snapshotAt=${encodeURIComponent(snapshotAt)}` : ""}`,
-  );
-  if (!response.ok) throw new Error(t("无法加载变动记录"));
-  return response.json() as Promise<TransactionPage>;
-}
-async function getShoppingList() {
-  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/shopping-list`);
-  if (!response.ok) throw new Error(t("无法加载采购清单"));
-  return response.json() as Promise<ShoppingItem[]>;
-}
-async function getShoppingChannels() {
-  const response = await apiFetch(
-    `/api/v1/homes/${getHomeId()}/shopping-channels`,
-  );
-  if (!response.ok) throw new Error(t("无法加载购买渠道"));
-  return response.json() as Promise<ShoppingChannel[]>;
-}
-async function getShoppingCalendar(month: string, includeCompleted = false) {
-  const response = await apiFetch(
-    `/api/v1/homes/${getHomeId()}/shopping-calendar?month=${month}&includeCompleted=${includeCompleted}`,
-  );
-  if (!response.ok) throw new Error(t("无法加载采购日历"));
-  return response.json() as Promise<ShoppingItem[]>;
-}
-async function getFinancialSummary(month:string) {
-  const response=await apiFetch(`/api/v1/homes/${getHomeId()}/financial-dashboard?month=${month}`);
-  if(!response.ok)throw new Error(t("无法加载财务数据"));
-  return response.json() as Promise<FinancialSummary>;
-}
-async function getCategories() {
-  const response = await apiFetch(`/api/v1/homes/${getHomeId()}/categories`);
-  if (!response.ok) throw new Error(t("无法加载物资类型"));
-  return response.json() as Promise<Category[]>;
-}
-
-function Setup({
-  onComplete,
-}: {
-  onComplete: (home: { id: string; name: string; icon: string }) => void;
-}) {
-  const [step, setStep] = useState(1);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [homeName, setHomeName] = useState("");
-  const [homeEmoji, setHomeEmoji] = useState("house");
-  const [currency, setCurrency] = useState("CNY");
-  const [locations, setLocations] = useState(["储物间", "厨房"]);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [page, setPage] = useState(1);
-  const canNext =
-    step === 1
-      ? username.trim().length >= 2 && password.length >= 8
-      : step === 2
-        ? homeName.trim().length > 0
-        : locations.some((name) => name.trim());
-  const submit = async () => {
-    if (!canNext) return;
-    if (step < 3) {
-      setStep(step + 1);
-      return;
-    }
-    setBusy(true);
-    setError("");
-    const response = await apiFetch("/api/v1/setup", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        username,
-        password,
-        homeName,
-        homeIcon: homeEmoji,
-        currency,
-        locations,
-      }),
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) {
-      setError(data.message ?? t("初始化失败，请检查输入"));
-      return;
-    }
-    localStorage.setItem("al1s-wms-home-id", data.home.id);
-    localStorage.setItem("al1s-wms-home-emoji", homeEmoji);
-    onComplete(data.home);
-  };
-  return (
-    <div className="setup-shell">
-      <div className="setup-card">
-        <div className="setup-brand">
-          <img className="setup-mascot" src="/alice.gif" alt="Alice" />
-          <div>
-            <BrandWordmark />
-            <span>{t("首次启动设置")}</span>
-          </div>
-        </div>
-        <div className="setup-progress">
-          <span className={step >= 1 ? "active" : ""}>{t("1 账号")}</span>
-          <i />
-          <span className={step >= 2 ? "active" : ""}>{t("2 家庭")}</span>
-          <i />
-          <span className={step >= 3 ? "active" : ""}>{t("3 地点")}</span>
-        </div>
-        {step === 1 && (
-          <div className="setup-step">
-            <p className="eyebrow">{t("建立本地管理员")}</p>
-            <h1>{t("先创建你的账号")}</h1>
-            <p className="muted">
-              {t("账号只保存在这台 AL1S WMS 中，用于管理成员和敏感操作。")}
-            </p>
-            <label>
-              {t("用户名")}
-              <input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoFocus
-              />
-            </label>
-            <label>
-              {t("密码")}
-              <input
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-              />
-            </label>
-          </div>
-        )}
-        {step === 2 && (
-          <div className="setup-step">
-            <p className="eyebrow">{t("建立你的 Home")}</p>
-            <h1>{t("这个家庭怎么称呼？")}</h1>
-            <p className="muted">
-              {t("Home 是物资、成员、地点和预算的共同边界。")}
-            </p>
-            <label>
-              {t("家庭名称")}
-              <input
-                value={homeName}
-                onChange={(event) => setHomeName(event.target.value)}
-                placeholder={t("例如：我们家")}
-                autoFocus
-              />
-            </label>
-            <IconPicker home initial={homeEmoji} onChange={setHomeEmoji} />
-            <label>
-              {t("默认货币")}
-              <select
-                value={currency}
-                onChange={(event) => setCurrency(event.target.value)}
-              >
-                <option value="CNY">{t("人民币（CNY）")}</option>
-                <option value="USD">{t("美元（USD）")}</option>
-              </select>
-            </label>
-          </div>
-        )}
-        {step === 3 && (
-          <div className="setup-step">
-            <p className="eyebrow">{t("整理空间")}</p>
-            <h1>{t("先添加几个存放地点")}</h1>
-            <p className="muted">
-              {t("之后可以继续增加。地点帮助你知道物资放在哪里。")}
-            </p>
-            <div className="location-inputs">
-              {locations.map((name, index) => (
-                <div className="location-input" key={index}>
-                  <input
-                    value={name}
-                    onChange={(event) =>
-                      setLocations(
-                        locations.map((value, i) =>
-                          i === index ? event.target.value : value,
-                        ),
-                      )
-                    }
-                    placeholder={t("例如：储物间")}
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLocations(locations.filter((_, i) => i !== index))
-                    }
-                    aria-label={t("删除地点")}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button
-              className="add-location"
-              type="button"
-              onClick={() => setLocations([...locations, ""])}
-            >
-              {t("＋ 添加另一个地点")}
-            </button>
-          </div>
-        )}
-        {error && <div className="setup-error">{error}</div>}
-        <div className="setup-footer">
-          {step > 1 ? (
-            <button className="secondary" onClick={() => setStep(step - 1)}>
-              {t("上一步")}
-            </button>
-          ) : (
-            <span />
-          )}
-          <button
-            className="primary"
-            disabled={!canNext || busy}
-            onClick={submit}
-          >
-            {busy
-              ? t("创建中…")
-              : step === 3
-                ? t("完成设置，进入 Dashboard")
-                : t("继续")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Login({ onLogin }: { onLogin: () => void }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    const response = await apiFetch("/api/v1/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) {
-      setError(data.message ?? t("登录失败"));
-      return;
-    }
-    onLogin();
-  };
-  return (
-    <div className="setup-shell">
-      <form className="setup-card login-card" onSubmit={submit}>
-        <div className="setup-brand">
-          <img className="setup-mascot" src="/alice.gif" alt="Alice" />
-          <div>
-            <BrandWordmark />
-          </div>
-        </div>
-        <div className="setup-step">
-          <p className="eyebrow">{t("欢迎回来")}</p>
-          <h1>{t("登录")}</h1>
-          <p className="muted">{t("使用初始化时创建的管理员账号继续。")}</p>
-          <label>
-            {t("用户名")}
-            <input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              autoFocus
-            />
-          </label>
-          <label>
-            {t("密码")}
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              type="password"
-            />
-          </label>
-        </div>
-        {error && <div className="setup-error">{error}</div>}
-        <button className="primary full" disabled={busy}>
-          {busy ? t("登录中…") : t("登录")}
-        </button>
-      </form>
-    </div>
-  );
-}
 
 export function App() {
   const { i18n: activeI18n } = useTranslation();
