@@ -249,7 +249,7 @@ export function App() {
   useEffect(()=>{
     const target=stocktakeFromHash();
     const node=target?.kind==="location"?locations.find(row=>row.id===target.id):categories.find(row=>row.id===target?.id);
-    if(target&&node&&activePage===(target.kind==="location"?"locations":"categories")){
+    if(target&&node&&(target.kind==="location"?(activePage==="locations"||activePage==="count"):activePage==="categories")){
       setStocktakeScope(target.kind==="location"?{kind:"location",node:node as Location}:{kind:"category",node:node as Category});
       setExpandedLocations(previous=>({...previous,[target.id]:true}));
     }else setStocktakeScope(null);

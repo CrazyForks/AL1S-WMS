@@ -374,7 +374,7 @@ export function InventoryPage({
                           {stockStatus.label}
                         </span>
                       </td>
-                      <td><LocationLink locationId={item.locationId}>{item.locationName || t("未指定")}</LocationLink></td>
+                      <td><LocationLink page="count" locationId={item.locationId}>{item.locationName || t("未指定")}</LocationLink></td>
                       <td>
                         <div className="date-cell">
                           <span>
@@ -537,7 +537,7 @@ export function InventoryPage({
                     <td>
                       {opened.quantity} {displayUnit(opened.baseUnit)}
                     </td>
-                    <td><LocationLink locationId={opened.locationId}>{opened.locationName || t("未指定")}</LocationLink></td>
+                    <td><LocationLink page="count" locationId={opened.locationId}>{opened.locationName || t("未指定")}</LocationLink></td>
                     <td>{formatDateTime(opened.openedAt)}</td>
                     <td>{openedExpiryForDisplay(opened) || "--"}</td>
                     <td>
