@@ -1,3 +1,5 @@
+import {pageQuery,itemBalanceSql} from "./queryHelpers.js";
+export {pageQuery} from "./queryHelpers.js";
 import { z } from "zod";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { transactionQuery } from "./inventory-delete.js";
@@ -11,12 +13,6 @@ export const transactionFilters = z.object({...paging,itemId:z.string().uuid().o
 export const itemFilters = z.object({...paging,paged:bool.optional(),query:z.string().trim().max(200).optional(),category:z.string().trim().max(200).optional(),locationId:z.string().uuid().optional(),includeDescendantLocations:bool.default("true"),includeDescendantCategories:bool.default("true"),lowStockOnly:bool.optional(),expiryBefore:z.string().date().optional()}).strict();
 export const batchFilters = z.object({...paging,itemId:z.string().uuid().optional(),locationId:z.string().uuid().optional(),includeEmpty:bool.default("false")}).strict();
 export const overviewFilters = z.object({expiryDays:z.coerce.number().int().min(1).max(365).default(30),limit:z.coerce.number().int().min(1).max(50).default(10)}).strict();
-export function pageQuery(db:DatabaseSync,sql:string,params:SQLInputValue[],limit:number,offset:number,order:string) {
-  const total=(db.prepare(`SELECT COUNT(*) AS n FROM (${sql})`).get(...params) as {n:number}).n;
-  const items=db.prepare(`SELECT * FROM (${sql}) ORDER BY ${order} LIMIT ? OFFSET ?`).all(...params,limit,offset);
-  const nextOffset=offset+items.length<total?offset+items.length:null;
-  return {items,total,limit,offset,hasMore:nextOffset!==null,nextOffset};
-}
 export function listTransactions(db:DatabaseSync,homeId:string,raw:unknown,locale:Locale="zh-CN") {
   const filters=transactionFilters.parse(raw), snapshotAt=filters.snapshotAt??new Date().toISOString();
   const where=["homeId=?","occurredAt<=?"],params:SQLInputValue[]=[homeId,snapshotAt];
@@ -37,7 +33,7 @@ function descendants(db:DatabaseSync,homeId:string,table:"locations"|"item_categ
 }
 export function listItems(db:DatabaseSync,homeId:string,raw:unknown) {
   const filters=itemFilters.parse(raw),where=["i.home_id=?","i.active=1"],params:SQLInputValue[]=[homeId];
-  const balance="(SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) FROM stock_transactions WHERE home_id=i.home_id AND item_id=i.id)";
+  const balance=itemBalanceSql;
   if(filters.query){where.push("i.name LIKE ?");params.push(`%${filters.query}%`);}
   if(filters.locationId) {
     const ids=descendants(db,homeId,"locations",filters.locationId,filters.includeDescendantLocations),marks=ids.map(()=>"?").join(",");
@@ -75,7 +71,7 @@ export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown,locale
   if(!home)throw new InventoryError(404,"HOME_NOT_FOUND","error.homeNotFound");
   const today=new Date().toISOString().slice(0,10);
   const threshold=new Date(Date.now()+filters.expiryDays*86400000).toISOString().slice(0,10);
-  const balance="(SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) FROM stock_transactions WHERE home_id=i.home_id AND item_id=i.id)";
+  const balance=itemBalanceSql;
   const lowSql=`SELECT i.id AS itemId,i.name,i.base_unit AS unit,i.reorder_point AS reorderPoint,${balance} AS quantity,MAX(i.reorder_point-${balance},0) AS suggestedQuantity,i.default_location_id AS locationId,l.name AS locationName FROM items i LEFT JOIN locations l ON l.id=i.default_location_id WHERE i.home_id=? AND i.active=1 AND ${balance}<i.reorder_point`;
   const needsCount=(db.prepare(`SELECT COUNT(*) AS n FROM (${lowSql})`).get(homeId) as {n:number}).n;
   const needsReplenishment=db.prepare(`SELECT * FROM (${lowSql}) ORDER BY suggestedQuantity DESC,name LIMIT ?`).all(homeId,filters.limit);
