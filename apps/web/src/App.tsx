@@ -137,6 +137,8 @@ export function App() {
   const [transactionTotal, setTransactionTotal] = useState(0);
   const [transactionSnapshot, setTransactionSnapshot] = useState("");
   const [batchItem, setBatchItem] = useState<Item | null>(null);
+  const [initialBatchId, setInitialBatchId] = useState<string | null>(null);
+  const [batchRevision, setBatchRevision] = useState(0);
   const [activePage, setActivePage] = useState<Page>(()=>itemDetailIdFromUrl()?itemDetailSourcePage()??"count":pageFromUrl());
   const [itemDetailId,setItemDetailId]=useState<string|null>(itemDetailIdFromUrl);
   const countView = activePage === "locations" || activePage === "categories";
@@ -1405,7 +1407,7 @@ export function App() {
         </div>
       </header>
       <main>
-        {itemDetailId&&<ItemDetail homeId={getHomeId()} item={items.find(item=>item.id===itemDetailId)??{id:itemDetailId,name:t("物资"),sku:"",category:t("未分类"),baseUnit:t("个"),reorderPoint:0,reorderQuantity:0}} currency={financialSummary?.currency??"CNY"} onBack={closeItemDetail} onEdit={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)setDetailItem(item);}} onIssue={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)openStockAction("issue",item);}}/>}
+        {itemDetailId&&<ItemDetail homeId={getHomeId()} item={items.find(item=>item.id===itemDetailId)??{id:itemDetailId,name:t("物资"),sku:"",category:t("未分类"),baseUnit:t("个"),reorderPoint:0,reorderQuantity:0}} currency={financialSummary?.currency??"CNY"} batchRevision={batchRevision} onBack={closeItemDetail} onEdit={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)setDetailItem(item);}} onIssue={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)openStockAction("issue",item);}} onEditBatch={batchId=>{const item=items.find(current=>current.id===itemDetailId);if(item){setInitialBatchId(batchId);setBatchItem(item);}}}/>}
         <div className="page-content" hidden={Boolean(itemDetailId)}>
         <section className="welcome">
           <div>
@@ -1881,8 +1883,9 @@ export function App() {
         <Batches
           homeId={getHomeId()}
           item={batchItem}
-          onClose={() => setBatchItem(null)}
-          onChange={load}
+          initialBatchId={initialBatchId}
+          onClose={() => { setBatchItem(null); setInitialBatchId(null); }}
+          onChange={() => { setBatchRevision(value => value + 1); void load(); }}
         />
       )}
       {exhaustTarget&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setExhaustTarget(null)}><form className="modal" onSubmit={submitExhaust}><div className="modal-head"><div><h2>{t("用尽已开封物品")}</h2><p className="muted">{exhaustTarget.itemName}</p></div><button type="button" className="close" onClick={()=>setExhaustTarget(null)} aria-label={t("关闭")}><X size={18} strokeWidth={1.8}/></button></div><label>{t("用尽数量")}<input name="quantity" type="number" min="0" max={exhaustTarget.quantity} step="any" defaultValue={exhaustTarget.quantity>=1?1:exhaustTarget.quantity} autoFocus required/><small className="form-hint">{t("当前已开封 {{quantity}} {{unit}}",{quantity:exhaustTarget.quantity,unit:displayUnit(exhaustTarget.baseUnit)})}</small></label><button className="primary full" disabled={busy}>{busy?t("处理中…"):t("确认用尽")}</button></form></div>}

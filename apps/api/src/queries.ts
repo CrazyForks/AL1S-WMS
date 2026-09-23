@@ -11,7 +11,7 @@ const bool = z.enum(["true","false"]).transform(value=>value==="true");
 const paging = { limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).default(0) };
 export const transactionFilters = z.object({...paging,itemId:z.string().uuid().optional(),locationId:z.string().uuid().optional(),batchId:z.string().uuid().optional(),type:z.enum(["receipt","issue","move","delete","reclassify","update"]).optional(),query:z.string().trim().max(200).optional(),occurredFrom:z.string().datetime().optional(),occurredTo:z.string().datetime().optional(),snapshotAt:z.string().datetime().optional()}).strict();
 export const itemFilters = z.object({...paging,paged:bool.optional(),query:z.string().trim().max(200).optional(),category:z.string().trim().max(200).optional(),locationId:z.string().uuid().optional(),includeDescendantLocations:bool.default("true"),includeDescendantCategories:bool.default("true"),lowStockOnly:bool.optional(),expiryBefore:z.string().date().optional()}).strict();
-export const batchFilters = z.object({...paging,itemId:z.string().uuid().optional(),locationId:z.string().uuid().optional(),includeEmpty:bool.default("false")}).strict();
+export const batchFilters = z.object({...paging,itemId:z.string().uuid().optional(),locationId:z.string().uuid().optional(),batchId:z.string().uuid().optional(),includeEmpty:bool.default("false")}).strict();
 export const overviewFilters = z.object({expiryDays:z.coerce.number().int().min(1).max(365).default(30),limit:z.coerce.number().int().min(1).max(50).default(10)}).strict();
 export function listTransactions(db:DatabaseSync,homeId:string,raw:unknown,locale:Locale="zh-CN") {
   const filters=transactionFilters.parse(raw), snapshotAt=filters.snapshotAt??new Date().toISOString();
@@ -56,7 +56,7 @@ export function listItems(db:DatabaseSync,homeId:string,raw:unknown) {
 }
 export function listBatches(db:DatabaseSync,homeId:string,raw:unknown) {
   const filters=batchFilters.parse(raw),where=["homeId=?"],params:SQLInputValue[]=[homeId];
-  for(const key of ["itemId","locationId"] as const)if(filters[key]){where.push(`${key}=?`);params.push(filters[key]!);}
+  for(const key of ["itemId","locationId","batchId"] as const)if(filters[key]){where.push(`${key}=?`);params.push(filters[key]!);}
   if(!filters.includeEmpty)where.push("quantity>0");
   const page=pageQuery(db,`SELECT * FROM (${batchBalanceQuery}) WHERE ${where.join(" AND ")}`,params,filters.limit,filters.offset,"expiryDate IS NULL,expiryDate,receivedAt,batchId,locationId");
   return {...page,items:(page.items as Record<string,unknown>[]).map(row=>({

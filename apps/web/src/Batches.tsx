@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import { useEffect,useState,type FormEvent } from "react";
 import { BatchFields } from "./BatchFields.js";
 import { apiFetch,apiJson } from "./i18n/apiFetch.js";
@@ -30,11 +30,13 @@ export function Batches({
   item,
   onClose,
   onChange,
+  initialBatchId,
 }: {
   homeId: string;
   item: { id: string; name: string; baseUnit: string };
   onClose: () => void;
   onChange: () => void;
+  initialBatchId?: string | null;
 }) {
   const [pageSize,setPageSize]=useState(10);
   const [rows, setRows] = useState<Batch[]>([]),
@@ -47,6 +49,23 @@ export function Batches({
     [revision, setRevision] = useState(0),
     [channels,setChannels]=useState<{id:string;name:string}[]>([]);
   useEffect(()=>{void apiFetch(`/api/v1/homes/${homeId}/shopping-channels`).then(response=>response.ok?response.json():[]).then(setChannels);},[homeId]);
+  useEffect(() => {
+    if (!initialBatchId) return;
+    const controller = new AbortController();
+    apiFetch(`/api/v1/homes/${homeId}/batches?itemId=${item.id}&batchId=${initialBatchId}&includeEmpty=true&limit=1`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error(t("无法加载批次"));
+        return response.json();
+      })
+      .then(data => {
+        if (data.items[0]) setEdit(data.items[0]);
+        else setError(t("无法加载批次"));
+      })
+      .catch(error => {
+        if (error.name !== "AbortError") setError(error.message);
+      });
+    return () => controller.abort();
+  }, [homeId, item.id, initialBatchId]);
   useEffect(() => {
     const controller = new AbortController();
     setError("");
@@ -120,7 +139,7 @@ export function Batches({
           </p>
         )}
         {edit ? (
-          <form onSubmit={save}>
+          <form key={edit.batchId} onSubmit={save}>
             <label>
               {t("批次备注")}
               <input
@@ -208,16 +227,26 @@ export function Batches({
                       <td>{row.totalPrice==null?t("未知"):<div className="date-cell"><span>{new Intl.NumberFormat(localeForDates(),{style:"currency",currency:row.purchaseCurrency??"CNY"}).format(row.totalPrice)}</span><span>{row.unitPrice==null?"":t("{{price}} / {{unit}}",{price:new Intl.NumberFormat(localeForDates(),{style:"currency",currency:row.purchaseCurrency??"CNY"}).format(row.unitPrice),unit:displayUnit(item.baseUnit)})}</span><span>{row.channelName?channelLabel(row.channelName):t("未指定")}</span></div>}</td>
                       <td>
                         <button
+                          type="button"
                           className="text-button"
                           onClick={() => setEdit(row)}
                         >
-                          {t("编辑")}
+                          <Pencil size={14} /> {t("编辑")}
                         </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <div className="batch-mobile-list">
+                {rows.map(row => (
+                  <div className="batch-mobile-row" key={`${row.batchId}:${row.locationId}`}>
+                    <div><strong>{row.label || new Date(row.receivedAt).toLocaleString(localeForDates())}</strong><button type="button" className="text-button" onClick={() => setEdit(row)}><Pencil size={14} /> {t("编辑")}</button></div>
+                    <span>{row.locationName || t("未指定")} · {row.quantity} {displayUnit(item.baseUnit)}</span>
+                    <span>{t("到期日期")}：{row.expiryDate || t("未设置")}</span>
+                  </div>
+                ))}
+              </div>
               {!rows.length && <p className="empty">{t("暂无批次")}</p>}
             </div>
             <div className="pagination"><PageSizeSelect value={pageSize} onChange={size=>{setPageSize(size);setPage(1);}}/>

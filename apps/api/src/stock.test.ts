@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
+import { buildApp } from "./app.js";
 import { getHomeOverview, listBatches, listItems, listTransactions } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
 import { exhaustOpenedConsumable, InventoryError, listOpenedConsumables, reconcileStock, recordStock } from "./stock.js";
@@ -15,6 +16,39 @@ function fixture() {
     .run(itemId,homeId,itemId,"牛奶","食品","瓶",locationId);
   return {db,homeId,locationId,itemId};
 }
+
+test("editing a batch expiry refreshes item dates and preserves other batches", async () => {
+  const {db, homeId, locationId, itemId} = fixture();
+  const userId=randomUUID(), sessionId=randomUUID();
+  db.prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(userId,"batch-editor","unused",new Date().toISOString());
+  db.prepare("INSERT INTO sessions(id,user_id,expires_at) VALUES (?,?,?)").run(sessionId,userId,"2099-01-01T00:00:00.000Z");
+  const first=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:2,expiryDate:"2028-01-01",idempotencyKey:"batch-first"}).transactions[0].batchId;
+  const second=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:3,expiryDate:"2029-01-01",idempotencyKey:"batch-second"}).transactions[0].batchId;
+  const app=await buildApp(db);
+  const url=`/api/v1/homes/${homeId}/batches/${first}`;
+  const headers={cookie:`session=${sessionId}`};
+  try {
+    const changed=await app.inject({method:"PATCH",url,headers,payload:{expiryDate:"2030-06-30"}});
+    assert.equal(changed.statusCode,200,changed.body);
+    assert.equal(changed.json().expiryDate,"2030-06-30");
+    const batches=await app.inject({method:"GET",url:`/api/v1/homes/${homeId}/batches?itemId=${itemId}&batchId=${first}&includeEmpty=true`,headers});
+    assert.equal(batches.statusCode,200,batches.body);
+    assert.equal(batches.json().items[0].expiryDate,"2030-06-30");
+    assert.equal(batches.json().items.length,1);
+    const unrelated=await app.inject({method:"GET",url:`/api/v1/homes/${homeId}/batches?itemId=${itemId}&batchId=${randomUUID()}&includeEmpty=true`,headers});
+    assert.equal(unrelated.json().total,0);
+    assert.equal((db.prepare("SELECT expiry_date AS expiryDate FROM stock_batches WHERE id=?").get(second) as {expiryDate:string}).expiryDate,"2029-01-01");
+    assert.equal((listItems(db,homeId,{}) as {expiryDate:string|null}[])[0].expiryDate,"2029-01-01");
+    assert.equal((await app.inject({method:"PATCH",url,headers,payload:{expiryDate:"2027-12-31"}})).statusCode,200);
+    assert.equal((listItems(db,homeId,{}) as {expiryDate:string|null}[])[0].expiryDate,"2027-12-31");
+    assert.equal((await app.inject({method:"PATCH",url,headers,payload:{expiryDate:null}})).statusCode,200);
+    assert.equal((listItems(db,homeId,{}) as {expiryDate:string|null}[])[0].expiryDate,"2029-01-01");
+    assert.equal((await app.inject({method:"PATCH",url,headers,payload:{expiryDate:"not-a-date"}})).statusCode,400);
+  } finally {
+    await app.close();
+    db.close();
+  }
+});
 
 test("item query is unambiguous and supports paged results", () => {
   const {db,homeId,itemId} = fixture();
