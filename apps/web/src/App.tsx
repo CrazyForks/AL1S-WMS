@@ -57,7 +57,7 @@ import { BarcodeScanner } from "./BarcodeScanner.js";
 import { Batches } from "./Batches.js";
 import { ItemDetail } from "./ItemDetail.js";
 import { budgetAllocations,completeBudgetTree,setBudgetAllocation } from "./budgetTree.js";
-import { flattenHierarchy,summarizeHierarchy } from "./hierarchy.js";
+import { descendantIds,flattenHierarchy,summarizeHierarchy } from "./hierarchy.js";
 import { categoryLabel,channelLabel } from "./systemLabels.js";
 
 const locationId = "22222222-2222-4222-8222-222222222222";
@@ -436,44 +436,13 @@ export function App() {
   };
   const locationScopeIds = useMemo(() => {
     if (!locationFilter) return null;
-    const ids = new Set<string>([locationFilter]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const location of locations) {
-        if (
-          location.parentId &&
-          ids.has(location.parentId) &&
-          !ids.has(location.id)
-        ) {
-          ids.add(location.id);
-          changed = true;
-        }
-      }
-    }
-    return ids;
+    return descendantIds(locations,[locationFilter]);
   }, [locations, locationFilter]);
   const categoryScopeNames = useMemo(() => {
     if (!categoryFilter) return null;
-    const ids = new Set(
-      categories
-        .filter((category) => category.name === categoryFilter)
-        .map((category) => category.id),
-    );
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const category of categories) {
-        if (
-          category.parentId &&
-          ids.has(category.parentId) &&
-          !ids.has(category.id)
-        ) {
-          ids.add(category.id);
-          changed = true;
-        }
-      }
-    }
+    const ids = descendantIds(categories,categories
+      .filter(category=>category.name===categoryFilter)
+      .map(category=>category.id));
     return new Set(
       categories
         .filter((category) => ids.has(category.id))
@@ -545,18 +514,13 @@ export function App() {
   const emptyStockCount = items.filter(
     (item) => stockStatusFor(item).level === "empty",
   ).length;
-  const belowStockCount = items.filter(
-    (item) => replenishmentFor(item) > 0,
-  ).length;
+  const belowStockCount = lowStock;
   const criticalStockCount = items.filter(
     (item) => stockStatusFor(item).level === "warning",
   ).length;
-  const shoppingItems = shoppingList
-    .filter((item) => !item.completed)
-    .slice(0, 6);
-  const pendingShoppingCount = shoppingList.filter(
-    (item) => !item.completed,
-  ).length;
+  const pendingShopping = shoppingList.filter(item=>!item.completed);
+  const shoppingItems = pendingShopping.slice(0,6);
+  const pendingShoppingCount = pendingShopping.length;
   const dashboardItems = [...items]
     .sort(
       (left, right) =>

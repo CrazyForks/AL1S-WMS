@@ -9,7 +9,14 @@ export function flattenHierarchy<T extends HierarchyNode>(nodes:T[],parentId:str
 
 export function summarizeHierarchy<T extends HierarchyNode, I>(nodes:T[],items:I[],matches:(item:I,node:T)=>boolean) {
   return flattenHierarchy(nodes).map(node=>{
-    const branchIds=new Set([node.id]);
+    const branchIds=descendantIds(nodes,[node.id]);
+    const branchNodes=nodes.filter(candidate=>branchIds.has(candidate.id));
+    return {...node,count:items.filter(item=>branchNodes.some(candidate=>matches(item,candidate))).length};
+  }).filter(node=>node.count>0);
+}
+
+export function descendantIds(nodes:readonly Pick<HierarchyNode,"id"|"parentId">[],roots:Iterable<string>):Set<string> {
+  const branchIds=new Set(roots);
     let changed=true;
     while(changed){
       changed=false;
@@ -18,7 +25,5 @@ export function summarizeHierarchy<T extends HierarchyNode, I>(nodes:T[],items:I
         changed=true;
       }
     }
-    const branchNodes=nodes.filter(candidate=>branchIds.has(candidate.id));
-    return {...node,count:items.filter(item=>branchNodes.some(candidate=>matches(item,candidate))).length};
-  }).filter(node=>node.count>0);
+  return branchIds;
 }

@@ -27,3 +27,10 @@ test("hierarchy preserves sibling order, ignores orphan roots and counts each it
   assert.deepEqual(summarizeHierarchy(unordered,[{ids:["root","leaf"]}],(item,node)=>item.ids.includes(node.id)).map(n=>[n.id,n.count]),[["root",1],["child",1],["leaf",1]]);
   assert.deepEqual(summarizeHierarchy(unordered,[],()=>true),[]);
 });
+
+test("descendant collection supports multiple or missing roots and terminates on cycles",async()=>{
+  const {descendantIds}=await import("./hierarchy.js");
+  assert.deepEqual([...descendantIds([...nodes].reverse(),["root","missing"])],["root","missing","child","leaf"]);
+  assert.deepEqual([...descendantIds(nodes,[])],[]);
+  assert.deepEqual([...descendantIds([{id:"a",parentId:"b"},{id:"b",parentId:"a"}],["a"])],["a","b"]);
+});
