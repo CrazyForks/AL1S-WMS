@@ -1,5 +1,4 @@
-docs/*
-!docs/code-map.md
+docs/
 node_modules/
 dist/
 .env

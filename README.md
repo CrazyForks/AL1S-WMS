@@ -9,7 +9,7 @@ AL1S WMS is a lightweight, self-hosted warehouse manager for the home.
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-Developer navigation: [Agent entry](AGENTS.md) · [Feature and call-chain map (中文)](docs/code-map.md).
+Developer navigation: [Agent guide and feature map](AGENTS.md).
 
 <img width="1600" height="448" alt="AL1S-WMS-README-banner" src="https://github.com/user-attachments/assets/1aeb25ec-4633-4d3b-9655-8b1a7ce13350" />
 </div>

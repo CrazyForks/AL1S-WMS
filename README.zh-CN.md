@@ -9,7 +9,7 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-开发者导航：[Agent 入口](AGENTS.md) · [功能与调用链导航](docs/code-map.md)。
+开发者导航：[Agent 指南与功能导航（英文）](AGENTS.md)。
 
 <img width="1600" height="448" alt="AL1S-WMS-README-banner" src="https://github.com/user-attachments/assets/1aeb25ec-4633-4d3b-9655-8b1a7ce13350" />
 </div>
