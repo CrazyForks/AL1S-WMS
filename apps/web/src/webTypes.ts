@@ -169,3 +169,6 @@ export type ApiToken = {
   lastUsedAt?: string | null;
   revokedAt?: string | null;
 };
+
+export type Home = {id:string;name:string;icon?:string;defaultCurrency?:string};
+export type SetupStatus = {complete:boolean;home?:Home};

@@ -1,3 +1,4 @@
+import type {Home, SetupStatus} from "./webTypes.js";
 import { AvatarIcon,BrandWordmark,TransactionRow,UnitOptions } from "./AppElements.js";
 import { Login,Setup } from "./AuthScreens.js";
 import { DashboardPage } from "./DashboardPage.js";
@@ -15,7 +16,7 @@ import { StockDialog } from "./StockDialog.js";
 import { TransactionPagination } from "./TransactionPagination.js";
 import { getCategories,getFinancialSummary,getHomeId,getItems,getLocations,getOpenedConsumables,getShoppingCalendar,getShoppingChannels,getShoppingList,getStock,getTransactions } from "./apiClient.js";
 import { formatMoney } from "./formatMoney.js";
-import { apiFetch } from "./i18n/apiFetch.js";
+import { apiFetch,apiJson } from "./i18n/apiFetch.js";
 import i18n,{
 displayUnit,
 localeForDates
@@ -68,10 +69,7 @@ const newIdempotencyKey = () =>
 
 export function App() {
   const { i18n: activeI18n } = useTranslation();
-  const [setup, setSetup] = useState<{
-    complete: boolean;
-    home?: { id: string; name: string; icon?: string;defaultCurrency?:string };
-  } | null>(null);
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [currentUser,setCurrentUser]=useState<CurrentUser|null>(null);
   const [homes, setHomes] = useState<
@@ -80,12 +78,7 @@ export function App() {
   const homeReady = homes.some((home) => home.id === getHomeId());
   const [homeNotice, setHomeNotice] = useState("");
   const [passwordNotice, setPasswordNotice] = useState("");
-  const [editingHome, setEditingHome] = useState<{
-    id: string;
-    name: string;
-    icon?: string;
-    defaultCurrency?:string;
-  } | null>(null);
+  const [editingHome, setEditingHome] = useState<Home | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [stock, setStock] = useState<Stock[]>([]);
   const [openedConsumables,setOpenedConsumables]=useState<OpenedConsumable[]>([]);
@@ -585,7 +578,7 @@ export function App() {
     if(!currentUser||avatar===currentUser.avatar)return;
     setBusy(true);
     try {
-      const response=await apiFetch("/api/v1/auth/me",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({avatar})});
+      const response=await apiJson("/api/v1/auth/me", "PATCH", {avatar});
       if(!response.ok)throw new Error(t("头像保存失败"));
       setCurrentUser(await response.json() as CurrentUser);
     } catch(error) {
@@ -598,10 +591,7 @@ export function App() {
     setBusy(true);
     const form = event.currentTarget;
     const data = new FormData(form);
-    const response = await apiFetch(`/api/v1/homes/${getHomeId()}/items`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    const response = await apiJson(`/api/v1/homes/${getHomeId()}/items`, "POST", {
         name: data.get("name"),
         barcode: data.get("barcode") || undefined,
         icon: data.get("icon") || null,
@@ -618,8 +608,7 @@ export function App() {
         totalPrice:data.get("totalPrice")===""?undefined:Number(data.get("totalPrice")),
         purchaseDate:data.get("purchaseDate")||null,
         channelId:data.get("channelId")||null,
-      }),
-    });
+      });
     setBusy(false);
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
@@ -641,12 +630,7 @@ export function App() {
     );
     if (!quantity || quantity <= 0) return;
     setBusy(true);
-    const response = await apiFetch(
-      `/api/v1/homes/${getHomeId()}/stock/${stockAction.type}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+    const response = await apiJson(`/api/v1/homes/${getHomeId()}/stock/${stockAction.type}`, "POST", {
           itemId: stockAction.item.id,
           locationId: selectedLocation,
           quantity,
@@ -661,9 +645,7 @@ export function App() {
                 channelId:data.get("channelId")||null,
               }
             : { batchId: data.get("batchId") || undefined,issueReason:data.get("issueReason") || "used" }),
-        }),
-      },
-    );
+        });
     setBusy(false);
     if (response.ok) {
       setStockAction(null);
@@ -674,7 +656,7 @@ export function App() {
   async function exhaustOpened(opened:OpenedConsumable,quantity:number) {
     if(busy)return;
     setBusy(true);
-    const response=await apiFetch(`/api/v1/homes/${getHomeId()}/opened-consumables/${opened.id}/exhaust`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({quantity,idempotencyKey:newIdempotencyKey()})});
+    const response=await apiJson(`/api/v1/homes/${getHomeId()}/opened-consumables/${opened.id}/exhaust`, "POST", {quantity,idempotencyKey:newIdempotencyKey()});
     setBusy(false);
     if(!response.ok){setNotice(t("用尽操作失败"));return;}
     setExhaustTarget(null);
@@ -693,12 +675,7 @@ export function App() {
     event.preventDefault();
     if (!detailItem) return;
     const data = new FormData(event.currentTarget);
-    const response = await apiFetch(
-      `/api/v1/homes/${getHomeId()}/items/${detailItem.id}`,
-      {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+    const response = await apiJson(`/api/v1/homes/${getHomeId()}/items/${detailItem.id}`, "PATCH", {
           name: data.get("name"),
           icon: data.get("icon") || null,
           barcode: data.get("barcode") || null,
@@ -709,9 +686,7 @@ export function App() {
           baseUnit: data.get("baseUnit"),
           reorderPoint: Number(data.get("reorderPoint") || 0),
           locationId: data.get("locationId") || null,
-        }),
-      },
-    );
+        });
     if (!response.ok) {
       setNotice(t("保存失败，请检查填写内容"));
       return;
@@ -720,51 +695,22 @@ export function App() {
     load();
   }
 
-  async function addCategory(event: FormEvent) {
+  async function addHierarchyNode(event:FormEvent,kind:"category"|"location") {
     event.preventDefault();
-    const response = await apiFetch(`/api/v1/homes/${getHomeId()}/categories`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: categoryName.trim(),
-        parentId: categoryParent || undefined,
-      }),
+    const category=kind==="category";
+    const response=await apiJson(`/api/v1/homes/${getHomeId()}/${category?"categories":"locations"}`,"POST",{
+      name:(category?categoryName:locationName).trim(),
+      parentId:(category?categoryParent:locationParent)||undefined,
     });
-    if (!response.ok) {
-      setNotice(t("分类添加失败"));
-      return;
-    }
-    setCategoryName("");
-    setCategoryParent("");
-    load();
-  }
-  async function addLocation(event: FormEvent) {
-    event.preventDefault();
-    const response = await apiFetch(`/api/v1/homes/${getHomeId()}/locations`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: locationName.trim(),
-        parentId: locationParent || undefined,
-      }),
-    });
-    if (!response.ok) {
-      setNotice(t("地点添加失败"));
-      return;
-    }
-    setLocationName("");
-    setLocationParent("");
+    if(!response.ok){setNotice(t(category?"分类添加失败":"地点添加失败"));return;}
+    (category?setCategoryName:setLocationName)("");
+    (category?setCategoryParent:setLocationParent)("");
     load();
   }
   async function addShoppingItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const response = await apiFetch(
-      `/api/v1/homes/${getHomeId()}/shopping-list`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+    const response = await apiJson(`/api/v1/homes/${getHomeId()}/shopping-list`, "POST", {
           quantity: Number(data.get("quantity") || 1),
           itemId: data.get("itemId") || undefined,
           channelId: data.get("channelId") || null,
@@ -778,9 +724,7 @@ export function App() {
                 locationId: data.get("locationId") || undefined,
               }
             : {}),
-        }),
-      },
-    );
+        });
     if (!response.ok) {
       setNotice(t("采购项添加失败"));
       return;
@@ -797,12 +741,7 @@ export function App() {
     const quantity = Number(data.get("quantity"));
     if (!Number.isFinite(quantity) || quantity <= 0) return;
     setBusy(true);
-    const response = await apiFetch(
-      `/api/v1/homes/${getHomeId()}/shopping-list/${encodeURIComponent(receiveShoppingItem.id)}/receive`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+    const response = await apiJson(`/api/v1/homes/${getHomeId()}/shopping-list/${encodeURIComponent(receiveShoppingItem.id)}/receive`, "POST", {
           actualQuantity: quantity,
           idempotencyKey: receiveOperationKey,
           locationId: data.get("locationId") || undefined,
@@ -810,9 +749,7 @@ export function App() {
           expiryDate: data.get("expiryDate") || null,
           totalPrice:data.get("totalPrice")===""?undefined:Number(data.get("totalPrice")),
           purchaseDate:data.get("purchaseDate")||null,
-        }),
-      },
-    );
+        });
     setBusy(false);
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
@@ -845,12 +782,7 @@ export function App() {
     event.preventDefault();
     if (!editShoppingItem) return;
     const data = new FormData(event.currentTarget);
-    const response = await apiFetch(
-      `/api/v1/homes/${getHomeId()}/shopping-list/${editShoppingItem.id}`,
-      {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+    const response = await apiJson(`/api/v1/homes/${getHomeId()}/shopping-list/${editShoppingItem.id}`, "PATCH", {
           quantity: Number(data.get("quantity") || 1),
           itemId: data.get("itemId") || null,
           channelId: data.get("channelId") || null,
@@ -864,9 +796,7 @@ export function App() {
                 locationId: data.get("locationId") || null,
               }
             : {}),
-        }),
-      },
-    );
+        });
     if (!response.ok) {
       setNotice(t("采购项保存失败"));
       return;
@@ -878,14 +808,7 @@ export function App() {
   async function addShoppingChannel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newChannelName.trim()) return;
-    const response = await apiFetch(
-      `/api/v1/homes/${getHomeId()}/shopping-channels`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newChannelName.trim() }),
-      },
-    );
+    const response = await apiJson(`/api/v1/homes/${getHomeId()}/shopping-channels`, "POST", { name: newChannelName.trim() });
     const result = await response.json();
     if (!response.ok) {
       setNotice(result.message || t("购买渠道添加失败"));
@@ -920,17 +843,10 @@ export function App() {
     event.preventDefault();
     if (!editTreeNode) return;
     const data = new FormData(event.currentTarget);
-    const response = await apiFetch(
-      `/api/v1/homes/${getHomeId()}/${editTreeNode.kind === "location" ? "locations" : "categories"}/${editTreeNode.id}`,
-      {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+    const response = await apiJson(`/api/v1/homes/${getHomeId()}/${editTreeNode.kind === "location" ? "locations" : "categories"}/${editTreeNode.id}`, "PATCH", {
           name: data.get("name"),
           parentId: data.get("parentId") || null,
-        }),
-      },
-    );
+        });
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
       const messages: Record<string, string> = {
@@ -1023,7 +939,7 @@ export function App() {
     if(busy||defaultCurrency===home.defaultCurrency)return;
     setBusy(true);setHomeNotice("");
     try {
-      const response=await apiFetch(`/api/v1/homes/${home.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:home.name,icon:home.icon||"house",defaultCurrency})});
+      const response=await apiJson(`/api/v1/homes/${home.id}`, "PATCH", {name:home.name,icon:home.icon||"house",defaultCurrency});
       const updated=await response.json();
       if(!response.ok)throw new Error(updated.message||t("保存失败"));
       setHomes(previous=>previous.map(value=>value.id===updated.id?updated:value));
@@ -1047,11 +963,7 @@ export function App() {
     setBusy(true);
     setPasswordNotice("");
     try {
-      const response = await apiFetch("/api/v1/auth/password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
+      const response = await apiJson("/api/v1/auth/password", "POST", { currentPassword, newPassword });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || t("密码修改失败"));
       form.reset();
@@ -1070,11 +982,7 @@ export function App() {
     const data = new FormData(form);
     const name = String(data.get("name") || "").trim();
     const scope = String(data.get("homeId") || "");
-    const response = await apiFetch("/api/v1/auth/tokens", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, homeId: scope === "all" ? null : scope }),
-    });
+    const response = await apiJson("/api/v1/auth/tokens", "POST", { name, homeId: scope === "all" ? null : scope });
     if (!response.ok) {
       setNotice(t("创建令牌失败"));
       return;
@@ -1163,7 +1071,7 @@ export function App() {
     const categoryBudgets=completeBudgetTree(categories,financeBudgetEntries).map(entry=>({category:entry.category,amount:Number(entry.amount)}));
     setFinanceSaving(true);
     try {
-      const response=await apiFetch(`/api/v1/homes/${getHomeId()}/financial-budget`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({month:financeMonth,total:totalValue===""?null:Number(totalValue),categoryBudgets})});
+      const response=await apiJson(`/api/v1/homes/${getHomeId()}/financial-budget`, "PATCH", {month:financeMonth,total:totalValue===""?null:Number(totalValue),categoryBudgets});
       const result=await response.json();
       if(!response.ok)throw new Error(result.message||t("保存失败"));
       setFinanceDashboard(result);
@@ -1269,7 +1177,7 @@ export function App() {
     setTreeMoving(true);
     try {
       const body=treeMode==="location"?{locationId:target.id}:{category:target.name};
-      const response=await apiFetch(`/api/v1/homes/${getHomeId()}/items/${dragged.item.id}`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+      const response=await apiJson(`/api/v1/homes/${getHomeId()}/items/${dragged.item.id}`, "PATCH", body);
       if(!response.ok) {
         const result=await response.json().catch(()=>({}));
         throw new Error(result.message||t("保存失败，请重试"));
@@ -1596,8 +1504,8 @@ export function App() {
         {activePage === "profile" && (
           <ProfileTokens barcodeNotice={barcodeNotice} createApiToken={createApiToken} homes={homes} newApiToken={newApiToken} setNewApiToken={setNewApiToken} apiTokens={apiTokens} revokeApiToken={revokeApiToken} />
         )}
-        {activePage === "locations" && <HierarchyManager kind="location" name={locationName} parent={locationParent} options={locationOptions} onNameChange={setLocationName} onParentChange={setLocationParent} onSubmit={addLocation}/>}
-        {activePage === "categories" && <HierarchyManager kind="category" name={categoryName} parent={categoryParent} options={categoryOptions} onNameChange={setCategoryName} onParentChange={setCategoryParent} onSubmit={addCategory}/>}
+        {activePage === "locations" && <HierarchyManager kind="location" name={locationName} parent={locationParent} options={locationOptions} onNameChange={setLocationName} onParentChange={setLocationParent} onSubmit={event=>addHierarchyNode(event,"location")}/>}
+        {activePage === "categories" && <HierarchyManager kind="category" name={categoryName} parent={categoryParent} options={categoryOptions} onNameChange={setCategoryName} onParentChange={setCategoryParent} onSubmit={event=>addHierarchyNode(event,"category")}/>}
         {activePage === "shopping" && (
           <ShoppingPage selectedShoppingDate={selectedShoppingDate} visibleShoppingItems={visibleShoppingItems} items={items} locations={locations} shoppingChannelName={shoppingChannelName} financialSummary={financialSummary} setEditShoppingItem={setEditShoppingItem} setEditShoppingItemId={setEditShoppingItemId} openShoppingReceipt={openShoppingReceipt} load={load} setMobileAction={setMobileAction} shoppingChannels={shoppingChannels} addShoppingChannel={addShoppingChannel} newChannelName={newChannelName} setNewChannelName={setNewChannelName} deleteShoppingChannel={deleteShoppingChannel} moveShoppingMonth={moveShoppingMonth} setShoppingMonth={setShoppingMonth} setSelectedShoppingDate={setSelectedShoppingDate} calendarYear={calendarYear} calendarMonthNumber={calendarMonthNumber} calendarIncludeCompleted={calendarIncludeCompleted} updateCalendarIncludeCompleted={updateCalendarIncludeCompleted} calendarFinancial={calendarFinancial} calendarCells={calendarCells} calendarItems={calendarItems} />
         )}

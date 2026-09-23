@@ -14,3 +14,8 @@ export function apiFetch(
   );
   return fetch(input, { ...init, headers });
 }
+
+/** Serialize JSON without consuming responses or changing caller error handling. */
+export function apiJson(input:string,method:"POST"|"PATCH"|"PUT",body:unknown):Promise<Response> {
+  return apiFetch(input,{method,headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+}

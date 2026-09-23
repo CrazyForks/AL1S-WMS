@@ -1,12 +1,13 @@
+import type {Home, SetupStatus} from "./webTypes.js";
 import { ChevronDown } from "lucide-react";
 import type * as React from "react";
 import { FormEvent } from "react";
-import { AvatarIcon, avatarOptions } from "./AppElements.js";
-import { IconPicker, MaterialIcon } from "./Icons.js";
+import { AvatarIcon,avatarOptions } from "./AppElements.js";
+import { IconPicker,MaterialIcon } from "./Icons.js";
 import { getHomeId } from "./apiClient.js";
 import { apiFetch } from "./i18n/apiFetch.js";
-import i18n, { localeForDates, setLocale, type Locale } from "./i18n/index.js";
-import type { ApiToken, CurrentUser, UserAvatar } from "./webTypes.js";
+import i18n,{ localeForDates,setLocale,type Locale } from "./i18n/index.js";
+import type { ApiToken,CurrentUser,UserAvatar } from "./webTypes.js";
 const t = i18n.t.bind(i18n);
 type ProfileLogoutProps = {
   busy: boolean;
@@ -150,41 +151,18 @@ export function ProfileUserSettings({
 }
 
 type ProfileHomeSettingsProps = {
-  homes: {
-    id: string;
-    name: string;
-    icon?: string;
-    defaultCurrency?: string;
-  }[];
+  homes: Home[];
   busy: boolean;
   setEditingHome: React.Dispatch<
-    React.SetStateAction<{
-      id: string;
-      name: string;
-      icon?: string;
-      defaultCurrency?: string;
-    } | null>
+    React.SetStateAction<Home | null>
   >;
   setHomeNotice: React.Dispatch<React.SetStateAction<string>>;
-  setup: {
-    complete: boolean;
-    home?: {
-      id: string;
-      name: string;
-      icon?: string;
-      defaultCurrency?: string;
-    };
-  };
+  setup: SetupStatus;
   updateHomeCurrency: (
     home: { id: string; name: string; icon?: string; defaultCurrency?: string },
     defaultCurrency: string,
   ) => Promise<void>;
-  editingHome: {
-    id: string;
-    name: string;
-    icon?: string;
-    defaultCurrency?: string;
-  } | null;
+  editingHome: Home | null;
   setBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setHomes: React.Dispatch<
     React.SetStateAction<
@@ -192,15 +170,7 @@ type ProfileHomeSettingsProps = {
     >
   >;
   setSetup: React.Dispatch<
-    React.SetStateAction<{
-      complete: boolean;
-      home?: {
-        id: string;
-        name: string;
-        icon?: string;
-        defaultCurrency?: string;
-      };
-    } | null>
+    React.SetStateAction<SetupStatus | null>
   >;
   homeNotice: string;
 };
@@ -404,12 +374,7 @@ export function ProfileHomeSettings({
 type ProfileTokensProps = {
   barcodeNotice: string;
   createApiToken: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-  homes: {
-    id: string;
-    name: string;
-    icon?: string;
-    defaultCurrency?: string;
-  }[];
+  homes: Home[];
   newApiToken: string;
   setNewApiToken: React.Dispatch<React.SetStateAction<string>>;
   apiTokens: ApiToken[];

@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useState,type FormEvent } from "react";
 import { BrandWordmark } from "./AppElements.js";
-import { apiFetch } from "./i18n/apiFetch.js";
+import { apiJson } from "./i18n/apiFetch.js";
 import i18n from "./i18n/index.js";
 import { IconPicker } from "./Icons.js";
 const t = i18n.t.bind(i18n);
@@ -32,18 +32,14 @@ export function Setup({
     }
     setBusy(true);
     setError("");
-    const response = await apiFetch("/api/v1/setup", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    const response = await apiJson("/api/v1/setup", "POST", {
         username,
         password,
         homeName,
         homeIcon: homeEmoji,
         currency,
         locations,
-      }),
-    });
+      });
     const data = await response.json();
     setBusy(false);
     if (!response.ok) {
@@ -202,11 +198,7 @@ export function Login({ onLogin }: { onLogin: () => void }) {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const response = await apiFetch("/api/v1/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
+    const response = await apiJson("/api/v1/auth/login", "POST", { username, password });
     const data = await response.json();
     setBusy(false);
     if (!response.ok) {

@@ -1,11 +1,11 @@
-import {PageSizeSelect} from "./PageSizeSelect.js";
-import { useEffect, useState, type FormEvent } from "react";
-import i18n, { displayUnit, localeForDates } from "./i18n/index.js";
-import { apiFetch } from "./i18n/apiFetch.js";
-const t = i18n.t.bind(i18n);
 import { X } from "lucide-react";
+import { useEffect,useState,type FormEvent } from "react";
 import { BatchFields } from "./BatchFields.js";
+import { apiFetch,apiJson } from "./i18n/apiFetch.js";
+import i18n,{ displayUnit,localeForDates } from "./i18n/index.js";
+import { PageSizeSelect } from "./PageSizeSelect.js";
 import { channelLabel } from "./systemLabels.js";
+const t = i18n.t.bind(i18n);
 
 export type Batch = {
   batchId: string;
@@ -74,21 +74,14 @@ export function Batches({
     setError("");
     const data = new FormData(event.currentTarget);
     try {
-      const response = await apiFetch(
-        `/api/v1/homes/${homeId}/batches/${edit.batchId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+      const response = await apiJson(`/api/v1/homes/${homeId}/batches/${edit.batchId}`, "PATCH", {
             label: data.get("label") || null,
             manufacturedDate: data.get("manufacturedDate") || null,
             expiryDate: data.get("expiryDate") || null,
             totalPrice:data.get("totalPrice")===""?null:Number(data.get("totalPrice")),
             purchaseDate:data.get("purchaseDate")||null,
             channelId:data.get("channelId")||null,
-          }),
-        },
-      );
+          });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || t("保存失败"));
       setEdit(null);

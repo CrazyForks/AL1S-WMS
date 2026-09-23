@@ -3,8 +3,7 @@ import {test} from "node:test";
 Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:()=>"zh-CN"}});
 Object.defineProperty(globalThis,"document",{configurable:true,value:{documentElement:{lang:""}}});
 const {default:i18n}=await import("./index.js");
-const {apiFetch}=await import("./apiFetch.js");
-const send=(url:string,method:string,body:unknown)=>apiFetch(url,{method,headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+const {apiJson:send}=await import("./apiFetch.js");
 
 test("JSON writes retain body omission, nulls, language and raw HTTP failures",async(context)=>{
   const response=new Response('{"message":"conflict"}',{status:409});

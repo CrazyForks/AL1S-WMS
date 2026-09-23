@@ -1,8 +1,8 @@
-import {PageSizeSelect} from "./PageSizeSelect.js";
-import {useEffect,useLayoutEffect,useRef,useState,type FormEvent} from "react";
-import {useTranslation} from "react-i18next";
-import {apiFetch} from "./i18n/apiFetch.js";
-import {displayUnit} from "./i18n/index.js";
+import { useEffect,useLayoutEffect,useRef,useState,type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
+import { apiFetch,apiJson } from "./i18n/apiFetch.js";
+import { displayUnit } from "./i18n/index.js";
+import { PageSizeSelect } from "./PageSizeSelect.js";
 
 type MissingBatch={batchId:string;itemId:string;itemName:string;unit:string;label:string|null;receivedAt:string;quantity:number;remainingQuantity:number;legacy:number;issueCount:number};
 type MissingReport={currency:string;total:number;page:number;totalPages:number;items:MissingBatch[]};
@@ -34,7 +34,7 @@ function CostDialog({homeId,batch,currency,onClose,onSaved}:{homeId:string;batch
     if(!value.trim()||!Number.isFinite(Number(value))||Number(value)<0||Number(value)>1_000_000_000)return;
     saving.current=true;setBusy(true);setError("");
     try {
-      const response=await apiFetch(`/api/v1/homes/${homeId}/batches/${batch.batchId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({totalPrice:Number(value)})});
+      const response=await apiJson(`/api/v1/homes/${homeId}/batches/${batch.batchId}`, "PATCH", {totalPrice:Number(value)});
       const result=await response.json();
       if(!response.ok)throw new Error(result.message||t("保存失败"));
     } catch(error) {
