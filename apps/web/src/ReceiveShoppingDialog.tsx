@@ -22,6 +22,8 @@ type ReceiveShoppingDialogProps = {
   locations: Location[];
   locationOptions: (Location & { depth: number })[];
   receiveTotal: string;
+  receiveCompletion: "keep" | "complete";
+  setReceiveCompletion: React.Dispatch<React.SetStateAction<"keep" | "complete">>;
   setReceiveTotal: React.Dispatch<React.SetStateAction<string>>;
   receiveUnitPrice: number | null;
   financialSummary: FinancialSummary | null;
@@ -38,6 +40,8 @@ export function ReceiveShoppingDialog({
   locationOptions,
   receiveTotal,
   setReceiveTotal,
+  receiveCompletion,
+  setReceiveCompletion,
   receiveUnitPrice,
   financialSummary,
   busy,
@@ -124,6 +128,12 @@ export function ReceiveShoppingDialog({
             />
           </label>
         </div>
+        <label>{t("收货后采购项")}
+          <select value={receiveCompletion} onChange={event=>setReceiveCompletion(event.target.value as "keep"|"complete")}>
+            <option value="complete">{t("完成采购项")}</option>
+            <option value="keep">{t("保留剩余待收数量")}</option>
+          </select>
+        </label>
         <p className="muted" aria-live="polite">
           {t("折合单价")}：
           {receiveUnitPrice === null

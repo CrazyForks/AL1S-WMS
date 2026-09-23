@@ -14,6 +14,7 @@ import { ReceiveShoppingDialog } from "./ReceiveShoppingDialog.js";
 import { ShoppingForm } from "./ShoppingForm.js";
 import { ShoppingPage } from "./ShoppingPage.js";
 import { StockDialog } from "./StockDialog.js";
+import {TransferDialog,StocktakeDialog,OperationHistoryDialog} from "./InventoryWorkflows.js";
 import { TransactionPagination } from "./TransactionPagination.js";
 import { getCategories,getFinancialSummary,getHomeId,getItems,getLocations,getOpenedConsumables,getShoppingCalendar,getShoppingChannels,getShoppingList,getStock,getTransactions } from "./apiClient.js";
 import { formatMoney } from "./formatMoney.js";
@@ -103,7 +104,10 @@ export function App() {
     item: Item;
   } | null>(null);
   const [stockLocationId, setStockLocationId] = useState("");
+  const [stockTargetLocationId,setStockTargetLocationId]=useState("");
   const [stockOperationKey, setStockOperationKey] = useState("");
+  const [workflowDialog,setWorkflowDialog]=useState<"transfer"|"stocktake"|"history"|null>(null);
+  const [workflowItem,setWorkflowItem]=useState<Item|null>(null);
   const [showHomeIssuePicker,setShowHomeIssuePicker]=useState(false);
   const [homeIssueQuery,setHomeIssueQuery]=useState("");
   const [page, setPage] = useState(1);
@@ -192,6 +196,7 @@ export function App() {
     useState<ShoppingItem | null>(null);
   const [receiveQuantity,setReceiveQuantity]=useState("");
   const [receiveTotal,setReceiveTotal]=useState("");
+  const [receiveCompletion,setReceiveCompletion]=useState<"keep"|"complete">("complete");
   const receiveUnitPrice=receiveTotal.trim()!==""&&Number.isFinite(Number(receiveTotal))&&Number(receiveTotal)>=0&&Number.isFinite(Number(receiveQuantity))&&Number(receiveQuantity)>0?Number(receiveTotal)/Number(receiveQuantity):null;
   const [receiveOperationKey, setReceiveOperationKey] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
@@ -224,6 +229,8 @@ export function App() {
     setLogView(false);
     setShowForm(false);
     setStockAction(null);
+    setWorkflowDialog(null);
+    setWorkflowItem(null);
     setExhaustTarget(null);
     setDetailItem(null);
     setEditTreeNode(null);
@@ -640,6 +647,7 @@ export function App() {
     const selectedLocation = String(
       data.get("locationId") || locations[0]?.id || locationId,
     );
+    const targetLocation = String(data.get("targetLocationId") || selectedLocation);
     if (!quantity || quantity <= 0) return;
     setBusy(true);
     const response = await apiJson(`/api/v1/homes/${getHomeId()}/stock/${stockAction.type}`, "POST", {
@@ -656,7 +664,7 @@ export function App() {
                 purchaseDate:data.get("purchaseDate")||null,
                 channelId:data.get("channelId")||null,
               }
-            : { batchId: data.get("batchId") || undefined,issueReason:data.get("issueReason") || "used" }),
+            : { batchId: data.get("batchId") || undefined,targetLocationId: targetLocation!==selectedLocation?targetLocation:undefined,issueReason:data.get("issueReason") || "used" }),
         });
     setBusy(false);
     if (response.ok) {
@@ -763,6 +771,7 @@ export function App() {
           expiryDate: data.get("expiryDate") || null,
           totalPrice:data.get("totalPrice")===""?undefined:Number(data.get("totalPrice")),
           purchaseDate:data.get("purchaseDate")||null,
+          completion:receiveCompletion,
         });
     setBusy(false);
     if (!response.ok) {
@@ -778,6 +787,7 @@ export function App() {
   }
   function openStockAction(type: "receipt" | "issue", item: Item) {
     setStockLocationId(item.locationId || locations[0]?.id || "");
+    setStockTargetLocationId(item.locationId || locations[0]?.id || "");
     setStockOperationKey(newIdempotencyKey());
     setStockAction({ type, item });
   }
@@ -790,6 +800,7 @@ export function App() {
     setReceiveOperationKey(newIdempotencyKey());
     setReceiveQuantity(String(item.quantity));
     setReceiveTotal(item.estimatedTotal==null?"":String(item.estimatedTotal));
+    setReceiveCompletion("complete");
     setReceiveShoppingItem(item);
   }
   async function updateShoppingItem(event: FormEvent<HTMLFormElement>) {
@@ -1487,6 +1498,8 @@ export function App() {
           )}
           {activePage === "count" && (
             <div className="welcome-actions count-actions">
+              <button type="button" className="secondary" onClick={()=>setWorkflowDialog("stocktake")}>{t("按地点盘点")}</button>
+              <button type="button" className="secondary" onClick={()=>setWorkflowDialog("history")}>{t("操作记录")}</button>
               <button className="primary" onClick={() => openItemForm()}>
                 {t("＋ 添加物资")}
               </button>
@@ -1583,7 +1596,7 @@ export function App() {
           <DashboardPage navigate={navigate} dashboardItems={dashboardItems} displayStatusFor={displayStatusFor} openItemDetail={openItemDetail} balanceFor={balanceFor} pagedTransactions={pagedTransactions} transactionTotal={transactionTotal} transactionPageSize={transactionPageSize} setTransactionPageSize={setTransactionPageSize} setTransactionPage={setTransactionPage} transactionPage={transactionPage} transactionPageCount={transactionPageCount} shoppingItems={shoppingItems} openedConsumables={openedConsumables} categorySummary={categorySummary} locationSummary={locationSummary} />
         )}
         {!countView && !logView && activePage === "count" && (
-          <InventoryPage stockStatusFilter={stockStatusFilter} expiryFilter={expiryFilter} setStockStatusFilter={setStockStatusFilter} setExpiryFilter={setExpiryFilter} items={items} belowStockCount={belowStockCount} criticalStockCount={criticalStockCount} emptyStockCount={emptyStockCount} expiringItems={expiringItems} openedConsumables={openedConsumables} openItemDetail={openItemDetail} busy={busy} setExhaustTarget={setExhaustTarget} inventorySort={inventorySort} filtered={filtered} query={query} setQuery={setQuery} categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} categoryOptions={categoryOptions} locationFilter={locationFilter} setLocationFilter={setLocationFilter} locationOptions={locationOptions} setInventorySort={setInventorySort} pagedItems={pagedItems} displayStatusFor={displayStatusFor} replenishmentFor={replenishmentFor} balanceFor={balanceFor} financialSummary={financialSummary} openStockAction={openStockAction} setBatchItem={setBatchItem} setDetailItem={setDetailItem} confirmDelete={confirmDelete} setMobileAction={setMobileAction} pageSize={pageSize} setPageSize={setPageSize} setPage={setPage} pageStart={pageStart} pageEnd={pageEnd} page={page} pageCount={pageCount} />
+          <InventoryPage openTransfer={item=>{setWorkflowItem(item);setWorkflowDialog("transfer");}} stockStatusFilter={stockStatusFilter} expiryFilter={expiryFilter} setStockStatusFilter={setStockStatusFilter} setExpiryFilter={setExpiryFilter} items={items} belowStockCount={belowStockCount} criticalStockCount={criticalStockCount} emptyStockCount={emptyStockCount} expiringItems={expiringItems} openedConsumables={openedConsumables} openItemDetail={openItemDetail} busy={busy} setExhaustTarget={setExhaustTarget} inventorySort={inventorySort} filtered={filtered} query={query} setQuery={setQuery} categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} categoryOptions={categoryOptions} locationFilter={locationFilter} setLocationFilter={setLocationFilter} locationOptions={locationOptions} setInventorySort={setInventorySort} pagedItems={pagedItems} displayStatusFor={displayStatusFor} replenishmentFor={replenishmentFor} balanceFor={balanceFor} financialSummary={financialSummary} openStockAction={openStockAction} setBatchItem={setBatchItem} setDetailItem={setDetailItem} confirmDelete={confirmDelete} setMobileAction={setMobileAction} pageSize={pageSize} setPageSize={setPageSize} setPage={setPage} pageStart={pageStart} pageEnd={pageEnd} page={page} pageCount={pageCount} />
         )}
         {activePage === "count" && !logView && (
           <section className="panel recent-log">
@@ -1660,7 +1673,7 @@ export function App() {
         )}
         </div>
       </main>
-      {mobileAction&&<div className="modal-backdrop mobile-action-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setMobileAction(null)}><section className="mobile-action-sheet" role="dialog" aria-modal="true"><div className="modal-head"><div><h2>{mobileAction.item.name}</h2><p className="muted">{t("选择操作")}</p></div><button type="button" className="close" aria-label={t("关闭")} onClick={()=>setMobileAction(null)}><X size={18}/></button></div><div className="mobile-action-list">{mobileAction.kind==="shopping"?<><button type="button" onClick={()=>{setEditShoppingItem(mobileAction.item);setEditShoppingItemId(mobileAction.item.itemId||"");setMobileAction(null);}}>{mobileAction.item.source==="automatic"?t("安排"):t("编辑")}</button><button type="button" onClick={()=>{openShoppingReceipt(mobileAction.item);setMobileAction(null);}}>{t("入库")}</button>{mobileAction.item.source==="manual"&&<button type="button" className="danger-action" onClick={()=>{const item=mobileAction.item;setMobileAction(null);void apiFetch(`/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,{method:"DELETE"}).then(load);}}>{t("删除")}</button>}</>:<><button type="button" onClick={()=>{openStockAction("receipt",mobileAction.item);setMobileAction(null);}}>{t("入库")}</button><button type="button" onClick={()=>{openStockAction("issue",mobileAction.item);setMobileAction(null);}}>{t("领用")}</button><button type="button" onClick={()=>{setBatchItem(mobileAction.item);setMobileAction(null);}}>{t("批次")}</button><button type="button" onClick={()=>{setDetailItem(items.find(item=>item.id===mobileAction.item.id)??mobileAction.item);setMobileAction(null);}}>{t("编辑")}</button><button type="button" className="danger-action" onClick={()=>{confirmDelete("item",mobileAction.item);setMobileAction(null);}}>{t("删除")}</button></>}</div></section></div>}
+      {mobileAction&&<div className="modal-backdrop mobile-action-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setMobileAction(null)}><section className="mobile-action-sheet" role="dialog" aria-modal="true"><div className="modal-head"><div><h2>{mobileAction.item.name}</h2><p className="muted">{t("选择操作")}</p></div><button type="button" className="close" aria-label={t("关闭")} onClick={()=>setMobileAction(null)}><X size={18}/></button></div><div className="mobile-action-list">{mobileAction.kind==="shopping"?<><button type="button" onClick={()=>{setEditShoppingItem(mobileAction.item);setEditShoppingItemId(mobileAction.item.itemId||"");setMobileAction(null);}}>{mobileAction.item.source==="automatic"?t("安排"):t("编辑")}</button><button type="button" onClick={()=>{openShoppingReceipt(mobileAction.item);setMobileAction(null);}}>{t("入库")}</button>{mobileAction.item.source==="manual"&&<button type="button" className="danger-action" onClick={()=>{const item=mobileAction.item;setMobileAction(null);void apiFetch(`/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,{method:"DELETE"}).then(load);}}>{t("删除")}</button>}</>:<><button type="button" onClick={()=>{openStockAction("receipt",mobileAction.item);setMobileAction(null);}}>{t("入库")}</button><button type="button" onClick={()=>{openStockAction("issue",mobileAction.item);setMobileAction(null);}}>{t("领用")}</button><button type="button" onClick={()=>{setBatchItem(mobileAction.item);setMobileAction(null);}}>{t("批次")}</button><button type="button" onClick={()=>{setWorkflowItem(mobileAction.item);setWorkflowDialog("transfer");setMobileAction(null);}}>{t("移动")}</button><button type="button" onClick={()=>{setDetailItem(items.find(item=>item.id===mobileAction.item.id)??mobileAction.item);setMobileAction(null);}}>{t("编辑")}</button><button type="button" className="danger-action" onClick={()=>{confirmDelete("item",mobileAction.item);setMobileAction(null);}}>{t("删除")}</button></>}</div></section></div>}
       {deleteTarget && (
         <div
           className="modal-backdrop"
@@ -1901,8 +1914,11 @@ export function App() {
       )}
       {exhaustTarget&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setExhaustTarget(null)}><form className="modal" onSubmit={submitExhaust}><div className="modal-head"><div><h2>{t("用尽已开封物品")}</h2><p className="muted">{exhaustTarget.itemName}</p></div><button type="button" className="close" onClick={()=>setExhaustTarget(null)} aria-label={t("关闭")}><X size={18} strokeWidth={1.8}/></button></div><label>{t("用尽数量")}<input name="quantity" type="number" min="0" max={exhaustTarget.quantity} step="any" defaultValue={exhaustTarget.quantity>=1?1:exhaustTarget.quantity} autoFocus required/><small className="form-hint">{t("当前已开封 {{quantity}} {{unit}}",{quantity:exhaustTarget.quantity,unit:displayUnit(exhaustTarget.baseUnit)})}</small></label><button className="primary full" disabled={busy}>{busy?t("处理中…"):t("确认用尽")}</button></form></div>}
       {showHomeIssuePicker&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&(setShowHomeIssuePicker(false),setHomeIssueQuery(""))}><section className="modal home-issue-picker" role="dialog" aria-modal="true" aria-labelledby="home-issue-title"><div className="modal-head"><div><h2 id="home-issue-title">{t("领用物资")}</h2><p className="muted">{t("选择要领用的物资")}</p></div><button type="button" className="close" onClick={()=>{setShowHomeIssuePicker(false);setHomeIssueQuery("");}} aria-label={t("关闭")}><X size={18} strokeWidth={1.8}/></button></div><label className="home-issue-search"><Search size={16}/><input value={homeIssueQuery} autoFocus placeholder={t("搜索名称、分类或 SKU")} onChange={event=>setHomeIssueQuery(event.target.value)}/></label><div className="home-issue-results">{items.filter(item=>`${item.name} ${item.category} ${item.sku}`.toLocaleLowerCase(localeForDates()).includes(homeIssueQuery.trim().toLocaleLowerCase(localeForDates()))).map(item=><button type="button" key={item.id} onClick={()=>chooseHomeIssueItem(item)}><span className="item-icon"><MaterialIcon value={itemIconFor(item)}/></span><span><strong>{item.name}</strong><small>{item.category?categoryLabel(item.category):t("未分类")} · {balanceFor(item.id)} {displayUnit(item.baseUnit)}</small></span><ChevronRight size={16}/></button>)}{items.filter(item=>`${item.name} ${item.category} ${item.sku}`.toLocaleLowerCase(localeForDates()).includes(homeIssueQuery.trim().toLocaleLowerCase(localeForDates()))).length===0&&<p className="empty compact">{t("没有匹配物资")}</p>}</div></section></div>}
+      {workflowDialog === "transfer" && workflowItem && <TransferDialog item={workflowItem} locations={locations} onClose={()=>{setWorkflowDialog(null);setWorkflowItem(null);}} onSaved={()=>{setWorkflowDialog(null);setWorkflowItem(null);void load();}}/>}
+      {workflowDialog === "stocktake" && <StocktakeDialog locations={locations} onClose={()=>setWorkflowDialog(null)} onSaved={()=>{setWorkflowDialog(null);void load();}}/>}
+      {workflowDialog === "history" && <OperationHistoryDialog onClose={()=>setWorkflowDialog(null)} onSaved={()=>void load()}/>}
       {stockAction && (
-        <StockDialog setStockAction={setStockAction} recordStock={recordStock} stockAction={stockAction} stockLocationId={stockLocationId} setStockLocationId={setStockLocationId} locationOptions={locationOptions} shoppingChannels={shoppingChannels} expiryStatusFor={expiryStatusFor} busy={busy} />
+        <StockDialog setStockAction={setStockAction} recordStock={recordStock} stockAction={stockAction} stockLocationId={stockLocationId} setStockLocationId={setStockLocationId} stockTargetLocationId={stockTargetLocationId} setStockTargetLocationId={setStockTargetLocationId} locations={locations} locationOptions={locationOptions} shoppingChannels={shoppingChannels} expiryStatusFor={expiryStatusFor} busy={busy} />
       )}
       {showShoppingForm && (
         <ShoppingForm setShowShoppingForm={setShowShoppingForm} setShoppingItemId={setShoppingItemId} addShoppingItem={addShoppingItem} shoppingItemId={shoppingItemId} linkedShoppingItem={linkedShoppingItem} items={items} selectCategoryOptions={selectCategoryOptions} locationOptions={locationOptions} shoppingChannels={shoppingChannels} />
@@ -1911,7 +1927,7 @@ export function App() {
         <EditShoppingDialog setEditShoppingItem={setEditShoppingItem} setEditShoppingItemId={setEditShoppingItemId} updateShoppingItem={updateShoppingItem} editShoppingItemId={editShoppingItemId} linkedEditShoppingItem={linkedEditShoppingItem} editShoppingItem={editShoppingItem} items={items} selectCategoryOptions={selectCategoryOptions} locationOptions={locationOptions} shoppingChannels={shoppingChannels} />
       )}
       {receiveShoppingItem && (
-        <ReceiveShoppingDialog setReceiveShoppingItem={setReceiveShoppingItem} receiveShopping={receiveShopping} receiveShoppingItem={receiveShoppingItem} receiveQuantity={receiveQuantity} setReceiveQuantity={setReceiveQuantity} items={items} locations={locations} locationOptions={locationOptions} receiveTotal={receiveTotal} setReceiveTotal={setReceiveTotal} receiveUnitPrice={receiveUnitPrice} financialSummary={financialSummary} busy={busy} />
+        <ReceiveShoppingDialog setReceiveShoppingItem={setReceiveShoppingItem} receiveShopping={receiveShopping} receiveShoppingItem={receiveShoppingItem} receiveQuantity={receiveQuantity} setReceiveQuantity={setReceiveQuantity} items={items} locations={locations} locationOptions={locationOptions} receiveTotal={receiveTotal} setReceiveTotal={setReceiveTotal} receiveCompletion={receiveCompletion} setReceiveCompletion={setReceiveCompletion} receiveUnitPrice={receiveUnitPrice} financialSummary={financialSummary} busy={busy} />
       )}
       {showForm && (
         <ItemForm closeItemForm={closeItemForm} itemFormRevision={itemFormRevision} addItem={addItem} barcodeInput={barcodeInput} setBarcodeInput={setBarcodeInput} barcodeBusy={barcodeBusy} lookupItemBarcode={lookupItemBarcode} setShowBarcodeScanner={setShowBarcodeScanner} prefillName={prefillName} prefillCategory={prefillCategory} selectCategoryOptions={selectCategoryOptions} prefillUnit={prefillUnit} shoppingChannels={shoppingChannels} prefillLocationId={prefillLocationId} locationOptions={locationOptions} busy={busy} error={itemFormError} />

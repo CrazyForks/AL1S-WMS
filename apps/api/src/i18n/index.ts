@@ -5,6 +5,13 @@ export type Locale = (typeof supportedLocales)[number];
 
 const messages = {
   "zh-CN": {
+    "error.operationNotFound": "操作不存在",
+    "error.undoHasDependencies": "相关库存、批次或采购记录已变化，不能直接撤销；请先核对后续操作",
+    "error.stocktakeStale": "盘点期间库存已变化，请重新加载后核对",
+    "error.stocktakeOpened": "实盘数量少于已开封数量，请先处理已开封记录",
+    "reason.undoOperation": "撤销库存操作（冲正）",
+    "reason.reversedOperation": "已撤销的库存操作",
+
     "error.childBudgetExceedsParent": "{category}的子分类预算合计超过该分类额度",
     "error.validation": "参数格式不正确",
     "error.internal": "操作失败，请稍后重试",
@@ -88,6 +95,13 @@ const messages = {
     "reason.openLongTermConsumable": "开封长期消耗品",
   },
   "en-US": {
+    "error.operationNotFound": "Operation not found",
+    "error.undoHasDependencies": "Related stock, batch or purchase records have changed; review later operations before undoing.",
+    "error.stocktakeStale": "Stock changed during counting; reload and verify the quantities.",
+    "error.stocktakeOpened": "Counted quantity is below the opened quantity; resolve opened records first.",
+    "reason.undoOperation": "Inventory operation reversed",
+    "reason.reversedOperation": "Reversed inventory operation",
+
     "error.childBudgetExceedsParent": "Child budgets exceed the budget for {category}",
     "error.validation": "Invalid request parameters",
     "error.internal": "Operation failed. Please try again later",

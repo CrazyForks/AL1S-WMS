@@ -6,7 +6,7 @@ import { translate, type Locale } from "./i18n/index.js";
 export const transactionQuery = `
   SELECT t.id, t.home_id AS homeId, t.item_id AS itemId, i.name AS itemName,
     t.location_id AS locationId, l.name AS locationName, t.type, t.quantity,
-    t.reason, t.issue_reason AS issueReason, t.idempotency_key AS idempotencyKey, t.occurred_at AS occurredAt, t.batch_id AS batchId
+    CASE WHEN t.reversed_by IS NOT NULL THEN 'reason.reversedOperation' ELSE t.reason END AS reason, t.issue_reason AS issueReason, t.idempotency_key AS idempotencyKey, t.occurred_at AS occurredAt, t.batch_id AS batchId
   FROM stock_transactions t JOIN items i ON i.id = t.item_id
   LEFT JOIN locations l ON l.id = t.location_id
   WHERE t.idempotency_key NOT LIKE 'event:%'

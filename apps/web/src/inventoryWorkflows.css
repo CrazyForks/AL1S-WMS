@@ -1,0 +1,16 @@
+dialog.workflow-dialog { position: fixed; inset: 0; margin: auto; width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid var(--aris-line); color: var(--aris-ink); }
+dialog.workflow-dialog::backdrop { background: #17202b66; }
+.workflow-fields { margin: 0; padding: 0; border: 0; min-width: 0; }
+.workflow-table { overflow: auto; max-height: 50vh; margin-top: 16px; }
+.workflow-table table { min-width: 420px; }
+.workflow-table th,.workflow-table td { padding: 8px 12px; font-size: 12px; }
+.workflow-table td small { display: block; color: var(--aris-muted); }
+.workflow-table input { width: 100px; height: 32px; margin: 0; }
+.workflow-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-bottom: 12px; }
+.workflow-history > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--aris-line); }
+.workflow-history > div > div { display: grid; gap: 4px; min-width: 0; }
+.workflow-history strong { font-size: 12px; overflow-wrap: anywhere; }
+.workflow-history small,.workflow-history span { font-size: 11px; color: var(--aris-muted); }
+.workflow-history button { flex-shrink: 0; }
+.workflow-dialog .muted { font-size: 12px; }
+.workflow-dialog .receipt-shortfall { padding: 10px 0; }

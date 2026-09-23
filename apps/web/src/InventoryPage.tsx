@@ -17,6 +17,7 @@ import type {
 } from "./webTypes.js";
 const t = i18n.t.bind(i18n);
 type InventoryPageProps = {
+  openTransfer: (item: Item) => void;
   stockStatusFilter: string;
   expiryFilter: string;
   setStockStatusFilter: React.Dispatch<React.SetStateAction<string>>;
@@ -75,6 +76,7 @@ type InventoryPageProps = {
   pageCount: number;
 };
 export function InventoryPage({
+  openTransfer,
   stockStatusFilter,
   expiryFilter,
   setStockStatusFilter,
@@ -479,6 +481,7 @@ export function InventoryPage({
                           <button onClick={() => setBatchItem(item)}>
                             {t("批次")}
                           </button>
+                          <button type="button" onClick={()=>openTransfer(item)}>{t("移动")}</button>
                           <button
                             onClick={() =>
                               setDetailItem(

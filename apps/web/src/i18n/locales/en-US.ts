@@ -576,6 +576,7 @@ export const enUS = {
   "历史库存由旧记录合并，可能包含多次入库；请填写这些入库记录的合计成本。": "Legacy stock combines old records and may include multiple receipts. Enter the combined cost of those receipts.",
   "折合单价": "Calculated unit cost",
   "出库 {{count}} 笔": "{{count}} issues",
+  "开封后使用地点": "Use location after opening",
   调整成本: "Adjustment cost",
   部分记录未计入金额: "Some records are excluded from monetary totals",
   缺少成本的入库批次: "Inbound batches without cost",

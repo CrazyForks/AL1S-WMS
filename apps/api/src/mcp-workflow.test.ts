@@ -97,6 +97,15 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   const received=parseTool(await client.callTool({name:"record_receipt",arguments:{itemId,locationId,quantity:2,idempotencyKey:"mcp-receipt",expiryDate:"2027-01-01"}}));
   assert.equal(received.beforeQuantity,0);
   assert.equal(received.afterQuantity,2);
+  const preview=parseTool(await client.callTool({name:"preview_stocktake",arguments:{locationId}}));
+  assert.equal(preview.items.find((row:{itemId:string})=>row.itemId===itemId).quantity,2);
+  const counted=parseTool(await client.callTool({name:"confirm_stocktake",arguments:{locationId,idempotencyKey:"mcp-count",rows:[{itemId,expectedQuantity:2,countedQuantity:1}]}}));
+  assert.equal(counted.items[0].afterQuantity,1);
+  const operations=parseTool(await client.callTool({name:"list_stock_operations",arguments:{}}));
+  const undone=parseTool(await client.callTool({name:"undo_stock_operation",arguments:{operationId:operations.items[0].id}}));
+  assert.equal(undone.undone,true);
+  assert.equal((await request(homeToken,"GET",`/api/v1/homes/${otherHomeId}/stock/operations`)).status,403);
+  assert.equal((await request(homeToken,"POST",`/api/v1/homes/${otherHomeId}/stocktake`,{})).status,403);
   const overview=parseTool(await client.callTool({name:"get_home_overview",arguments:{}}));
   assert.equal(overview.needsReplenishment.total,1);
   const finance=parseTool(await client.callTool({name:"get_financial_summary",arguments:{month:"2026-09"}}));

@@ -148,7 +148,7 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
         const opened=parts.map(part=>({id:randomUUID(),...part,quantity:part.quantity,openedAt,openedExpiryDate:calculatedExpiry&&expiryByBatch.get(part.batchId)?(calculatedExpiry<expiryByBatch.get(part.batchId)!?calculatedExpiry:expiryByBatch.get(part.batchId)!):calculatedExpiry}));
         for(const part of opened) db.prepare("INSERT INTO opened_consumables(id,home_id,item_id,location_id,batch_id,quantity,opened_at,opened_expiry_date) VALUES (?,?,?,?,?,?,?,?)").run(part.id,homeId,itemId,useLocation,part.batchId,part.quantity,openedAt,part.openedExpiryDate);
         for(const part of opened) recordItemEvent(db,homeId,itemId,"update","reason.openLongTermConsumable",useLocation,part.quantity,part.batchId);
-        return {homeId,itemId,locationId,type,quantity,issueReason,totalPrice:null,purchaseDate:null,channelId:null,beforeQuantity,afterQuantity:beforeQuantity,difference:0,targetLocationId:useLocation,action:"opened",opened,transactions:[]};
+        return {homeId,itemId,locationId,type,quantity,issueReason,totalPrice:null,purchaseDate:null,channelId:null,beforeQuantity,afterQuantity:stockAt(db,homeId,itemId,locationId),difference:roundQuantity(stockAt(db,homeId,itemId,locationId)-beforeQuantity),targetLocationId:useLocation,action:"opened",opened,transactions:[]};
       }
       if(input.targetLocationId)throw new InventoryError(400,"INVALID_FIELDS","error.validation");
       parts=item.consumptionType==="long_term_consumable"&&issueReason==="adjustment"?allocateUnopened(db,homeId,itemId,locationId,quantity,input.batchId):allocate(db,homeId,itemId,locationId,quantity,input.batchId);

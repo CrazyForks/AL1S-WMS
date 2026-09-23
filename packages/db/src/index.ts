@@ -318,5 +318,23 @@ export function openDatabase(
     CREATE UNIQUE INDEX IF NOT EXISTS idx_item_categories_sibling_name
       ON item_categories(home_id, COALESCE(parent_id, ''), name);
   `);
+  // Workflow reversals retain the ledger; cost views omit cancelled effects.
+  for (const [table,column,definition] of [
+    ["stock_transactions","reversed_by","TEXT"],
+    ["stock_batches","voided","INTEGER NOT NULL DEFAULT 0"],
+    ["shopping_list","planned_quantity","REAL"],
+    ["shopping_list","received_quantity","REAL NOT NULL DEFAULT 0"],
+  ]) {
+    const columns=db.prepare(`PRAGMA table_info(${table})`).all() as {name:string}[];
+    if(!columns.some(row=>row.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS workflow_operations (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,home_id TEXT NOT NULL REFERENCES homes(id),
+    operation_key TEXT NOT NULL,kind TEXT NOT NULL,created_at TEXT NOT NULL,summary TEXT NOT NULL,changes TEXT NOT NULL,
+    undone_at TEXT, UNIQUE(home_id,operation_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_workflow_home ON workflow_operations(home_id,sequence DESC);
+  CREATE VIEW IF NOT EXISTS cost_transactions AS SELECT * FROM stock_transactions WHERE reversed_by IS NULL;
+  CREATE VIEW IF NOT EXISTS cost_batches AS SELECT * FROM stock_batches WHERE voided=0;`);
   return db;
 }

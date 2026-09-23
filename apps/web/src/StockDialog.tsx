@@ -15,6 +15,9 @@ type StockDialogProps = {
   recordStock: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   stockAction: { type: "receipt" | "issue"; item: Item };
   stockLocationId: string;
+  stockTargetLocationId:string;
+  setStockTargetLocationId:React.Dispatch<React.SetStateAction<string>>;
+  locations:Location[];
   setStockLocationId: React.Dispatch<React.SetStateAction<string>>;
   locationOptions: (Location & { depth: number })[];
   shoppingChannels: ShoppingChannel[];
@@ -27,6 +30,9 @@ export function StockDialog({
   stockAction,
   stockLocationId,
   setStockLocationId,
+  stockTargetLocationId,
+  setStockTargetLocationId,
+  locations,
   locationOptions,
   shoppingChannels,
   expiryStatusFor,
@@ -65,7 +71,7 @@ export function StockDialog({
           <select
             name="locationId"
             value={stockLocationId}
-            onChange={(event) => setStockLocationId(event.target.value)}
+            onChange={(event) => { if(stockTargetLocationId===stockLocationId)setStockTargetLocationId(event.target.value);setStockLocationId(event.target.value); }}
           >
             {locationOptions.map((location) => (
               <option key={location.id} value={location.id}>
@@ -75,6 +81,9 @@ export function StockDialog({
             ))}
           </select>
         </label>
+        {stockAction.type === "issue" && stockAction.item.consumptionType === "long_term_consumable" && (
+          <label>{t("开封后使用地点")}<select name="targetLocationId" value={stockTargetLocationId} onChange={event=>setStockTargetLocationId(event.target.value)}>{locations.map(location=><option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+        )}
         {stockAction.type === "receipt" ? (
           <BatchFields title={t("新入库批次（可选）")} />
         ) : stockLocationId ? (

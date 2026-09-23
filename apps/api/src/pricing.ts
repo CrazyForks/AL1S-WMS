@@ -48,11 +48,11 @@ export function listPurchaseRecords(db:DatabaseSync,homeId:string,raw:unknown){
   const input=purchaseFilters.parse(raw);
   const home=requireHome(db,homeId);
   const from=`${input.start}T00:00:00.000Z`,until=`${dayAfter(input.end)}T00:00:00.000Z`;
-  const totals=db.prepare("SELECT COUNT(*) AS total,COALESCE(SUM(purchase_total_minor),0)/100.0 AS amount FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,from,until) as {total:number;amount:number};
+  const totals=db.prepare("SELECT COUNT(*) AS total,COALESCE(SUM(purchase_total_minor),0)/100.0 AS amount FROM cost_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,from,until) as {total:number;amount:number};
   const totalPages=Math.max(1,Math.ceil(totals.total/input.pageSize)),page=Math.min(input.page,totalPages);
   const rows=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,COALESCE(b.purchase_category,i.category) AS category,substr(b.received_at,1,10) AS receivedDate,b.purchased_date AS purchaseDate,b.purchase_total_minor/100.0 AS totalPrice,COALESCE(c.name,'未指定') AS channelName,s.estimated_total_minor/100.0 AS estimatedTotal,
-    COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity
-    FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN shopping_channels c ON c.id=b.channel_id LEFT JOIN shopping_list s ON s.id=b.shopping_item_id
+    COALESCE((SELECT SUM(t.quantity) FROM cost_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity
+    FROM cost_batches b JOIN items i ON i.id=b.item_id LEFT JOIN shopping_channels c ON c.id=b.channel_id LEFT JOIN shopping_list s ON s.id=b.shopping_item_id
     WHERE b.home_id=? AND b.received_at>=? AND b.received_at<? AND b.purchase_total_minor IS NOT NULL ORDER BY b.received_at DESC,b.id DESC LIMIT ? OFFSET ?`).all(homeId,from,until,input.pageSize,(page-1)*input.pageSize) as {batchId:string;itemId:string;itemName:string;category:string;receivedDate:string;purchaseDate:string|null;totalPrice:number;channelName:string;estimatedTotal:number|null;quantity:number}[];
   return {...input,page,totalPages,total:totals.total,amount:totals.amount,currency:home.currency,items:rows.map(row=>({...row,unitPrice:row.quantity>0?Math.round(row.totalPrice/row.quantity*100)/100:null,variance:row.estimatedTotal===null?null:Math.round((row.totalPrice-row.estimatedTotal)*100)/100}))};
 }
@@ -68,7 +68,7 @@ export function financialTrend(db:DatabaseSync,homeId:string,raw:unknown){
   const count=(Number(end.slice(0,4))-Number(start.slice(0,4)))*12+Number(end.slice(5))-Number(start.slice(5))+1;
   if(count<1||count>36)throw new InventoryError(400,"INVALID_TREND_RANGE","error.validation");
   const home=requireHome(db,homeId);
-  const spent=db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL");
+  const spent=db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM cost_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL");
   const actual=(from:string,to:string)=>(spent.get(homeId,`${from}T00:00:00.000Z`,`${dayAfter(to)}T00:00:00.000Z`) as {total:number}).total;
   const today=new Date().toISOString().slice(0,10),cutoff=monthEnd(end)<today?monthEnd(end):today;
   const compare=(offset:number)=>{
@@ -113,8 +113,8 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
   const labelFor=(timestamp:string)=>input.granularity==="day"?timestamp.slice(0,10):timestamp.slice(0,7);
   const points=new Map(labels.map(label=>[label,{label,inbound:0,consumed:0,expired:0,damaged:0,adjustment:0} satisfies CostPoint]));
   const inboundRows=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS unit,b.received_at AS occurredAt,b.purchase_total_minor AS purchaseTotalMinor,
-    COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity
-    FROM stock_batches b JOIN items i ON i.id=b.item_id WHERE b.home_id=? AND b.received_at>=? AND b.received_at<?`).all(homeId,fromIso,untilIso) as {batchId:string;itemId:string;itemName:string;unit:string;occurredAt:string;purchaseTotalMinor:number|null;initialQuantity:number}[];
+    COALESCE((SELECT SUM(t.quantity) FROM cost_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity
+    FROM cost_batches b JOIN items i ON i.id=b.item_id WHERE b.home_id=? AND b.received_at>=? AND b.received_at<?`).all(homeId,fromIso,untilIso) as {batchId:string;itemId:string;itemName:string;unit:string;occurredAt:string;purchaseTotalMinor:number|null;initialQuantity:number}[];
   let inbound=0,unknownInboundBatchCount=0;
   const unknownInboundBatches:{batchId:string;itemId:string;itemName:string;unit:string;receivedDate:string;quantity:number;reason:"missingCost"|"missingQuantity"}[]=[];
   for(const row of inboundRows) {
@@ -123,8 +123,8 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
   }
   const issues=db.prepare(`SELECT t.id,t.batch_id AS batchId,t.item_id AS itemId,i.name AS itemName,i.base_unit AS unit,COALESCE(b.purchase_category,i.category,'其他') AS category,
     t.location_id AS locationId,COALESCE(l.name,'未指定') AS locationName,t.quantity,t.issue_reason AS issueReason,t.occurred_at AS occurredAt,b.purchase_total_minor AS purchaseTotalMinor,
-    COALESCE((SELECT SUM(origin.quantity) FROM stock_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity
-    FROM stock_transactions t JOIN stock_batches b ON b.id=t.batch_id JOIN items i ON i.id=t.item_id LEFT JOIN locations l ON l.id=t.location_id
+    COALESCE((SELECT SUM(origin.quantity) FROM cost_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity
+    FROM cost_transactions t JOIN cost_batches b ON b.id=t.batch_id JOIN items i ON i.id=t.item_id LEFT JOIN locations l ON l.id=t.location_id
     WHERE t.home_id=? AND t.type='issue' AND t.issue_reason IN ('used','expired','damaged','adjustment') AND t.occurred_at>=? AND t.occurred_at<?`).all(homeId,fromIso,untilIso) as {id:string;batchId:string;itemId:string;itemName:string;unit:string;category:string;locationId:string|null;locationName:string;quantity:number;issueReason:"used"|"expired"|"damaged"|"adjustment";occurredAt:string;purchaseTotalMinor:number|null;initialQuantity:number}[];
   const totals={inbound,consumed:0,wasted:0,expired:0,damaged:0,adjustment:0,wasteRate:null as number|null};
   let unknownCostIssueCount=0;
@@ -154,7 +154,7 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
     SUM(CASE WHEN t.type='issue' AND t.issue_reason='used' AND t.occurred_at<? THEN t.quantity ELSE 0 END) AS used,
     SUM(CASE WHEN t.type='issue' AND t.issue_reason IN ('expired','damaged') AND t.occurred_at<? THEN t.quantity ELSE 0 END) AS wasted,
     SUM(CASE WHEN t.type='issue' AND t.idempotency_key NOT LIKE 'event:%' AND (t.issue_reason='adjustment' OR t.issue_reason IS NULL) AND t.occurred_at<? THEN t.quantity ELSE 0 END) AS adjusted
-    FROM stock_batches b JOIN items i ON i.id=b.item_id JOIN stock_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
+    FROM cost_batches b JOIN items i ON i.id=b.item_id JOIN cost_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
     WHERE b.home_id=? AND b.received_at<? GROUP BY b.id`).all(cutoff,cutoff,cutoff,homeId,cutoff) as {batchId:string;itemId:string;itemName:string;receivedAt:string;cost:number|null;initialQuantity:number;used:number;wasted:number;adjusted:number}[];
   const batches=batchRows.map(row=>{
     const originalCost=row.cost===null||row.initialQuantity<=0?null:row.cost/100;
@@ -174,9 +174,9 @@ export function inventoryCostAnalysis(db:DatabaseSync,homeId:string,raw:unknown)
   const denominator=totals.consumed+totals.wasted;totals.wasteRate=denominator>0?rounded(totals.wasted/denominator*100):null;
   const today=new Date().toISOString().slice(0,10),riskThrough=shiftDay(today,30);
   const riskRows=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,b.expiry_date AS expiryDate,i.base_unit AS unit,b.purchase_total_minor AS purchaseTotalMinor,
-    COALESCE((SELECT SUM(origin.quantity) FROM stock_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity,
+    COALESCE((SELECT SUM(origin.quantity) FROM cost_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity,
     COALESCE(SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END),0) AS quantity
-    FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN stock_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
+    FROM cost_batches b JOIN items i ON i.id=b.item_id LEFT JOIN cost_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
     WHERE b.home_id=? AND b.expiry_date>=? AND b.expiry_date<=? GROUP BY b.id
     HAVING SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END)>0
     ORDER BY b.expiry_date,i.name`).all(homeId,today,riskThrough) as {batchId:string;itemId:string;itemName:string;expiryDate:string;unit:string;purchaseTotalMinor:number|null;initialQuantity:number;quantity:number}[];
@@ -195,7 +195,7 @@ function dailyFinancialTrend(db:DatabaseSync,homeId:string,start:string,end:stri
   const days=Math.floor((Date.parse(`${to}T00:00:00Z`)-Date.parse(`${from}T00:00:00Z`))/86400000)+1;
   if(days<1||days>366)throw new InventoryError(400,"INVALID_TREND_RANGE","error.validation");
   const home=requireHome(db,homeId);
-  const spent=db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL");
+  const spent=db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM cost_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL");
   const actual=(rangeStart:string,rangeEnd:string)=>(spent.get(homeId,`${rangeStart}T00:00:00.000Z`,`${dayAfter(rangeEnd)}T00:00:00.000Z`) as {total:number}).total;
   const today=new Date().toISOString().slice(0,10),cutoff=to<today?to:today;
   const current={start:from,end:cutoff,actual:from>cutoff?0:actual(from,cutoff)};
@@ -219,7 +219,7 @@ function budgetForMonth(db:DatabaseSync,homeId:string,month:string) {
 function totalsByCategory(db:DatabaseSync,homeId:string,month:string,kind:"actual"|"planned") {
   const [from,until]=monthRange(month);
   const sql=kind==="actual"
-    ? "SELECT COALESCE(purchase_category,'其他') AS category,SUM(purchase_total_minor)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL GROUP BY COALESCE(purchase_category,'其他')"
+    ? "SELECT COALESCE(purchase_category,'其他') AS category,SUM(purchase_total_minor)/100.0 AS total FROM cost_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL GROUP BY COALESCE(purchase_category,'其他')"
     : "SELECT COALESCE(category,'其他') AS category,SUM(estimated_total_minor)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND planned_date>=? AND planned_date<? AND estimated_total_minor IS NOT NULL GROUP BY COALESCE(category,'其他')";
   return db.prepare(sql).all(homeId,from,until) as MoneyRow[];
 }
@@ -268,7 +268,7 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const {month}=financialFilters.parse(raw);
   const home=requireHome(db,homeId);
   const [from,until]=monthRange(month);
-  const actual=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,from,until) as {total:number}).total;
+  const actual=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM cost_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,from,until) as {total:number}).total;
   const planned=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND planned_date>=? AND planned_date<? AND estimated_total_minor IS NOT NULL").get(homeId,from,until) as {total:number}).total;
   const budget=budgetForMonth(db,homeId,month);
   const categoryBudgets=budget.categoryBudgets;
@@ -289,17 +289,17 @@ export function financialDashboard(db:DatabaseSync,homeId:string,raw:unknown) {
   const categoryDistribution=mergeDistribution(rollup(actualByCategory),rollup(plannedByCategory));
   for(const categoryBudget of categoryBudgets)if(!categoryDistribution.some(row=>row.category===categoryBudget.category))categoryDistribution.push({category:categoryBudget.category,actual:0,planned:0});
   const byCategory=categoryDistribution.map(row=>({...row,budget:categoryBudgets.find(budget=>budget.category===row.category)?.amount??null})).sort((left,right)=>(right.actual+right.planned)-(left.actual+left.planned)||left.category.localeCompare(right.category));
-  const byChannel=db.prepare("SELECT b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,SUM(b.purchase_total_minor)/100.0 AS total FROM stock_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND b.received_at>=? AND b.received_at<? AND b.purchase_total_minor IS NOT NULL GROUP BY b.channel_id,c.name ORDER BY total DESC").all(homeId,from,until);
+  const byChannel=db.prepare("SELECT b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,SUM(b.purchase_total_minor)/100.0 AS total FROM cost_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND b.received_at>=? AND b.received_at<? AND b.purchase_total_minor IS NOT NULL GROUP BY b.channel_id,c.name ORDER BY total DESC").all(homeId,from,until);
   const purchases=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,COALESCE(b.purchase_category,i.category) AS category,substr(b.received_at,1,10) AS receivedDate,b.purchased_date AS purchaseDate,b.purchase_total_minor/100.0 AS totalPrice,b.purchase_currency AS currency,b.channel_id AS channelId,COALESCE(c.name,'未指定') AS channelName,b.shopping_item_id AS shoppingItemId,s.estimated_total_minor/100.0 AS estimatedTotal,
-    COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity
-    FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN shopping_channels c ON c.id=b.channel_id LEFT JOIN shopping_list s ON s.id=b.shopping_item_id
+    COALESCE((SELECT SUM(t.quantity) FROM cost_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity
+    FROM cost_batches b JOIN items i ON i.id=b.item_id LEFT JOIN shopping_channels c ON c.id=b.channel_id LEFT JOIN shopping_list s ON s.id=b.shopping_item_id
     WHERE b.home_id=? AND b.received_at>=? AND b.received_at<? AND b.purchase_total_minor IS NOT NULL ORDER BY b.received_at DESC LIMIT 200`).all(homeId,from,until) as {batchId:string;quantity:number;totalPrice:number;estimatedTotal:number|null}[];
   const purchaseRecords=purchases.map(row=>({...row,unitPrice:row.quantity>0?Math.round(row.totalPrice/row.quantity*100)/100:null,variance:row.estimatedTotal==null?null:Math.round((row.totalPrice-row.estimatedTotal)*100)/100}));
   const trend=[];
   for(let offset=-11;offset<=0;offset++) {
     const point=shiftMonth(month,offset);
     const [pointFrom,pointUntil]=monthRange(point);
-    const spent=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM stock_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,pointFrom,pointUntil) as {total:number}).total;
+    const spent=(db.prepare("SELECT COALESCE(SUM(purchase_total_minor),0)/100.0 AS total FROM cost_batches WHERE home_id=? AND received_at>=? AND received_at<? AND purchase_total_minor IS NOT NULL").get(homeId,pointFrom,pointUntil) as {total:number}).total;
     const pending=(db.prepare("SELECT COALESCE(SUM(estimated_total_minor),0)/100.0 AS total FROM shopping_list WHERE home_id=? AND completed=0 AND planned_date>=? AND planned_date<? AND estimated_total_minor IS NOT NULL").get(homeId,pointFrom,pointUntil) as {total:number}).total;
     const limit=budgetForMonth(db,homeId,point);
     trend.push({month:point,actual:spent,planned:pending,budget:limit.total});
@@ -312,7 +312,7 @@ export const financialSummary=financialDashboard;
 
 export function itemPriceHistory(db:DatabaseSync,homeId:string,itemId:string) {
   if(!db.prepare("SELECT 1 FROM items WHERE id=? AND home_id=? AND active=1").get(itemId,homeId))throw new InventoryError(404,"ITEM_NOT_FOUND","error.itemNotFoundOrDeleted");
-  const items=db.prepare(`SELECT b.id AS batchId,b.purchased_date AS purchaseDate,b.channel_id AS channelId,c.name AS channelName,b.purchase_currency AS currency,b.purchase_total_minor/100.0 AS totalPrice,COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity FROM stock_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND b.item_id=? AND b.purchase_total_minor IS NOT NULL ORDER BY b.purchased_date DESC,b.received_at DESC`).all(homeId,itemId) as {batchId:string;purchaseDate:string|null;channelId:string|null;channelName:string|null;currency:string;totalPrice:number;quantity:number}[];
+  const items=db.prepare(`SELECT b.id AS batchId,b.purchased_date AS purchaseDate,b.channel_id AS channelId,c.name AS channelName,b.purchase_currency AS currency,b.purchase_total_minor/100.0 AS totalPrice,COALESCE((SELECT SUM(t.quantity) FROM cost_transactions t WHERE t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity FROM cost_batches b LEFT JOIN shopping_channels c ON c.id=b.channel_id WHERE b.home_id=? AND b.item_id=? AND b.purchase_total_minor IS NOT NULL ORDER BY b.purchased_date DESC,b.received_at DESC`).all(homeId,itemId) as {batchId:string;purchaseDate:string|null;channelId:string|null;channelName:string|null;currency:string;totalPrice:number;quantity:number}[];
   return {itemId,items:items.map(item=>({...item,unitPrice:item.quantity>0?Math.round(item.totalPrice/item.quantity*100)/100:null}))};
 }
 
@@ -321,13 +321,13 @@ export function listMissingCosts(db:DatabaseSync,homeId:string,raw:unknown) {
   const {page,pageSize}=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(9)}).strict().parse(raw);
   const home=db.prepare("SELECT default_currency AS currency FROM homes WHERE id=?").get(homeId) as {currency:string}|undefined;
   if(!home)throw new InventoryError(404,"HOME_NOT_FOUND","error.homeNotFound");
-  const from="FROM stock_batches b JOIN items i ON i.id=b.item_id AND i.home_id=b.home_id WHERE b.home_id=? AND i.active=1 AND b.purchase_total_minor IS NULL";
+  const from="FROM cost_batches b JOIN items i ON i.id=b.item_id AND i.home_id=b.home_id WHERE b.home_id=? AND i.active=1 AND b.purchase_total_minor IS NULL";
   const {total}=db.prepare(`SELECT COUNT(*) AS total ${from}`).get(homeId) as {total:number};
   const totalPages=Math.max(1,Math.ceil(total/pageSize)),currentPage=Math.min(page,totalPages);
   const items=db.prepare(`SELECT b.id AS batchId,b.item_id AS itemId,i.name AS itemName,i.base_unit AS unit,b.label,b.legacy,b.received_at AS receivedAt,
-    COALESCE((SELECT SUM(t.quantity) FROM stock_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity,
-    COALESCE((SELECT SUM(CASE WHEN t.type='receipt' THEN t.quantity WHEN t.type='issue' THEN -t.quantity ELSE 0 END) FROM stock_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id),0) AS remainingQuantity,
-    (SELECT COUNT(*) FROM stock_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id AND t.type='issue' AND t.idempotency_key NOT LIKE 'event:%') AS issueCount
+    COALESCE((SELECT SUM(t.quantity) FROM cost_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id AND t.type='receipt' AND t.idempotency_key NOT LIKE 'event:%'),0) AS quantity,
+    COALESCE((SELECT SUM(CASE WHEN t.type='receipt' THEN t.quantity WHEN t.type='issue' THEN -t.quantity ELSE 0 END) FROM cost_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id),0) AS remainingQuantity,
+    (SELECT COUNT(*) FROM cost_transactions t WHERE t.home_id=b.home_id AND t.batch_id=b.id AND t.type='issue' AND t.idempotency_key NOT LIKE 'event:%') AS issueCount
     ${from} ORDER BY b.received_at DESC,b.id LIMIT ? OFFSET ?`).all(homeId,pageSize,(currentPage-1)*pageSize) as {batchId:string;itemId:string;itemName:string;unit:string;label:string|null;receivedAt:string;quantity:number;remainingQuantity:number;legacy:number;issueCount:number}[];
   return {currency:home.currency,total,page:currentPage,totalPages,items};
 }
