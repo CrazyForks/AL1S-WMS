@@ -190,64 +190,6 @@ export function InventoryPage({
           <strong>{expiringItems.length}</strong>
         </button>
       </div>
-      <section className="panel opened-consumables-panel">
-        <div className="panel-head">
-          <div>
-            <h2>{t("已开封消耗品")}</h2>
-            <p className="muted">{t("开封后仍计入库存，用尽后才扣减")}</p>
-          </div>
-          <strong>{openedConsumables.length}</strong>
-        </div>
-        {openedConsumables.length === 0 ? (
-          <p className="empty">{t("暂无已开封消耗品")}</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t("物资")}</th>
-                  <th>{t("数量")}</th>
-                  <th>{t("地点")}</th>
-                  <th>{t("开封时间")}</th>
-                  <th>{t("开封后到期")}</th>
-                  <th>{t("操作")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {openedConsumables.map((opened) => (
-                  <tr key={opened.id}>
-                    <td>
-                      <button
-                        type="button"
-                        className="item-link"
-                        onClick={() => openItemDetail(opened.itemId)}
-                      >
-                        {opened.itemName}
-                      </button>
-                    </td>
-                    <td>
-                      {opened.quantity} {displayUnit(opened.baseUnit)}
-                    </td>
-                    <td>{opened.locationName || t("未指定")}</td>
-                    <td>{formatDateTime(opened.openedAt)}</td>
-                    <td>{openedExpiryForDisplay(opened) || "--"}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="text-button"
-                        disabled={busy}
-                        onClick={() => setExhaustTarget(opened)}
-                      >
-                        {t("用尽")}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
       <div className="panel inventory-panel count-inventory">
         <div className="panel-head">
           <div>
@@ -554,6 +496,64 @@ export function InventoryPage({
           </div>
         )}
       </div>
+      <section className="panel opened-consumables-panel">
+        <div className="panel-head">
+          <div>
+            <h2>{t("已开封消耗品")}</h2>
+            <p className="muted">{t("开封后仍计入库存，用尽后才扣减")}</p>
+          </div>
+          <strong>{openedConsumables.length}</strong>
+        </div>
+        {openedConsumables.length === 0 ? (
+          <p className="empty">{t("暂无已开封消耗品")}</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t("物资")}</th>
+                  <th>{t("数量")}</th>
+                  <th>{t("地点")}</th>
+                  <th>{t("开封时间")}</th>
+                  <th>{t("开封后到期")}</th>
+                  <th>{t("操作")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {openedConsumables.map((opened) => (
+                  <tr key={opened.id}>
+                    <td>
+                      <button
+                        type="button"
+                        className="item-link"
+                        onClick={() => openItemDetail(opened.itemId)}
+                      >
+                        {opened.itemName}
+                      </button>
+                    </td>
+                    <td>
+                      {opened.quantity} {displayUnit(opened.baseUnit)}
+                    </td>
+                    <td>{opened.locationName || t("未指定")}</td>
+                    <td>{formatDateTime(opened.openedAt)}</td>
+                    <td>{openedExpiryForDisplay(opened) || "--"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => setExhaustTarget(opened)}
+                      >
+                        {t("用尽")}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </section>
   );
 }
