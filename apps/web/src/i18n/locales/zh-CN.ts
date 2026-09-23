@@ -1,4 +1,6 @@
 export const zhCN = {
+  "操作撤销": "操作撤销",
+  "盘点{{name}}": "盘点{{name}}",
   "{{category}}预算": "{{category}}预算",
   "预算": "预算",
   "子分类": "子分类",

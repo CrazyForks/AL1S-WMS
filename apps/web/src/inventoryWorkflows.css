@@ -6,7 +6,6 @@ dialog.workflow-dialog::backdrop { background: #17202b66; }
 .workflow-table th,.workflow-table td { padding: 8px 12px; font-size: 12px; }
 .workflow-table td small { display: block; color: var(--aris-muted); }
 .workflow-table input { width: 100px; height: 32px; margin: 0; }
-.workflow-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-bottom: 12px; }
 .workflow-history > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--aris-line); }
 .workflow-history > div > div { display: grid; gap: 4px; min-width: 0; }
 .workflow-history strong { font-size: 12px; overflow-wrap: anywhere; }
@@ -14,3 +13,5 @@ dialog.workflow-dialog::backdrop { background: #17202b66; }
 .workflow-history button { flex-shrink: 0; }
 .workflow-dialog .muted { font-size: 12px; }
 .workflow-dialog .receipt-shortfall { padding: 10px 0; }
+
+.location-stocktake > form { padding: 0 16px 16px; }

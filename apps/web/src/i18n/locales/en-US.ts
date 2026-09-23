@@ -1,6 +1,8 @@
 import type { zhCN } from "./zh-CN.js";
 
 export const enUS = {
+  "盘点{{name}}": "Count {{name}}",
+  "操作撤销": "Undo operation",
   "{{category}}预算": "{{category}} budget",
   "预算": "Budget",
   "子分类": "Subcategories",
