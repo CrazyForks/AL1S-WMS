@@ -23,6 +23,7 @@ import { FinanceTrend, FinancePurchases, InventoryCostWaste } from "./FinanceRep
 import { adjacentMonth, isPurchaseOverdue } from "./purchaseSchedule.js";
 import { BudgetCategoryPicker, BudgetAllocationEditor, BudgetExecution } from "./BudgetCategories.js";
 import { budgetAllocations, completeBudgetTree, setBudgetAllocation, removeBudgetAllocation, type CategorySpending } from "./budgetTree.js";
+import { flattenHierarchy, summarizeHierarchy } from "./hierarchy.js";
 import {
   type CSSProperties,
   FormEvent,
@@ -254,54 +255,6 @@ type ApiToken = {
   lastUsedAt?: string | null;
   revokedAt?: string | null;
 };
-
-function flattenHierarchy<
-  T extends { id: string; name: string; parentId: string | null },
->(
-  nodes: T[],
-  parentId: string | null = null,
-  depth = 0,
-): (T & { depth: number })[] {
-  return nodes
-    .filter((node) => node.parentId === parentId)
-    .flatMap((node) => [
-      { ...node, depth },
-      ...flattenHierarchy(nodes, node.id, depth + 1),
-    ]);
-}
-
-function summarizeHierarchy<
-  T extends { id: string; name: string; parentId: string | null },
->(nodes: T[], items: Item[], matches: (item: Item, node: T) => boolean) {
-  return flattenHierarchy(nodes)
-    .map((node) => {
-      const branchIds = new Set([node.id]);
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const candidate of nodes) {
-          if (
-            candidate.parentId &&
-            branchIds.has(candidate.parentId) &&
-            !branchIds.has(candidate.id)
-          ) {
-            branchIds.add(candidate.id);
-            changed = true;
-          }
-        }
-      }
-      const branchNodes = nodes.filter((candidate) =>
-        branchIds.has(candidate.id),
-      );
-      return {
-        ...node,
-        count: items.filter((item) =>
-          branchNodes.some((candidate) => matches(item, candidate)),
-        ).length,
-      };
-    })
-    .filter((node) => node.count > 0);
-}
 
 const fallbackHomeId = "11111111-1111-4111-8111-111111111111";
 const locationId = "22222222-2222-4222-8222-222222222222";
