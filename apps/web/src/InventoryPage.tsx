@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, Search, SlidersHorizontal } from "lucide-react";
 import type * as React from "react";
 import { itemIconFor, MaterialIcon } from "./Icons.js";
+import { InventoryMoreActions } from "./InventoryMoreActions.js";
 import { PageSizeSelect } from "./PageSizeSelect.js";
 import { formatDateTime, openedExpiryForDisplay } from "./displayDates.js";
 import { formatMoney } from "./formatMoney.js";
@@ -420,6 +421,7 @@ export function InventoryPage({
                           >
                             {t("领用")}
                           </button>
+                          <InventoryMoreActions>
                           <button onClick={() => setBatchItem(item)}>
                             {t("批次")}
                           </button>
@@ -441,6 +443,7 @@ export function InventoryPage({
                           >
                             {t("删除")}
                           </button>
+                          </InventoryMoreActions>
                         </div>
                         <button
                           type="button"
