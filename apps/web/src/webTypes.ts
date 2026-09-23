@@ -95,6 +95,8 @@ export type TransactionPage = {
 };
 
 export type ShoppingItem = {
+  consumptionType?: Item["consumptionType"];
+  openedShelfLifeDays?: number | null;
   id: string;
   itemId?: string | null;
   name: string;

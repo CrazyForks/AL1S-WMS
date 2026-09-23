@@ -718,6 +718,8 @@ export function App() {
           estimatedTotal:data.get("estimatedTotal")===""?null:Number(data.get("estimatedTotal")),
           ...(!linkedShoppingItem
             ? {
+                consumptionType: data.get("consumptionType") || "consumable",
+                openedShelfLifeDays: data.get("openedShelfLifeDays") ? Number(data.get("openedShelfLifeDays")) : null,
                 name: data.get("name"),
                 unit: data.get("unit") || undefined,
                 category: data.get("category") || undefined,
@@ -790,6 +792,8 @@ export function App() {
           estimatedTotal:data.get("estimatedTotal")===""?null:Number(data.get("estimatedTotal")),
           ...(!linkedEditShoppingItem
             ? {
+                consumptionType: data.get("consumptionType") || "consumable",
+                openedShelfLifeDays: data.get("openedShelfLifeDays") ? Number(data.get("openedShelfLifeDays")) : null,
                 name: data.get("name"),
                 unit: data.get("unit"),
                 category: data.get("category"),

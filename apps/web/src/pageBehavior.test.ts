@@ -157,3 +157,14 @@ test("transaction pagination preserves empty, first and final page boundaries", 
   assert.match(last, /11–12/);
   assert.match(last, /aria-label="下一页" disabled=""/);
 });
+
+test("purchase consumption fields offer all types and preserve linked item settings",async()=>{
+  const {ConsumptionFields}=await import("./ConsumptionFields.js");
+  const html=renderToStaticMarkup(createElement(ConsumptionFields,{consumptionType:"long_term_consumable",openedShelfLifeDays:14}));
+  for(const type of ["consumable","non_consumable","long_term_consumable"])assert.match(html,new RegExp(`value="${type}"`));
+  assert.match(html, /value="long_term_consumable" selected=""/);
+  assert.match(html, /value="14"/);
+  const linked=renderToStaticMarkup(createElement(ConsumptionFields,{consumptionType:"non_consumable",disabled:true}));
+  assert.match(linked, /name="consumptionType" disabled=""/);
+  assert.match(linked, /value="non_consumable" selected=""/);
+});

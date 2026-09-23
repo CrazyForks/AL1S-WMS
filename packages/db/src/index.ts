@@ -158,6 +158,8 @@ export function openDatabase(
     /* existing column */
   }
   const shoppingColumns = db.prepare("PRAGMA table_info(shopping_list)").all() as {name:string}[];
+  if(!shoppingColumns.some(column=>column.name==="consumption_type"))db.exec("ALTER TABLE shopping_list ADD COLUMN consumption_type TEXT NOT NULL DEFAULT 'consumable'");
+  if(!shoppingColumns.some(column=>column.name==="opened_shelf_life_days"))db.exec("ALTER TABLE shopping_list ADD COLUMN opened_shelf_life_days INTEGER");
   if(!shoppingColumns.some(column=>column.name==="channel_id"))db.exec("ALTER TABLE shopping_list ADD COLUMN channel_id TEXT REFERENCES shopping_channels(id)");
   if(!shoppingColumns.some(column=>column.name==="planned_date"))db.exec("ALTER TABLE shopping_list ADD COLUMN planned_date TEXT");
   if(!shoppingColumns.some(column=>column.name==="estimated_total_minor"))db.exec("ALTER TABLE shopping_list ADD COLUMN estimated_total_minor INTEGER");

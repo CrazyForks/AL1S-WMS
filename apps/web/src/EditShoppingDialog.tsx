@@ -1,3 +1,4 @@
+import {ConsumptionFields} from "./ConsumptionFields.js";
 import { X } from "lucide-react";
 import type * as React from "react";
 import { FormEvent } from "react";
@@ -82,6 +83,7 @@ export function EditShoppingDialog({
           value={editShoppingItemId}
           onChange={setEditShoppingItemId}
         />
+        <ConsumptionFields key={`consumption-${editShoppingItemId}`} consumptionType={linkedEditShoppingItem?.consumptionType??editShoppingItem.consumptionType} openedShelfLifeDays={linkedEditShoppingItem?linkedEditShoppingItem.openedShelfLifeDays:editShoppingItem.openedShelfLifeDays} disabled={Boolean(linkedEditShoppingItem)}/>
         <div className="form-row">
           <label>
             {t("数量")}
