@@ -1,4 +1,7 @@
+import {listWorkflowOperations,undoWorkflowOperation,previewStocktake,confirmStocktake} from "./workflows.js";
 import {normalizeConsumptionInput} from "./consumption.js";
+import { itemBalanceSqlFor } from "./queryHelpers.js";
+import { nonnegativeQuantity, roundQuantity } from "./quantity.js";
 import {createAuth} from "./auth.js";
 import Fastify from "fastify";
 import { z } from "zod";
@@ -360,6 +363,7 @@ app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:h
   const {homeId,itemId}=request.params;
   const existing=db.prepare("SELECT consumption_type FROM items WHERE id=? AND home_id=? AND active=1").get(itemId,homeId);
   const {syncPurchaseCategory=false,...changes}=updateItemSchema.parse(normalizeConsumptionInput(request.body,existing?.consumption_type));
+  if(changes.reorderPoint!==undefined)changes.reorderPoint=nonnegativeQuantity.parse(changes.reorderPoint);
   if(changes.barcode)changes.barcode=normalizeBarcode(changes.barcode);
   requireStockTarget(db,homeId,itemId,changes.locationId??undefined);
   const current=db.prepare("SELECT * FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as Record<string,any>;
@@ -402,7 +406,7 @@ app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/stock", async request =
   const filters=z.object({itemId:z.string().uuid().optional(),locationId:z.string().uuid().optional(),batchId:z.string().uuid().optional()}).parse(request.query);
   const where=["home_id=?"],params:string[]=[request.params.homeId];
   for(const [key,column] of [["itemId","item_id"],["locationId","location_id"],["batchId","batch_id"]] as const) if(filters[key]) {where.push(`${column}=?`);params.push(filters[key]!);}
-  return db.prepare(`SELECT item_id AS itemId,location_id AS locationId,SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END) AS quantity,MAX(CASE WHEN type='receipt' THEN occurred_at END) AS latestReceivedAt FROM stock_transactions WHERE ${where.join(" AND ")} GROUP BY item_id,location_id`).all(...params);
+  return (db.prepare(`SELECT item_id AS itemId,location_id AS locationId,ROUND(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),2) AS quantity,MAX(CASE WHEN type='receipt' THEN occurred_at END) AS latestReceivedAt FROM stock_transactions WHERE ${where.join(" AND ")} GROUP BY item_id,location_id`).all(...params) as {quantity:number}[]).map(row=>({...row,quantity:roundQuantity(row.quantity)}));
 });
 
 app.get<{ Params: { homeId: string } }>(
@@ -637,6 +641,10 @@ app.get<{ Params: { homeId: string } }>("/api/v1/homes/:homeId/opened-consumable
 app.post<{ Params: { homeId: string; openedId: string }; Body: unknown }>("/api/v1/homes/:homeId/opened-consumables/:openedId/exhaust", async request =>
   exhaustOpenedConsumable(db,request.params.homeId,{...(request.body&&typeof request.body==="object"?request.body:{}),id:request.params.openedId}),
 );
+app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/stock/operations",async request=>listWorkflowOperations(db,request.params.homeId));
+app.post<{Params:{homeId:string;id:string}}>("/api/v1/homes/:homeId/stock/operations/:id/undo",async request=>undoWorkflowOperation(db,request.params.homeId,request.params.id));
+app.get<{Params:{homeId:string;locationId:string}}>("/api/v1/homes/:homeId/stocktake/:locationId",async request=>previewStocktake(db,request.params.homeId,request.params.locationId));
+app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stocktake",async request=>confirmStocktake(db,request.params.homeId,request.body));
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/transfers",async request => transferStock(db,request.params.homeId,request.body));
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/reconcile",async request => reconcileStock(db,request.params.homeId,request.body));
 
@@ -670,7 +678,7 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
   async (request, reply) => {
     const body =
       request.body && typeof request.body === "object" ? request.body : {};
-    const parsed = createItemSchema.safeParse(normalizeConsumptionInput({
+    const parsed = createItemSchema.extend({initialStock:nonnegativeQuantity.default(0),reorderPoint:nonnegativeQuantity}).safeParse(normalizeConsumptionInput({
       ...body,
       homeId: request.params.homeId,
     }));
@@ -751,7 +759,7 @@ app.get<{ Params: { homeId: string } }>(
       .all(request.params.homeId);
     const automatic = db
       .prepare(
-        "SELECT 'auto:' || items.id AS id, items.id AS itemId, items.name, MAX(items.reorder_point - (SELECT COALESCE(SUM(CASE WHEN type = 'receipt' THEN quantity ELSE -quantity END), 0) FROM stock_transactions WHERE item_id = items.id), 0) AS quantity, items.base_unit AS unit, items.consumption_type AS consumptionType, items.opened_shelf_life_days AS openedShelfLifeDays, items.category, items.default_location_id AS locationId,NULL AS channelId,NULL AS channelName,NULL AS plannedDate,NULL AS estimatedTotal,'automatic' AS source,0 AS completed,NULL AS createdAt FROM items WHERE items.home_id=? AND items.active=1 AND (SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) FROM stock_transactions WHERE item_id=items.id)<items.reorder_point AND NOT EXISTS (SELECT 1 FROM shopping_list s WHERE s.home_id=items.home_id AND s.item_id=items.id AND s.completed=0) GROUP BY items.id ORDER BY items.name",
+        `SELECT 'auto:' || items.id AS id, items.id AS itemId, items.name, MAX(ROUND(items.reorder_point - ${itemBalanceSqlFor("items")},2), 0) AS quantity, items.base_unit AS unit, items.consumption_type AS consumptionType, items.opened_shelf_life_days AS openedShelfLifeDays, items.category, items.default_location_id AS locationId,NULL AS channelId,NULL AS channelName,NULL AS plannedDate,NULL AS estimatedTotal,'automatic' AS source,0 AS completed,NULL AS createdAt FROM items WHERE items.home_id=? AND items.active=1 AND ROUND(items.reorder_point - ${itemBalanceSqlFor("items")},2)>0 AND NOT EXISTS (SELECT 1 FROM shopping_list s WHERE s.home_id=items.home_id AND s.item_id=items.id AND s.completed=0) GROUP BY items.id ORDER BY items.name`,
       )
       .all(request.params.homeId);
     return [...manual, ...automatic];

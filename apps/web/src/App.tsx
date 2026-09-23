@@ -17,6 +17,7 @@ import { StockDialog } from "./StockDialog.js";
 import { TransactionPagination } from "./TransactionPagination.js";
 import { getCategories,getFinancialSummary,getHomeId,getItems,getLocations,getOpenedConsumables,getShoppingCalendar,getShoppingChannels,getShoppingList,getStock,getTransactions } from "./apiClient.js";
 import { formatMoney } from "./formatMoney.js";
+import { roundQuantity } from "./quantity.js";
 import { apiFetch,apiJson } from "./i18n/apiFetch.js";
 import i18n,{
 displayUnit,
@@ -123,6 +124,7 @@ export function App() {
   const [barcodeNotice, setBarcodeNotice] = useState("");
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [itemFormRevision, setItemFormRevision] = useState(0);
+  const [itemFormError, setItemFormError] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [categoryParent, setCategoryParent] = useState("");
   const [locationName, setLocationName] = useState("");
@@ -383,24 +385,24 @@ export function App() {
       .catch((error) => setNotice(error.message));
   }, [authenticated]);
   const balanceFor = (itemId: string) =>
-    stock
+    roundQuantity(stock
       .filter((row) => row.itemId === itemId)
-      .reduce((total, row) => total + row.quantity, 0);
+      .reduce((total, row) => total + row.quantity, 0));
   const locationScopedItems=useMemo(()=>items.flatMap(item=>{
     const balances=stock.filter(row=>row.itemId===item.id&&row.quantity>1e-9);
     if(balances.length)return balances.map(row=>({
       ...item,locationId:row.locationId,
       locationName:locations.find(location=>location.id===row.locationId)?.name??"未指定",
-      treeQuantity:row.quantity,
+      treeQuantity:roundQuantity(row.quantity),
       latestReceivedAt:row.latestReceivedAt??null,
     }));
     return [{...item,treeQuantity:0}];
   }),[items,stock,locations]);
   const replenishmentFor = (item: Item) =>
-    Math.max(item.reorderPoint - balanceFor(item.id), 0);
+    Math.max(roundQuantity(item.reorderPoint - balanceFor(item.id)), 0);
   const stockStatusFor = (item: Item) => {
     const quantity = balanceFor(item.id);
-    const difference = quantity - item.reorderPoint;
+    const difference = roundQuantity(quantity - item.reorderPoint);
     if (difference < 0)
       return {
         level: "low",
@@ -591,10 +593,13 @@ export function App() {
 
   async function addItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
+    setItemFormError("");
     setBusy(true);
     const form = event.currentTarget;
     const data = new FormData(form);
-    const response = await apiJson(`/api/v1/homes/${getHomeId()}/items`, "POST", {
+    try {
+      const response = await apiJson(`/api/v1/homes/${getHomeId()}/items`, "POST", {
         name: data.get("name"),
         barcode: data.get("barcode") || undefined,
         icon: data.get("icon") || null,
@@ -612,15 +617,19 @@ export function App() {
         purchaseDate:data.get("purchaseDate")||null,
         channelId:data.get("channelId")||null,
       });
-    setBusy(false);
-    if (!response.ok) {
-      const result = await response.json().catch(() => ({}));
-      setNotice(result.message || t("保存失败，请检查填写内容"));
-      return;
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        setItemFormError(typeof result.message === "string" ? result.message : t("保存失败，请检查填写内容"));
+        return;
+      }
+      form.reset();
+      closeItemForm();
+      void load();
+    } catch {
+      setItemFormError(t("保存失败，请检查填写内容"));
+    } finally {
+      setBusy(false);
     }
-    form.reset();
-    closeItemForm();
-    load();
   }
 
   async function recordStock(event: FormEvent<HTMLFormElement>) {
@@ -1013,6 +1022,7 @@ export function App() {
     baseUnit?: string;
     barcode?: string;
   }) {
+    setItemFormError("");
     setPrefillLocationId(preset?.locationId || "");
     setPrefillCategory(preset?.category || "");
     setPrefillName(preset?.name || "");
@@ -1023,6 +1033,7 @@ export function App() {
     setShowForm(true);
   }
   function closeItemForm() {
+    setItemFormError("");
     setShowForm(false);
     setShowBarcodeScanner(false);
     setPrefillLocationId("");
@@ -1903,7 +1914,7 @@ export function App() {
         <ReceiveShoppingDialog setReceiveShoppingItem={setReceiveShoppingItem} receiveShopping={receiveShopping} receiveShoppingItem={receiveShoppingItem} receiveQuantity={receiveQuantity} setReceiveQuantity={setReceiveQuantity} items={items} locations={locations} locationOptions={locationOptions} receiveTotal={receiveTotal} setReceiveTotal={setReceiveTotal} receiveUnitPrice={receiveUnitPrice} financialSummary={financialSummary} busy={busy} />
       )}
       {showForm && (
-        <ItemForm closeItemForm={closeItemForm} itemFormRevision={itemFormRevision} addItem={addItem} barcodeInput={barcodeInput} setBarcodeInput={setBarcodeInput} barcodeBusy={barcodeBusy} lookupItemBarcode={lookupItemBarcode} setShowBarcodeScanner={setShowBarcodeScanner} prefillName={prefillName} prefillCategory={prefillCategory} selectCategoryOptions={selectCategoryOptions} prefillUnit={prefillUnit} shoppingChannels={shoppingChannels} prefillLocationId={prefillLocationId} locationOptions={locationOptions} busy={busy} />
+        <ItemForm closeItemForm={closeItemForm} itemFormRevision={itemFormRevision} addItem={addItem} barcodeInput={barcodeInput} setBarcodeInput={setBarcodeInput} barcodeBusy={barcodeBusy} lookupItemBarcode={lookupItemBarcode} setShowBarcodeScanner={setShowBarcodeScanner} prefillName={prefillName} prefillCategory={prefillCategory} selectCategoryOptions={selectCategoryOptions} prefillUnit={prefillUnit} shoppingChannels={shoppingChannels} prefillLocationId={prefillLocationId} locationOptions={locationOptions} busy={busy} error={itemFormError} />
       )}
       {showBarcodeScanner && (
         <BarcodeScanner

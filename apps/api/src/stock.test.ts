@@ -5,7 +5,7 @@ import { openDatabase, seedShoppingChannels } from "@al1s-wms/db";
 import { buildApp } from "./app.js";
 import { getHomeOverview, listBatches, listItems, listTransactions } from "./queries.js";
 import { receiveShopping, saveShopping } from "./shopping.js";
-import { exhaustOpenedConsumable, InventoryError, listOpenedConsumables, reconcileStock, recordStock } from "./stock.js";
+import { exhaustOpenedConsumable, InventoryError, listOpenedConsumables, reconcileStock, recordStock, stockAt } from "./stock.js";
 
 function fixture() {
   const db = openDatabase(":memory:");
@@ -16,6 +16,62 @@ function fixture() {
     .run(itemId,homeId,itemId,"牛奶","食品","瓶",locationId);
   return {db,homeId,locationId,itemId};
 }
+
+test("fractional stock rounds to hundredths without ghost balances or replenishment", async () => {
+  const {db,homeId,itemId,locationId}=fixture();
+  db.prepare("UPDATE items SET reorder_point=0.67 WHERE id=?").run(itemId);
+  const userId=randomUUID(),sessionId=randomUUID();
+  db.prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(userId,"fractional-user","unused",new Date().toISOString());
+  db.prepare("INSERT INTO sessions(id,user_id,expires_at) VALUES (?,?,?)").run(sessionId,userId,"2099-01-01T00:00:00.000Z");
+  const app=await buildApp(db);
+  const headers={cookie:`session=${sessionId}`};
+  try {
+    const receipt=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:0.66700000001,idempotencyKey:"fractional-receipt"});
+    assert.equal(receipt.afterQuantity,0.67);
+    assert.equal((listItems(db,homeId,{}) as {quantity:number}[])[0].quantity,0.67);
+    assert.equal(getHomeOverview(db,homeId,{}).needsReplenishment.total,0);
+    const issued=recordStock(db,homeId,"issue",{itemId,locationId,quantity:0.67,idempotencyKey:"fractional-issue"});
+    assert.equal(issued.afterQuantity,0);
+    assert.equal(stockAt(db,homeId,itemId,locationId),0);
+    assert.equal((listBatches(db,homeId,{itemId,includeEmpty:"true"}) as unknown as {items:{quantity:number}[]}).items[0].quantity,0);
+    const home=await app.inject({method:"GET",url:`/api/v1/homes/${homeId}/shopping-list`,headers});
+    assert.equal(home.json()[0].quantity,0.67);
+    assert.equal(getHomeOverview(db,homeId,{}).needsReplenishment.items[0].suggestedQuantity,0.67);
+    assert.equal((await app.inject({method:"GET",url:`/api/v1/homes/${homeId}/stock`,headers})).json()[0].quantity,0);
+
+    // Older ledgers can contain high-precision values; their visible and allocatable balance is still 0.01-based.
+    const legacy=recordStock(db,homeId,"receipt",{itemId,locationId,quantity:0.67,idempotencyKey:"legacy-fractional"});
+    db.prepare("UPDATE stock_transactions SET quantity=? WHERE id=?").run(0.66700000001,legacy.transactions[0].id);
+    assert.equal(stockAt(db,homeId,itemId,locationId),0.67);
+    assert.equal(recordStock(db,homeId,"issue",{itemId,locationId,quantity:0.67,idempotencyKey:"legacy-issue"}).afterQuantity,0);
+    assert.equal(getHomeOverview(db,homeId,{}).needsReplenishment.items[0].suggestedQuantity,0.67);
+  } finally { await app.close(); db.close(); }
+});
+
+test("item creation requires location for fractional initial stock and normalizes quantity", async () => {
+  const {db,homeId,locationId}=fixture();
+  const userId=randomUUID(),sessionId=randomUUID();
+  db.prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(userId,"create-fractional","unused",new Date().toISOString());
+  db.prepare("INSERT INTO sessions(id,user_id,expires_at) VALUES (?,?,?)").run(sessionId,userId,"2099-01-01T00:00:00.000Z");
+  const app=await buildApp(db),headers={cookie:`session=${sessionId}`},url=`/api/v1/homes/${homeId}/items`;
+  const payload={name:"玉米",category:"食品",baseUnit:"个",reorderPoint:0.66700000001,reorderQuantity:0,initialStock:0.66700000001};
+  try {
+    const invalid=await app.inject({method:"POST",url,headers,payload});
+    assert.equal(invalid.statusCode,400,invalid.body);
+    assert.equal(invalid.json().code,"LOCATION_REQUIRED");
+    assert.equal((db.prepare("SELECT count(*) AS n FROM items WHERE name='玉米'").get() as {n:number}).n,0);
+    const created=await app.inject({method:"POST",url,headers,payload:{...payload,locationId}});
+    assert.equal(created.statusCode,201,created.body);
+    const id=created.json().id;
+    assert.equal(stockAt(db,homeId,id,locationId),0.67);
+    assert.equal((listItems(db,homeId,{query:"玉米"}) as {reorderPoint:number}[])[0].reorderPoint,0.67);
+    assert.equal(getHomeOverview(db,homeId,{}).needsReplenishment.total,0);
+    const changed=await app.inject({method:"PATCH",url:`${url}/${id}`,headers,payload:{reorderPoint:1.33700000001}});
+    assert.equal(changed.statusCode,200,changed.body);
+    assert.equal((listItems(db,homeId,{query:"玉米"}) as {reorderPoint:number}[])[0].reorderPoint,1.34);
+    assert.equal(getHomeOverview(db,homeId,{}).needsReplenishment.items[0].suggestedQuantity,0.67);
+  } finally { await app.close(); db.close(); }
+});
 
 test("editing a batch expiry refreshes item dates and preserves other batches", async () => {
   const {db, homeId, locationId, itemId} = fixture();

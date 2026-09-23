@@ -28,5 +28,6 @@ export function pageQuery(
   };
 }
 
-export const itemBalanceSql =
-  "(SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) FROM stock_transactions WHERE home_id=i.home_id AND item_id=i.id)";
+export const itemBalanceSqlFor = (alias: "i" | "items") =>
+  `(SELECT ROUND(COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0),2) FROM stock_transactions WHERE home_id=${alias}.home_id AND item_id=${alias}.id)`;
+export const itemBalanceSql = itemBalanceSqlFor("i");

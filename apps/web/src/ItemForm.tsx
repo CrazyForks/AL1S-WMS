@@ -1,7 +1,7 @@
 import {ConsumptionFields} from "./ConsumptionFields.js";
 import { X } from "lucide-react";
 import type * as React from "react";
-import { FormEvent } from "react";
+import { FormEvent, useEffect, useRef } from "react";
 import { UnitOptions } from "./AppElements.js";
 import { BatchFields } from "./BatchFields.js";
 import { IconPicker } from "./Icons.js";
@@ -28,6 +28,7 @@ type ItemFormProps = {
   prefillLocationId: string;
   locationOptions: (Location & { depth: number })[];
   busy: boolean;
+  error: string;
 };
 export function ItemForm({
   closeItemForm,
@@ -46,7 +47,12 @@ export function ItemForm({
   prefillLocationId,
   locationOptions,
   busy,
+  error,
 }: ItemFormProps) {
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: "nearest" });
+  }, [error]);
   return (
     <div
       className="modal-backdrop"
@@ -73,6 +79,7 @@ export function ItemForm({
             <X size={18} strokeWidth={1.8} />
           </button>
         </div>
+        {error && <p ref={errorRef} className="setup-error item-form-error" role="alert">{error}</p>}
         <div className="barcode-lookup">
           <label>
             {t("商品条码（可选）")}

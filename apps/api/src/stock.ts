@@ -1,7 +1,9 @@
+import {startWorkflow,finishWorkflow,endWorkflow} from "./workflows.js";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { renderTranslation, type Locale, type TranslationKey } from "./i18n/index.js";
+import { nonnegativeQuantity, positiveQuantity, roundQuantity } from "./quantity.js";
 
 export class InventoryError extends Error {
   constructor(
@@ -20,12 +22,12 @@ export const batchDates = { manufacturedDate: z.string().date().nullable().optio
 export const issueReasonSchema=z.enum(["used","expired","damaged","adjustment"]);
 export type IssueReason=z.infer<typeof issueReasonSchema>;
 export const moneySchema=z.number().nonnegative().finite().max(1_000_000_000);
-export const stockInput = z.object({ itemId:z.string().uuid(),locationId:z.string().uuid(),quantity:z.number().positive().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),issueReason:issueReasonSchema.optional(),batchId:z.string().uuid().optional(),totalPrice:moneySchema.optional(),purchaseDate:z.string().date().nullable().optional(),channelId:z.string().uuid().nullable().optional(),shoppingItemId:z.string().max(80).nullable().optional(),...batchDates }).strict();
-export const transferInput = stockInput.omit({locationId:true,manufacturedDate:true,expiryDate:true,issueReason:true,totalPrice:true,purchaseDate:true,channelId:true,shoppingItemId:true}).extend({sourceLocationId:z.string().uuid(),targetLocationId:z.string().uuid()});
-export const reconcileInput = z.object({itemId:z.string().uuid(),locationId:z.string().uuid(),countedQuantity:z.number().nonnegative().finite(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),batchId:z.string().uuid().optional(),...batchDates}).strict();
+export const stockInput = z.object({ itemId:z.string().uuid(),locationId:z.string().uuid(),targetLocationId:z.string().uuid().optional(),quantity:positiveQuantity,idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),issueReason:issueReasonSchema.optional(),batchId:z.string().uuid().optional(),totalPrice:moneySchema.optional(),purchaseDate:z.string().date().nullable().optional(),channelId:z.string().uuid().nullable().optional(),shoppingItemId:z.string().max(80).nullable().optional(),...batchDates }).strict();
+export const transferInput = stockInput.omit({targetLocationId:true,locationId:true,manufacturedDate:true,expiryDate:true,issueReason:true,totalPrice:true,purchaseDate:true,channelId:true,shoppingItemId:true}).extend({sourceLocationId:z.string().uuid(),targetLocationId:z.string().uuid(),openedId:z.string().uuid().optional()});
+export const reconcileInput = z.object({itemId:z.string().uuid(),locationId:z.string().uuid(),countedQuantity:nonnegativeQuantity,idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional(),batchId:z.string().uuid().optional(),...batchDates}).strict();
 export const batchBalanceQuery = `SELECT b.id AS batchId,b.home_id AS homeId,b.item_id AS itemId,i.name AS itemName,i.category AS itemCategory,i.base_unit AS baseUnit,b.label,b.manufactured_date AS manufacturedDate,b.expiry_date AS expiryDate,b.received_at AS receivedAt,b.legacy,b.purchase_total_minor AS purchaseTotalMinor,b.purchase_currency AS purchaseCurrency,b.purchased_date AS purchasedDate,b.channel_id AS channelId,c.name AS channelName,b.shopping_item_id AS shoppingItemId,b.purchase_category AS purchaseCategory,
   COALESCE((SELECT SUM(origin.quantity) FROM stock_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0) AS initialQuantity,t.location_id AS locationId,l.name AS locationName,
-  COALESCE(SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END),0) AS quantity
+  ROUND(COALESCE(SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END),0),2) AS quantity
   FROM stock_batches b JOIN items i ON i.id=b.item_id LEFT JOIN stock_transactions t ON t.batch_id=b.id AND t.home_id=b.home_id
   LEFT JOIN locations l ON l.id=t.location_id LEFT JOIN shopping_channels c ON c.id=b.channel_id GROUP BY b.id,t.location_id`;
 export type BatchBalance = {batchId:string;itemId:string;locationId:string;quantity:number;expiryDate:string|null;manufacturedDate:string|null;purchaseTotalMinor:number|null;purchaseCurrency:string|null;purchasedDate:string|null;channelId:string|null;channelName:string|null;initialQuantity:number};
@@ -44,7 +46,7 @@ export function requireStockTarget(db:DatabaseSync,homeId:string,itemId:string,l
   if(locationId && !db.prepare("SELECT 1 FROM locations WHERE id=? AND home_id=? AND active=1").get(locationId,homeId)) throw new InventoryError(404,"LOCATION_NOT_FOUND","error.locationNotInHome");
 }
 export function stockAt(db:DatabaseSync,homeId:string,itemId:string,locationId:string) {
-  return (db.prepare("SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) AS quantity FROM stock_transactions WHERE home_id=? AND item_id=? AND location_id=?").get(homeId,itemId,locationId) as {quantity:number}).quantity;
+  return roundQuantity((db.prepare("SELECT COALESCE(SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END),0) AS quantity FROM stock_transactions WHERE home_id=? AND item_id=? AND location_id=?").get(homeId,itemId,locationId) as {quantity:number}).quantity);
 }
 export function recordItemEvent(db:DatabaseSync, homeId:string,itemId:string,type:"delete"|"reclassify"|"move"|"update",reason:string, locationId:string|null=null,quantity:number|null=null,batchId:string|null=null) {
   const item=db.prepare("SELECT name FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as {name:string};
@@ -85,15 +87,15 @@ export function listOpenedConsumables(db:DatabaseSync,homeId:string):OpenedConsu
   return db.prepare(`SELECT o.id,o.item_id AS itemId,i.name AS itemName,i.base_unit AS baseUnit,o.location_id AS locationId,l.name AS locationName,o.batch_id AS batchId,b.label AS batchLabel,b.manufactured_date AS manufacturedDate,b.expiry_date AS expiryDate,o.opened_expiry_date AS openedExpiryDate,o.quantity,o.opened_at AS openedAt FROM opened_consumables o JOIN items i ON i.id=o.item_id JOIN stock_batches b ON b.id=o.batch_id LEFT JOIN locations l ON l.id=o.location_id WHERE o.home_id=? ORDER BY o.opened_at DESC,o.id DESC`).all(homeId) as OpenedConsumable[];
 }
 export function exhaustOpenedConsumable(db:DatabaseSync,homeId:string,raw:unknown) {
-  const input=z.object({id:z.string().uuid(),quantity:z.number().positive().finite().optional(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional()}).strict().parse(raw);
+  const input=z.object({id:z.string().uuid(),quantity:positiveQuantity.optional(),idempotencyKey:z.string().trim().min(1).max(200),reason:z.string().max(200).optional()}).strict().parse(raw);
   return withStockOperation(db,homeId,input.idempotencyKey,{type:"exhaust-opened",...input},()=>{
     const opened=db.prepare("SELECT * FROM opened_consumables WHERE id=? AND home_id=?").get(input.id,homeId) as {id:string;item_id:string;location_id:string;batch_id:string;quantity:number}|undefined;
     if(!opened)throw new InventoryError(404,"OPENED_CONSUMABLE_NOT_FOUND","error.openedConsumableNotFound");
-    const quantity=input.quantity??opened.quantity;
+    const quantity=input.quantity??roundQuantity(opened.quantity);
     if(quantity>opened.quantity+1e-9)throw new InventoryError(409,"OPENED_CONSUMABLE_QUANTITY","error.openedConsumableQuantity");
     const result=recordStock(db,homeId,"issue",{itemId:opened.item_id,locationId:opened.location_id,batchId:opened.batch_id,quantity,idempotencyKey:`opened-exhaust:${input.idempotencyKey}`,reason:input.reason,issueReason:"used",forceDirectIssue:true});
     if(Math.abs(quantity-opened.quantity)<1e-9)db.prepare("DELETE FROM opened_consumables WHERE id=?").run(opened.id);
-    else db.prepare("UPDATE opened_consumables SET quantity=quantity-? WHERE id=?").run(quantity,opened.id);
+    else db.prepare("UPDATE opened_consumables SET quantity=ROUND(quantity-?,2) WHERE id=?").run(quantity,opened.id);
     return {...result,openedId:opened.id,action:"exhausted"};
   });
 }
@@ -102,9 +104,13 @@ export function withStockOperation<T>(db:DatabaseSync,homeId:string,key:string,p
     const serialized=JSON.stringify(payload);
     const previous=db.prepare("SELECT payload,response FROM stock_operations WHERE home_id=? AND idempotency_key=?").get(homeId,key) as {payload:string;response:string}|undefined;
     if(previous) { if(previous.payload!==serialized) throw new InventoryError(409,"IDEMPOTENCY_CONFLICT","error.idempotencyConflict");return JSON.parse(previous.response) as T; }
-    const result=fn();
-    db.prepare("INSERT INTO stock_operations(home_id,idempotency_key,payload,response) VALUES (?,?,?,?)").run(homeId,key,serialized,JSON.stringify(result));
-    return result;
+    const snapshot=startWorkflow(db,homeId);
+    try {
+      const result=fn();
+      if(snapshot)finishWorkflow(db,homeId,key,payload,snapshot);
+      db.prepare("INSERT INTO stock_operations(home_id,idempotency_key,payload,response) VALUES (?,?,?,?)").run(homeId,key,serialized,JSON.stringify(result));
+      return result;
+    } finally {if(snapshot)endWorkflow(db); }
   });
 }
 export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue",raw:unknown) {
@@ -116,6 +122,7 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
     requireStockTarget(db,homeId,itemId,locationId);
     const beforeQuantity=stockAt(db,homeId,itemId,locationId);
     validateDates(input.manufacturedDate,input.expiryDate);
+    if(type==="receipt" && input.targetLocationId)throw new InventoryError(400,"INVALID_FIELDS","error.validation");
     if(type==="receipt" && input.batchId) throw new InventoryError(400,"NEW_BATCH_REQUIRED","error.receiptExistingBatch");
     if(type==="issue" && (input.manufacturedDate!==undefined||input.expiryDate!==undefined)) throw new InventoryError(400,"INVALID_FIELDS","error.issueBatchDates");
     let parts:{batchId:string;quantity:number}[];
@@ -131,16 +138,20 @@ export function recordStock(db:DatabaseSync,homeId:string,type:"receipt"|"issue"
     } else {
       const item=db.prepare("SELECT consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as {consumptionType:"non_consumable"|"consumable"|"long_term_consumable";openedShelfLifeDays:number|null};
       if(item.consumptionType==="long_term_consumable" && !forceDirectIssue) {
+        const useLocation=input.targetLocationId??locationId;
+        requireStockTarget(db,homeId,itemId,useLocation);
         parts=allocateUnopened(db,homeId,itemId,locationId,quantity,input.batchId);
+        if(useLocation!==locationId)transferStock(db,homeId,{itemId,sourceLocationId:locationId,targetLocationId:useLocation,quantity,batchId:input.batchId,idempotencyKey:`opening-move:${idempotencyKey}`});
         const openedAt=new Date().toISOString();
         const expiryByBatch=new Map((db.prepare(`SELECT batchId,expiryDate FROM (${batchBalanceQuery}) WHERE homeId=? AND itemId=? AND locationId=?`).all(homeId,itemId,locationId) as {batchId:string;expiryDate:string|null}[]).map(row=>[row.batchId,row.expiryDate]));
         const calculatedExpiry=item.openedShelfLifeDays===null?null:new Date(Date.now()+item.openedShelfLifeDays*86400000).toISOString().slice(0,10);
         const opened=parts.map(part=>({id:randomUUID(),...part,quantity:part.quantity,openedAt,openedExpiryDate:calculatedExpiry&&expiryByBatch.get(part.batchId)?(calculatedExpiry<expiryByBatch.get(part.batchId)!?calculatedExpiry:expiryByBatch.get(part.batchId)!):calculatedExpiry}));
-        for(const part of opened) db.prepare("INSERT INTO opened_consumables(id,home_id,item_id,location_id,batch_id,quantity,opened_at,opened_expiry_date) VALUES (?,?,?,?,?,?,?,?)").run(part.id,homeId,itemId,locationId,part.batchId,part.quantity,openedAt,part.openedExpiryDate);
-        for(const part of opened) recordItemEvent(db,homeId,itemId,"update","reason.openLongTermConsumable",locationId,part.quantity,part.batchId);
-        return {homeId,itemId,locationId,type,quantity,issueReason,totalPrice:null,purchaseDate:null,channelId:null,beforeQuantity,afterQuantity:beforeQuantity,difference:0,action:"opened",opened,transactions:[]};
+        for(const part of opened) db.prepare("INSERT INTO opened_consumables(id,home_id,item_id,location_id,batch_id,quantity,opened_at,opened_expiry_date) VALUES (?,?,?,?,?,?,?,?)").run(part.id,homeId,itemId,useLocation,part.batchId,part.quantity,openedAt,part.openedExpiryDate);
+        for(const part of opened) recordItemEvent(db,homeId,itemId,"update","reason.openLongTermConsumable",useLocation,part.quantity,part.batchId);
+        return {homeId,itemId,locationId,type,quantity,issueReason,totalPrice:null,purchaseDate:null,channelId:null,beforeQuantity,afterQuantity:beforeQuantity,difference:0,targetLocationId:useLocation,action:"opened",opened,transactions:[]};
       }
-      parts=allocate(db,homeId,itemId,locationId,quantity,input.batchId);
+      if(input.targetLocationId)throw new InventoryError(400,"INVALID_FIELDS","error.validation");
+      parts=item.consumptionType==="long_term_consumable"&&issueReason==="adjustment"?allocateUnopened(db,homeId,itemId,locationId,quantity,input.batchId):allocate(db,homeId,itemId,locationId,quantity,input.batchId);
     }
     const defaultReason = type === "receipt"
       ? "reason.newBatch"
@@ -159,7 +170,16 @@ export function transferStock(db:DatabaseSync,homeId:string,raw:unknown) {
     if(sourceLocationId===targetLocationId) throw new InventoryError(400,"SAME_LOCATION","error.sameLocation");
     const sourceBefore=stockAt(db,homeId,itemId,sourceLocationId),targetBefore=stockAt(db,homeId,itemId,targetLocationId);
     const item=db.prepare("SELECT consumption_type AS consumptionType FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as {consumptionType:"non_consumable"|"consumable"|"long_term_consumable"};
-    const parts=item.consumptionType==="long_term_consumable"?allocateUnopened(db,homeId,itemId,sourceLocationId,quantity,batchId):allocate(db,homeId,itemId,sourceLocationId,quantity,batchId);
+    const opened=input.openedId?db.prepare("SELECT * FROM opened_consumables WHERE id=? AND home_id=? AND item_id=? AND location_id=?").get(input.openedId,homeId,itemId,sourceLocationId) as {id:string;batch_id:string;quantity:number;opened_at:string;opened_expiry_date:string|null}|undefined:undefined;
+    if(input.openedId&&(!opened||quantity>opened.quantity||batchId&&batchId!==opened.batch_id))throw new InventoryError(409,"OPENED_CONSUMABLE_QUANTITY","error.openedConsumableQuantity");
+    const parts=opened?allocate(db,homeId,itemId,sourceLocationId,quantity,opened.batch_id):item.consumptionType==="long_term_consumable"?allocateUnopened(db,homeId,itemId,sourceLocationId,quantity,batchId):allocate(db,homeId,itemId,sourceLocationId,quantity,batchId);
+    if(opened){
+      if(quantity===opened.quantity)db.prepare("UPDATE opened_consumables SET location_id=? WHERE id=? AND home_id=?").run(targetLocationId,opened.id,homeId);
+      else {
+        db.prepare("UPDATE opened_consumables SET quantity=ROUND(quantity-?,2) WHERE id=? AND home_id=?").run(quantity,opened.id,homeId);
+        db.prepare("INSERT INTO opened_consumables(id,home_id,item_id,location_id,batch_id,quantity,opened_at,opened_expiry_date) VALUES (?,?,?,?,?,?,?,?)").run(randomUUID(),homeId,itemId,targetLocationId,opened.batch_id,quantity,opened.opened_at,opened.opened_expiry_date);
+      }
+    }
     const source=db.prepare("SELECT name FROM locations WHERE id=?").get(sourceLocationId) as {name:string};
     const target=db.prepare("SELECT name FROM locations WHERE id=?").get(targetLocationId) as {name:string};
     const reason=input.reason||`库存调拨：${source.name} → ${target.name}`;
@@ -178,7 +198,7 @@ export function reconcileStock(db:DatabaseSync,homeId:string,raw:unknown) {
     requireStockTarget(db,homeId,input.itemId,input.locationId);
     validateDates(input.manufacturedDate,input.expiryDate);
     const beforeQuantity=stockAt(db,homeId,input.itemId,input.locationId);
-    const difference=input.countedQuantity-beforeQuantity;
+    const difference=roundQuantity(input.countedQuantity-beforeQuantity);
     if(Math.abs(difference)<1e-9)return {homeId,itemId:input.itemId,locationId:input.locationId,beforeQuantity,afterQuantity:beforeQuantity,difference:0,action:"none",transactions:[]};
     if(difference>0&&input.batchId)throw new InventoryError(400,"NEW_BATCH_REQUIRED","error.reconcileGainBatch");
     if(difference<0&&(input.manufacturedDate!==undefined||input.expiryDate!==undefined))throw new InventoryError(400,"INVALID_FIELDS","error.reconcileLossDates");

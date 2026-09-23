@@ -20,6 +20,19 @@ const { formatMoney } = await import("./formatMoney.js");
 const { ProfileUserSettings, ProfileHomeSettings } =
   await import("./ProfilePage.js");
 
+test("item creation error stays inside its form and preserves location selection", async () => {
+  const { ItemForm } = await import("./ItemForm.js");
+  const html=renderToStaticMarkup(createElement(ItemForm,{
+    closeItemForm:()=>{}, itemFormRevision:1, addItem:async()=>{},
+    barcodeInput:"",setBarcodeInput:()=>{},barcodeBusy:false,lookupItemBarcode:async()=>{},
+    setShowBarcodeScanner:()=>{},prefillName:"玉米",prefillCategory:"",selectCategoryOptions:[{id:"other",name:"其他",parentId:null,depth:0}],
+    prefillUnit:"个",shoppingChannels:[],prefillLocationId:"",locationOptions:[],busy:false,
+    error:"有初始库存时必须指定地点",
+  }));
+  assert.match(html,/role="alert"[^>]*>有初始库存时必须指定地点/);
+  assert.match(html,/name="locationId"/);
+});
+
 test("initial auth screens preserve password controls and setup gating", () => {
   const setup = renderToStaticMarkup(
     createElement(Setup, { onComplete: () => {} }),
