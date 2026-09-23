@@ -410,6 +410,9 @@ tbody tr:hover td{background:#f3f9fd}
 .close:hover{background:#e6f4fc;color:var(--aris-blue-dark)}
 input:disabled,select:disabled{background:#edf3f7!important;color:#768a9c!important;border-color:#d6e2eb!important;cursor:not-allowed;opacity:1}
 .modal input,.modal select{min-width:0}
+input[type="date"],input[type="month"]{min-width:0;text-align:left}
+input[type="date"]::-webkit-datetime-edit,input[type="month"]::-webkit-datetime-edit{padding:0}
+input[type="date"]::-webkit-calendar-picker-indicator,input[type="month"]::-webkit-calendar-picker-indicator{margin:0}
 .modal{max-height:calc(100dvh - 40px)}
 .panel>.panel-head:first-child{border-radius:5px 5px 0 0}
 .icon-options{flex-wrap:wrap}
@@ -432,6 +435,7 @@ input:disabled,select:disabled{background:#edf3f7!important;color:#768a9c!import
   .modal-backdrop{align-items:end;padding:10px}
   .modal{width:100%;max-height:calc(100vh - 20px);padding:20px 16px;border-radius:6px 6px 3px 3px}
   .form-row{gap:10px}
+  .modal .form-row:has(>label>input[type="date"]){grid-template-columns:minmax(0,1fr)}
   .count-summary button{border-top-width:2px}
   .dashboard-actions button{border-radius:4px}
 }
