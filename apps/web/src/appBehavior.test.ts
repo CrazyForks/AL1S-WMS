@@ -27,6 +27,9 @@ test("navigation preserves trailing slash, unknown path and detail source behavi
     else Reflect.deleteProperty(globalThis, "window");
   });
   const api = navigation;
+  assert.deepEqual(api.stocktakeFromHash("#stocktake=11111111-1111-4111-8111-111111111111"),{kind:"location",id:"11111111-1111-4111-8111-111111111111"});
+  assert.deepEqual(api.stocktakeFromHash("#stocktake-category=11111111-1111-4111-8111-111111111111"),{kind:"category",id:"11111111-1111-4111-8111-111111111111"});
+  assert.equal(api.stocktakeFromHash("#stocktake=bad"),null);
   for (const [page, path] of Object.entries(paths)) {
     browser.location.pathname = path + "///";
     assert.equal(api.pageFromUrl(), page);

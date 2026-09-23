@@ -8,7 +8,7 @@ import {openDatabase} from "@al1s-wms/db";
 import {recordStock,transferStock,stockAt,listOpenedConsumables,exhaustOpenedConsumable} from "./stock.js";
 import {saveShopping,receiveShopping} from "./shopping.js";
 import {inventoryCostAnalysis} from "./pricing.js";
-import {listWorkflowOperations,undoWorkflowOperation,previewStocktake,confirmStocktake} from "./workflows.js";
+import {listWorkflowOperations,undoWorkflowOperation,previewStocktake,previewCategoryStocktake,confirmStocktake} from "./workflows.js";
 function fixture(){
  const db=openDatabase(":memory:"),home=randomUUID(),item=randomUUID(),a=randomUUID(),b=randomUUID();
  db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(home,"home");
@@ -70,6 +70,23 @@ test("location stocktake previews without writes and rejects stale counts atomic
  confirmStocktake(db,home,req);assert.equal(stockAt(db,home,item,a),8);
  assert.throws(()=>confirmStocktake(db,home,{...req,idempotencyKey:"stale"}));assert.equal(stockAt(db,home,item,a),8);
  undoWorkflowOperation(db,home,listWorkflowOperations(db,home).items[0].id);assert.equal(stockAt(db,home,item,a),10);
+ }finally{db.close();}
+});
+test("category stocktake counts descendant items separately at each location and validates scope",()=>{
+ const {db,home,item,a,b}=fixture();try{
+  const parent=randomUUID(),child=randomUUID();
+  db.prepare("INSERT INTO item_categories(id,home_id,name) VALUES (?,?,?)").run(parent,home,"Supplies");
+  db.prepare("INSERT INTO item_categories(id,home_id,parent_id,name) VALUES (?,?,?,?)").run(child,home,parent,"Cleaning");
+  db.prepare("UPDATE items SET category='Cleaning' WHERE id=?").run(item);
+  recordStock(db,home,"receipt",{itemId:item,locationId:a,quantity:10,idempotencyKey:"category-receipt"});
+  transferStock(db,home,{itemId:item,sourceLocationId:a,targetLocationId:b,quantity:4,idempotencyKey:"category-move"});
+  const rows=previewCategoryStocktake(db,home,parent).items as {itemId:string;locationId:string;quantity:number}[];
+  assert.deepEqual(rows.map(row=>row.quantity).sort((x,y)=>x-y),[4,6]);
+  const request={categoryId:parent,idempotencyKey:"category-count",rows:rows.map(row=>({itemId:item,locationId:row.locationId,expectedQuantity:row.quantity,countedQuantity:row.quantity-1}))};
+  assert.throws(()=>confirmStocktake(db,home,{...request,idempotencyKey:"invalid-category",categoryId:randomUUID()}));
+  confirmStocktake(db,home,request);
+  assert.equal(stockAt(db,home,item,a),5);assert.equal(stockAt(db,home,item,b),3);
+  assert.throws(()=>confirmStocktake(db,home,{...request,idempotencyKey:"stale-category"}));
  }finally{db.close();}
 });
 

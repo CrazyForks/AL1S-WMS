@@ -1,4 +1,4 @@
-import {listWorkflowOperations,undoWorkflowOperation,previewStocktake,confirmStocktake} from "./workflows.js";
+import {listWorkflowOperations,undoWorkflowOperation,previewStocktake,previewCategoryStocktake,confirmStocktake} from "./workflows.js";
 import {normalizeConsumptionInput} from "./consumption.js";
 import { itemBalanceSqlFor } from "./queryHelpers.js";
 import { nonnegativeQuantity, roundQuantity } from "./quantity.js";
@@ -644,6 +644,7 @@ app.post<{ Params: { homeId: string; openedId: string }; Body: unknown }>("/api/
 app.get<{Params:{homeId:string}}>("/api/v1/homes/:homeId/stock/operations",async request=>listWorkflowOperations(db,request.params.homeId));
 app.post<{Params:{homeId:string;id:string}}>("/api/v1/homes/:homeId/stock/operations/:id/undo",async request=>undoWorkflowOperation(db,request.params.homeId,request.params.id));
 app.get<{Params:{homeId:string;locationId:string}}>("/api/v1/homes/:homeId/stocktake/:locationId",async request=>previewStocktake(db,request.params.homeId,request.params.locationId));
+app.get<{Params:{homeId:string;categoryId:string}}>("/api/v1/homes/:homeId/stocktake/category/:categoryId",async request=>previewCategoryStocktake(db,request.params.homeId,request.params.categoryId));
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stocktake",async request=>confirmStocktake(db,request.params.homeId,request.body));
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/transfers",async request => transferStock(db,request.params.homeId,request.body));
 app.post<{Params:{homeId:string};Body:unknown}>("/api/v1/homes/:homeId/stock/reconcile",async request => reconcileStock(db,request.params.homeId,request.body));

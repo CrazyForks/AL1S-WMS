@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, Search, SlidersHorizontal } from "lucide-react";
 import type * as React from "react";
 import { itemIconFor, MaterialIcon } from "./Icons.js";
 import { InventoryMoreActions } from "./InventoryMoreActions.js";
+import { LocationLink } from "./LocationLink.js";
 import { PageSizeSelect } from "./PageSizeSelect.js";
 import { formatDateTime, openedExpiryForDisplay } from "./displayDates.js";
 import { formatMoney } from "./formatMoney.js";
@@ -373,7 +374,7 @@ export function InventoryPage({
                           {stockStatus.label}
                         </span>
                       </td>
-                      <td>{item.locationName || t("未指定")}</td>
+                      <td><LocationLink locationId={item.locationId}>{item.locationName || t("未指定")}</LocationLink></td>
                       <td>
                         <div className="date-cell">
                           <span>
@@ -536,7 +537,7 @@ export function InventoryPage({
                     <td>
                       {opened.quantity} {displayUnit(opened.baseUnit)}
                     </td>
-                    <td>{opened.locationName || t("未指定")}</td>
+                    <td><LocationLink locationId={opened.locationId}>{opened.locationName || t("未指定")}</LocationLink></td>
                     <td>{formatDateTime(opened.openedAt)}</td>
                     <td>{openedExpiryForDisplay(opened) || "--"}</td>
                     <td>

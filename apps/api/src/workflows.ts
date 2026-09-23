@@ -92,13 +92,38 @@ export function previewStocktake(db:DatabaseSync,homeId:string,locationId:string
  GROUP BY i.id HAVING quantity>0 OR i.default_location_id=? ORDER BY i.name,i.id`).all(locationId,homeId,locationId);
  return {locationId,items};
 }
+function categoryNames(db:DatabaseSync,homeId:string,categoryId:string){
+ const names=db.prepare(`WITH RECURSIVE selected(id,name) AS (
+  SELECT id,name FROM item_categories WHERE id=? AND home_id=? AND active=1
+  UNION ALL SELECT child.id,child.name FROM item_categories child JOIN selected parent ON child.parent_id=parent.id WHERE child.home_id=? AND child.active=1
+ ) SELECT name FROM selected`).all(categoryId,homeId,homeId) as {name:string}[];
+ if(!names.length)throw new InventoryError(404,"CATEGORY_NOT_FOUND","error.categoryNotFound");
+ return names.map(row=>row.name);
+}
+export function previewCategoryStocktake(db:DatabaseSync,homeId:string,categoryId:string){
+ const names=categoryNames(db,homeId,categoryId);
+ const items=db.prepare(`SELECT i.id AS itemId,i.name,i.base_unit AS unit,l.id AS locationId,l.name AS locationName,
+ ROUND(COALESCE(SUM(CASE WHEN t.type='receipt' THEN t.quantity ELSE -t.quantity END),0),2) AS quantity
+ FROM items i JOIN locations l ON l.home_id=i.home_id AND l.active=1
+ LEFT JOIN stock_transactions t ON t.item_id=i.id AND t.home_id=i.home_id AND t.location_id=l.id
+ WHERE i.home_id=? AND i.active=1 AND i.category IN (${names.map(()=>"?").join(",")})
+ GROUP BY i.id,l.id HAVING quantity>0 OR i.default_location_id=l.id ORDER BY i.name,l.name,i.id,l.id`).all(homeId,...names);
+ return {categoryId,items};
+}
 export function confirmStocktake(db:DatabaseSync,homeId:string,raw:unknown){
- const input=z.object({locationId:z.string().uuid(),idempotencyKey:z.string().min(1).max(160),rows:z.array(z.object({itemId:z.string().uuid(),expectedQuantity:nonnegativeQuantity,countedQuantity:nonnegativeQuantity})).min(1).max(1000)}).strict().parse(raw);
+ const input=z.object({locationId:z.string().uuid().optional(),categoryId:z.string().uuid().optional(),idempotencyKey:z.string().min(1).max(160),rows:z.array(z.object({itemId:z.string().uuid(),locationId:z.string().uuid().optional(),expectedQuantity:nonnegativeQuantity,countedQuantity:nonnegativeQuantity})).min(1).max(1000)}).strict().parse(raw);
+ if(Number(!!input.locationId)+Number(!!input.categoryId)!==1)throw new InventoryError(400,"INVALID_FIELDS","error.validation");
  return withStockOperation(db,homeId,input.idempotencyKey,{type:"stocktake",...input},()=>{
-  if(new Set(input.rows.map(row=>row.itemId)).size!==input.rows.length)throw new InventoryError(400,"DUPLICATE_ITEM","error.validation");
-  for(const row of input.rows){requireStockTarget(db,homeId,row.itemId,input.locationId);if(stockAt(db,homeId,row.itemId,input.locationId)!==row.expectedQuantity)throw new InventoryError(409,"STOCKTAKE_STALE","error.stocktakeStale");}
+  const names=input.categoryId?new Set(categoryNames(db,homeId,input.categoryId)):null;
+  const rows=input.rows.map(row=>({ ...row,locationId:input.locationId??row.locationId }));
+  if(rows.some(row=>!row.locationId||(input.locationId&&row.locationId!==input.locationId))||new Set(rows.map(row=>`${row.itemId}:${row.locationId}`)).size!==rows.length)throw new InventoryError(400,"INVALID_FIELDS","error.validation");
+  for(const row of rows){
+   requireStockTarget(db,homeId,row.itemId,row.locationId);
+   if(names){const item=db.prepare("SELECT category FROM items WHERE id=? AND home_id=?").get(row.itemId,homeId) as {category:string};if(!names.has(item.category))throw new InventoryError(400,"INVALID_FIELDS","error.validation");}
+   if(stockAt(db,homeId,row.itemId,row.locationId!)!==row.expectedQuantity)throw new InventoryError(409,"STOCKTAKE_STALE","error.stocktakeStale");
+  }
   // An opened amount cannot be silently removed by a physical count.
-  for(const row of input.rows){const opened=db.prepare("SELECT COALESCE(SUM(quantity),0) AS n FROM opened_consumables WHERE home_id=? AND item_id=? AND location_id=?").get(homeId,row.itemId,input.locationId) as {n:number};if(row.countedQuantity<opened.n)throw new InventoryError(409,"OPENED_STOCK_CONFLICT","error.stocktakeOpened");}
-  return {items:input.rows.map(row=>reconcileStock(db,homeId,{itemId:row.itemId,locationId:input.locationId,countedQuantity:row.countedQuantity,idempotencyKey:`stocktake:${input.idempotencyKey}:${row.itemId}`}))};
+  for(const row of rows){const opened=db.prepare("SELECT COALESCE(SUM(quantity),0) AS n FROM opened_consumables WHERE home_id=? AND item_id=? AND location_id=?").get(homeId,row.itemId,row.locationId!) as {n:number};if(row.countedQuantity<opened.n)throw new InventoryError(409,"OPENED_STOCK_CONFLICT","error.stocktakeOpened");}
+  return {items:rows.map(row=>reconcileStock(db,homeId,{itemId:row.itemId,locationId:row.locationId,countedQuantity:row.countedQuantity,idempotencyKey:`stocktake:${input.idempotencyKey}:${row.itemId}:${row.locationId}`}))};
  });
 }

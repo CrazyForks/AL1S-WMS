@@ -712,3 +712,5 @@ input,select,textarea{outline:none!important;box-shadow:none!important}
 .inventory-more-menu button{width:100%;min-height:36px;padding:6px 12px;border:0;border-radius:3px;background:transparent;text-align:left;color:var(--aris-blue-dark);font:inherit;font-size:13px}
 .inventory-more-menu button:hover,.inventory-more-menu button:focus-visible{background:#e6f3fc}
 .inventory-more-menu button.danger-action{color:#a5505b}
+.location-link{color:inherit;text-decoration:underline;text-decoration-style:dashed;text-decoration-color:#8ea5b7;text-underline-offset:3px;cursor:pointer}
+.location-link:hover,.location-link:focus-visible{color:var(--aris-blue-dark);text-decoration-color:currentColor}

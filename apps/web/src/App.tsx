@@ -24,7 +24,7 @@ import i18n,{
 displayUnit,
 localeForDates
 } from "./i18n/index.js";
-import { itemDetailIdFromUrl,itemDetailSourcePage,pageFromUrl,pagePaths,type Page } from "./navigation.js";
+import { itemDetailIdFromUrl,itemDetailSourcePage,pageFromUrl,pagePaths,stocktakeFromHash,type Page } from "./navigation.js";
 import "./treeDrag.css";
 import type { ApiToken,Category,CurrentUser,FinancialSummary,Item,Location,LocationScopedItem,OpenedConsumable,ShoppingChannel,ShoppingItem,Stock,Transaction,UserAvatar } from "./webTypes.js";
 const t = i18n.t.bind(i18n);
@@ -107,7 +107,8 @@ export function App() {
   const [stockTargetLocationId,setStockTargetLocationId]=useState("");
   const [stockOperationKey, setStockOperationKey] = useState("");
   const [workflowDialog,setWorkflowDialog]=useState<"transfer"|"history"|null>(null);
-  const [stocktakeLocation,setStocktakeLocation]=useState<Location|null>(null);
+  const [stocktakeScope,setStocktakeScope]=useState<{kind:"location";node:Location}|{kind:"category";node:Category}|null>(null);
+  const [stocktakeHashVersion,setStocktakeHashVersion]=useState(0);
   const [workflowItem,setWorkflowItem]=useState<Item|null>(null);
   const [showHomeIssuePicker,setShowHomeIssuePicker]=useState(false);
   const [homeIssueQuery,setHomeIssueQuery]=useState("");
@@ -222,9 +223,10 @@ export function App() {
     localStorage.setItem(calendarCompletedPreferenceKey(getHomeId()),String(value));
   };
   useEffect(() => {
-    const onPopState = () => {const itemId=itemDetailIdFromUrl();setActivePage(itemId?itemDetailSourcePage()??"count":pageFromUrl());setItemDetailId(itemId);};
+    const onPopState = () => {const itemId=itemDetailIdFromUrl();setActivePage(itemId?itemDetailSourcePage()??"count":pageFromUrl());setItemDetailId(itemId);setStocktakeHashVersion(value=>value+1);};
     window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    window.addEventListener("hashchange", onPopState);
+    return () => {window.removeEventListener("popstate", onPopState);window.removeEventListener("hashchange", onPopState);};
   }, []);
   useEffect(() => {
     setLogView(false);
@@ -232,7 +234,7 @@ export function App() {
     setStockAction(null);
     setWorkflowDialog(null);
     setWorkflowItem(null);
-    setStocktakeLocation(null);
+    setStocktakeScope(null);
     setExhaustTarget(null);
     setDetailItem(null);
     setEditTreeNode(null);
@@ -244,6 +246,14 @@ export function App() {
     setEditingHome(null);
     if (authenticated && activePage === "profile") loadApiTokens();
   }, [activePage, authenticated]);
+  useEffect(()=>{
+    const target=stocktakeFromHash();
+    const node=target?.kind==="location"?locations.find(row=>row.id===target.id):categories.find(row=>row.id===target?.id);
+    if(target&&node&&activePage===(target.kind==="location"?"locations":"categories")){
+      setStocktakeScope(target.kind==="location"?{kind:"location",node:node as Location}:{kind:"category",node:node as Category});
+      setExpandedLocations(previous=>({...previous,[target.id]:true}));
+    }else setStocktakeScope(null);
+  },[activePage,locations,categories,stocktakeHashVersion]);
   const linkedShoppingItem = items.find((item) => item.id === shoppingItemId);
   const linkedEditShoppingItem = items.find(
     (item) => item.id === editShoppingItemId,
@@ -1258,7 +1268,12 @@ export function App() {
             {treeMode === "category" ? categoryLabel(node.name) : node.name}
           </button>
           <div className="tree-node-actions">
-            {treeMode === "location" && <button type="button" className="tree-add" aria-label={t("盘点{{name}}",{name:node.name})} onClick={()=>setStocktakeLocation(locations.find(location=>location.id===node.id)??null)}>{t("盘点")}</button>}
+            <button type="button" className="tree-add" aria-label={t("盘点{{name}}",{name:node.name})} onClick={()=>{
+              const selected=treeMode==="location"?locations.find(row=>row.id===node.id):categories.find(row=>row.id===node.id);
+              if(!selected)return;
+              window.history.pushState(null,"",`${pagePaths[activePage]}#stocktake${treeMode==="category"?"-category":""}=${node.id}`);
+              setStocktakeScope(treeMode==="location"?{kind:"location",node:selected as Location}:{kind:"category",node:selected as Category});
+            }}>{t("盘点")}</button>
             <button
               type="button"
               className="tree-icon-button"
@@ -1917,7 +1932,7 @@ export function App() {
       {exhaustTarget&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setExhaustTarget(null)}><form className="modal" onSubmit={submitExhaust}><div className="modal-head"><div><h2>{t("用尽已开封物品")}</h2><p className="muted">{exhaustTarget.itemName}</p></div><button type="button" className="close" onClick={()=>setExhaustTarget(null)} aria-label={t("关闭")}><X size={18} strokeWidth={1.8}/></button></div><label>{t("用尽数量")}<input name="quantity" type="number" min="0" max={exhaustTarget.quantity} step="any" defaultValue={exhaustTarget.quantity>=1?1:exhaustTarget.quantity} autoFocus required/><small className="form-hint">{t("当前已开封 {{quantity}} {{unit}}",{quantity:exhaustTarget.quantity,unit:displayUnit(exhaustTarget.baseUnit)})}</small></label><button className="primary full" disabled={busy}>{busy?t("处理中…"):t("确认用尽")}</button></form></div>}
       {showHomeIssuePicker&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&(setShowHomeIssuePicker(false),setHomeIssueQuery(""))}><section className="modal home-issue-picker" role="dialog" aria-modal="true" aria-labelledby="home-issue-title"><div className="modal-head"><div><h2 id="home-issue-title">{t("领用物资")}</h2><p className="muted">{t("选择要领用的物资")}</p></div><button type="button" className="close" onClick={()=>{setShowHomeIssuePicker(false);setHomeIssueQuery("");}} aria-label={t("关闭")}><X size={18} strokeWidth={1.8}/></button></div><label className="home-issue-search"><Search size={16}/><input value={homeIssueQuery} autoFocus placeholder={t("搜索名称、分类或 SKU")} onChange={event=>setHomeIssueQuery(event.target.value)}/></label><div className="home-issue-results">{items.filter(item=>`${item.name} ${item.category} ${item.sku}`.toLocaleLowerCase(localeForDates()).includes(homeIssueQuery.trim().toLocaleLowerCase(localeForDates()))).map(item=><button type="button" key={item.id} onClick={()=>chooseHomeIssueItem(item)}><span className="item-icon"><MaterialIcon value={itemIconFor(item)}/></span><span><strong>{item.name}</strong><small>{item.category?categoryLabel(item.category):t("未分类")} · {balanceFor(item.id)} {displayUnit(item.baseUnit)}</small></span><ChevronRight size={16}/></button>)}{items.filter(item=>`${item.name} ${item.category} ${item.sku}`.toLocaleLowerCase(localeForDates()).includes(homeIssueQuery.trim().toLocaleLowerCase(localeForDates()))).length===0&&<p className="empty compact">{t("没有匹配物资")}</p>}</div></section></div>}
       {workflowDialog === "transfer" && workflowItem && <TransferDialog item={workflowItem} locations={locations} onClose={()=>{setWorkflowDialog(null);setWorkflowItem(null);}} onSaved={()=>{setWorkflowDialog(null);setWorkflowItem(null);void load();}}/>}
-      {activePage === "locations" && stocktakeLocation && <LocationStocktake key={stocktakeLocation.id} location={stocktakeLocation} onClose={()=>setStocktakeLocation(null)} onSaved={()=>{setStocktakeLocation(null);void load();}}/>}
+      {stocktakeScope && <LocationStocktake key={`${stocktakeScope.kind}:${stocktakeScope.node.id}`} scope={stocktakeScope} onClose={()=>{window.history.replaceState(null,"",pagePaths[activePage]);setStocktakeScope(null);}} onSaved={()=>{window.history.replaceState(null,"",pagePaths[activePage]);setStocktakeScope(null);void load();}}/>}
       {workflowDialog === "history" && <OperationHistoryDialog onClose={()=>setWorkflowDialog(null)} onSaved={()=>void load()}/>}
       {stockAction && (
         <StockDialog setStockAction={setStockAction} recordStock={recordStock} stockAction={stockAction} stockLocationId={stockLocationId} setStockLocationId={setStockLocationId} stockTargetLocationId={stockTargetLocationId} setStockTargetLocationId={setStockTargetLocationId} locations={locations} locationOptions={locationOptions} shoppingChannels={shoppingChannels} expiryStatusFor={expiryStatusFor} busy={busy} />

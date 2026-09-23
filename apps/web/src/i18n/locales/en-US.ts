@@ -1,6 +1,7 @@
 import type { zhCN } from "./zh-CN.js";
 
 export const enUS = {
+  "核对当前分类及子分类的物资；按地点分别填写实盘数量。": "Count items in this category and its children, entering each location separately.",
   "核对实物数量；确认后按差额调整库存。仅包含当前地点，不含子地点。": "Compare physical counts with recorded stock. Confirmation adjusts only the difference at this location, excluding child locations.",
   "更多操作": "More actions",
   "最近 30 次库存操作。撤销保留流水；有后续变动时不可直接撤销。": "The latest 30 inventory operations. Undo retains the transaction history; operations with subsequent changes cannot be undone directly.",

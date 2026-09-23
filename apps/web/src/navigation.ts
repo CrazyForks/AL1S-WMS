@@ -10,6 +10,11 @@ export const pagePaths = {
 
 export type Page = keyof typeof pagePaths;
 
+export function stocktakeFromHash(hash = window.location.hash): {kind:"location"|"category";id:string}|null {
+  const match=/^#stocktake(?:-category)?=([0-9a-f-]{36})$/i.exec(hash);
+  return match?{kind:hash.startsWith("#stocktake-category=")?"category":"location",id:match[1]}:null;
+}
+
 export function pageFromUrl(): Page {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   return (

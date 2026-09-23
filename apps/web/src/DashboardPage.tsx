@@ -1,6 +1,7 @@
 import type * as React from "react";
 import { TransactionRow } from "./AppElements.js";
 import { itemIconFor, MaterialIcon } from "./Icons.js";
+import { LocationLink } from "./LocationLink.js";
 import { TransactionPagination } from "./TransactionPagination.js";
 import { openedExpiryForDisplay } from "./displayDates.js";
 import i18n, { displayUnit } from "./i18n/index.js";
@@ -111,7 +112,7 @@ export function DashboardPage({
                           </span>
                         </td>
                         <td className="dashboard-location">
-                          {item.locationName || t("未指定")}
+                          <LocationLink locationId={item.locationId}>{item.locationName || t("未指定")}</LocationLink>
                         </td>
                       </tr>
                     );
