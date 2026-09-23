@@ -502,7 +502,6 @@ export function InventoryPage({
             <h2>{t("已开封消耗品")}</h2>
             <p className="muted">{t("开封后仍计入库存，用尽后才扣减")}</p>
           </div>
-          <strong>{openedConsumables.length}</strong>
         </div>
         {openedConsumables.length === 0 ? (
           <p className="empty">{t("暂无已开封消耗品")}</p>
