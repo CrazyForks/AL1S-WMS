@@ -46,11 +46,15 @@ export function LocationStocktake({location:place,onClose,onSaved}:{location:Loc
  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!review){setReview(true);return;}if(saving.current)return;saving.current=true;setBusy(true);setError("");
  try{await bodyOrError(await apiJson(`/api/v1/homes/${getHomeId()}/stocktake`,"POST",{locationId:location,idempotencyKey:key.current,rows:counted.map(row=>({itemId:row.itemId,expectedQuantity:row.quantity,countedQuantity:Number(counts[row.itemId])}))}));onSaved();onClose();}
  catch(e){setError(e instanceof Error?e.message:String(e));}finally{saving.current=false;setBusy(false);}}
- return <section className="panel location-stocktake"><div className="panel-head"><h2>{t("盘点{{name}}",{name:place.name})}</h2><button type="button" className="text-button" disabled={busy} onClick={onClose}>{t("关闭")}</button></div><form onSubmit={submit}><p className="muted">{t("仅盘点当前地点，不包含子地点；空白项跳过，填 0 表示已无库存。")}</p>
- {loading?<p role="status">{t("加载中…")}</p>:<div className="workflow-table"><table><thead><tr><th>{t("物资")}</th><th>{t("账面数量")}</th><th>{t("实盘数量")}</th><th>{t("差异")}</th></tr></thead><tbody>{(review?counted:rows).map(row=><tr key={row.itemId}><td>{row.name}<small>{displayUnit(row.unit)}</small></td><td>{row.quantity}</td><td>{review?counts[row.itemId]:<input aria-label={`${row.name} ${t("实盘数量")}`} type="number" min="0" step="0.01" value={counts[row.itemId]??""} onChange={e=>{setCounts({...counts,[row.itemId]:e.target.value});key.current=crypto.randomUUID();}}/>}</td><td>{counts[row.itemId]?.trim()?roundQuantity(Number(counts[row.itemId])-row.quantity):"—"}</td></tr>)}</tbody></table>{!rows.length&&<p className="empty">{t("暂无库存")}</p>}</div>}
- {review&&<p>{t("已填写 {{count}} 项，差异 {{changes}} 项",{count:counted.length,changes:changes.length})}</p>}
- {error&&<p className="setup-error" role="alert">{error} <button type="button" disabled={busy} onClick={()=>setRefresh(x=>x+1)}>{t("重新加载")}</button></p>}
- <div className="delete-dialog-actions">{review&&<button className="secondary" type="button" disabled={busy} onClick={()=>setReview(false)}>{t("返回修改")}</button>}<button className="primary" disabled={loading||busy||!counted.length}>{busy?t("处理中…"):review?t("确认盘点"):t("预览差异")}</button></div></form></section>;
+ return <WorkflowDialog title={t("盘点{{name}}",{name:place.name})} onClose={onClose} busy={busy}>
+  <form className="location-stocktake" onSubmit={submit}>
+   <p className="muted">{t("核对实物数量；确认后按差额调整库存。仅包含当前地点，不含子地点。")}</p>
+   {loading?<p className="workflow-loading" role="status">{t("加载中…")}</p>:<div className="workflow-table"><table><thead><tr><th>{t("物资")}</th><th>{t("账面数量")}</th><th>{t("实盘数量")}</th><th>{t("差异")}</th></tr></thead><tbody>{(review?counted:rows).map(row=><tr key={row.itemId}><td><strong>{row.name}</strong><small>{displayUnit(row.unit)}</small></td><td>{row.quantity}</td><td>{review?counts[row.itemId]:<input aria-label={`${row.name} ${t("实盘数量")}`} type="number" min="0" step="0.01" value={counts[row.itemId]??""} onChange={e=>{setCounts({...counts,[row.itemId]:e.target.value});key.current=crypto.randomUUID();}}/>}</td><td>{counts[row.itemId]?.trim()?roundQuantity(Number(counts[row.itemId])-row.quantity):"—"}</td></tr>)}</tbody></table>{!rows.length&&<p className="empty">{t("暂无库存")}</p>}</div>}
+   {review&&<p className="workflow-review-summary">{t("已填写 {{count}} 项，差异 {{changes}} 项",{count:counted.length,changes:changes.length})}</p>}
+   {error&&<p className="setup-error" role="alert">{error} <button type="button" disabled={busy} onClick={()=>setRefresh(x=>x+1)}>{t("重新加载")}</button></p>}
+   <div className="workflow-actions">{review&&<button className="secondary" type="button" disabled={busy} onClick={()=>setReview(false)}>{t("返回修改")}</button>}<button className="primary" disabled={loading||busy||!counted.length}>{busy?t("处理中…"):review?t("确认盘点"):t("预览差异")}</button></div>
+  </form>
+ </WorkflowDialog>;
 }
 
 type Operation={id:string;kind:string;createdAt:string;summary:string;undoneAt:string|null;canUndo:boolean};

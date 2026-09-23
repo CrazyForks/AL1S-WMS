@@ -1,4 +1,4 @@
-import { Pencil, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect,useState,type FormEvent } from "react";
 import { BatchFields } from "./BatchFields.js";
 import { apiFetch,apiJson } from "./i18n/apiFetch.js";
@@ -231,7 +231,7 @@ export function Batches({
                           className="text-button"
                           onClick={() => setEdit(row)}
                         >
-                          <Pencil size={14} /> {t("编辑")}
+                          {t("编辑")}
                         </button>
                       </td>
                     </tr>
@@ -241,7 +241,7 @@ export function Batches({
               <div className="batch-mobile-list">
                 {rows.map(row => (
                   <div className="batch-mobile-row" key={`${row.batchId}:${row.locationId}`}>
-                    <div><strong>{row.label || new Date(row.receivedAt).toLocaleString(localeForDates())}</strong><button type="button" className="text-button" onClick={() => setEdit(row)}><Pencil size={14} /> {t("编辑")}</button></div>
+                    <div><strong>{row.label || new Date(row.receivedAt).toLocaleString(localeForDates())}</strong><button type="button" className="text-button" onClick={() => setEdit(row)}>{t("编辑")}</button></div>
                     <span>{row.locationName || t("未指定")} · {row.quantity} {displayUnit(item.baseUnit)}</span>
                     <span>{t("到期日期")}：{row.expiryDate || t("未设置")}</span>
                   </div>
