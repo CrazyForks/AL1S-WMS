@@ -54,6 +54,7 @@ rg -n 'shopping-list/:shoppingId/receive|receiveShopping|withStockOperation' app
 - Page changes close several dialogs. Item-detail return navigation uses history state. Moving state ownership or changing component keys can alter form reset behavior.
 - Stock business logic owns idempotency, FEFO allocation, and long-term consumable behavior: opening does not deduct inventory; exhaustion does. Avoid duplicating these rules in views.
 - API preHandler and auth jointly enforce household scope, REST Session/Token precedence, and MCP's Token requirement.
+- Opened shelf life applies only to `long_term_consumable`. `ConsumptionFields.tsx` handles all four item/purchase create/edit forms; other types show a disabled `--`. API `consumption.ts` ignores inapplicable input and clears the stored value on type changes. See `consumption.test.ts` and `shopping.test.ts`.
 - Purchase `consumptionType` and `openedShelfLifeDays` are stored in shopping_list. Receiving an unlinked purchase uses them to create the item; linked purchases retain the existing item's settings. `openDatabase` adds columns to older databases, defaulting to consumable. See `shopping.test.ts`.
 
 Similar code may have different semantics:

@@ -1,10 +1,11 @@
+import {openedShelfLife} from "./consumption.js";
 import { consumptionTypeSchema } from "@al1s-wms/contracts";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { batchDates, InventoryError, moneySchema, recordStock, withStockOperation } from "./stock.js";
 
-const fields = {consumptionType:consumptionTypeSchema.optional(),openedShelfLifeDays:z.number().int().positive().nullable().optional(),itemId:z.string().uuid().nullable().optional(),name:z.string().trim().min(1).max(200).optional(),quantity:z.number().positive().finite().optional(),unit:z.string().trim().min(1).max(30).optional(),category:z.string().trim().min(1).max(100).optional(),locationId:z.string().uuid().nullable().optional(),channelId:z.string().uuid().nullable().optional(),plannedDate:z.string().date().nullable().optional(),estimatedTotal:moneySchema.nullable().optional()};
+const fields = {consumptionType:consumptionTypeSchema.optional(),openedShelfLifeDays:z.unknown().optional(),itemId:z.string().uuid().nullable().optional(),name:z.string().trim().min(1).max(200).optional(),quantity:z.number().positive().finite().optional(),unit:z.string().trim().min(1).max(30).optional(),category:z.string().trim().min(1).max(100).optional(),locationId:z.string().uuid().nullable().optional(),channelId:z.string().uuid().nullable().optional(),plannedDate:z.string().date().nullable().optional(),estimatedTotal:moneySchema.nullable().optional()};
 export const shoppingSchema=z.object(fields).strict();
 type Purchase={consumptionType:z.infer<typeof consumptionTypeSchema>;openedShelfLifeDays:number|null;id:string;itemId:string|null;name:string;quantity:number;unit:string|null;category:string|null;locationId:string|null;channelId:string|null;plannedDate:string|null;estimatedTotal:number|null;source?:string;completed:number};
 export function saveShopping(db:DatabaseSync,homeId:string,raw:unknown,id?:string) {
@@ -19,7 +20,8 @@ export function saveShopping(db:DatabaseSync,homeId:string,raw:unknown,id?:strin
   const itemId=automaticId?current!.itemId:input.itemId===undefined?current?.itemId??null:input.itemId;
   const linked=itemId?db.prepare("SELECT name,base_unit AS unit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,category,default_location_id AS locationId FROM items WHERE home_id=? AND id=? AND active=1").get(homeId,itemId) as Partial<Purchase>|undefined:undefined;
   if(itemId&&!linked)throw new InventoryError(404,"ITEM_NOT_FOUND","error.linkedItemNotFound");
-  const result={consumptionType:"consumable" as z.infer<typeof consumptionTypeSchema>,openedShelfLifeDays:null as number|null,...current,...input,...linked,id:id??randomUUID(),itemId,quantity:input.quantity??current?.quantity??1};
+  const merged={consumptionType:"consumable" as z.infer<typeof consumptionTypeSchema>,openedShelfLifeDays:null as number|null,...current,...input,...linked,id:id??randomUUID(),itemId,quantity:input.quantity??current?.quantity??1};
+  const result={...merged,openedShelfLifeDays:openedShelfLife(merged.consumptionType,merged.openedShelfLifeDays)};
   if(!result.name||!result.unit||!result.category||(!itemId&&!result.locationId))throw new InventoryError(400,"SHOPPING_FIELDS_REQUIRED","error.shoppingFieldsRequired");
   if(result.locationId&&!db.prepare("SELECT 1 FROM locations WHERE id=? AND home_id=? AND active=1").get(result.locationId,homeId))throw new InventoryError(400,"LOCATION_NOT_FOUND","error.shoppingLocationInvalid");
   if(result.channelId&&result.channelId!==current?.channelId&&!db.prepare("SELECT 1 FROM shopping_channels WHERE id=? AND home_id=? AND active=1").get(result.channelId,homeId))throw new InventoryError(400,"SHOPPING_CHANNEL_NOT_FOUND","error.shoppingChannelInvalid");
@@ -54,7 +56,7 @@ export function receiveShopping(db:DatabaseSync,homeId:string,shoppingId:string,
     if(!itemId) {
       if(!row.unit||!row.category)throw new InventoryError(400,"SHOPPING_FIELDS_REQUIRED","error.shoppingDetailsRequired");
       itemId=randomUUID();
-      db.prepare("INSERT INTO items(id,home_id,sku,name,category,base_unit,default_location_id,consumption_type,opened_shelf_life_days) VALUES (?,?,?,?,?,?,?,?,?)").run(itemId,homeId,`ITEM-${itemId.slice(0,8).toUpperCase()}`,row.name,row.category,row.unit,locationId,row.consumptionType,row.openedShelfLifeDays);
+      db.prepare("INSERT INTO items(id,home_id,sku,name,category,base_unit,default_location_id,consumption_type,opened_shelf_life_days) VALUES (?,?,?,?,?,?,?,?,?)").run(itemId,homeId,`ITEM-${itemId.slice(0,8).toUpperCase()}`,row.name,row.category,row.unit,locationId,row.consumptionType,openedShelfLife(row.consumptionType,row.openedShelfLifeDays));
     }
     const persistedShoppingId=automatic?randomUUID():shoppingId;
     if(automatic)db.prepare("INSERT INTO shopping_list(id,home_id,item_id,name,quantity,unit,category,location_id,source,completed,created_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)").run(persistedShoppingId,homeId,itemId,row.name,row.quantity,row.unit,row.category,locationId,"automatic",new Date().toISOString(),new Date().toISOString());

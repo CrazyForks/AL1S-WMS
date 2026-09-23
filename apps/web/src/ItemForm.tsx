@@ -1,3 +1,4 @@
+import {ConsumptionFields} from "./ConsumptionFields.js";
 import { X } from "lucide-react";
 import type * as React from "react";
 import { FormEvent } from "react";
@@ -122,24 +123,7 @@ export function ItemForm({
             ))}
           </select>
         </label>
-        <label>
-          {t("消耗类型")}
-          <select name="consumptionType" defaultValue="consumable">
-            <option value="consumable">{t("消耗品")}</option>
-            <option value="long_term_consumable">{t("长期消耗品")}</option>
-            <option value="non_consumable">{t("非消耗品")}</option>
-          </select>
-        </label>
-        <label>
-          {t("开封后保质期（天）")}
-          <input
-            name="openedShelfLifeDays"
-            type="number"
-            min="1"
-            step="1"
-            placeholder={t("可选")}
-          />
-        </label>
+        <ConsumptionFields/>
         <div className="form-row">
           <label>
             {t("单位")}

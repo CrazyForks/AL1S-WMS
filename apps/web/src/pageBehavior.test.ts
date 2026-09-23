@@ -168,3 +168,12 @@ test("purchase consumption fields offer all types and preserve linked item setti
   assert.match(linked, /name="consumptionType" disabled=""/);
   assert.match(linked, /value="non_consumable" selected=""/);
 });
+
+test("non-long-term consumption fields are disabled and display a literal dash marker",async()=>{
+  const {ConsumptionFields}=await import("./ConsumptionFields.js");
+  for(const consumptionType of ["consumable","non_consumable"] as const){
+    const html=renderToStaticMarkup(createElement(ConsumptionFields,{consumptionType,openedShelfLifeDays:30}));
+    assert.match(html, /<input(?=[^>]*name="openedShelfLifeDays")(?=[^>]*disabled="")(?=[^>]*value="--")[^>]*>/);
+    assert.doesNotMatch(html,/value="30"/);
+  }
+});

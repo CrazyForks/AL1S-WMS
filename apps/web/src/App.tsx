@@ -1,3 +1,4 @@
+import {ConsumptionFields} from "./ConsumptionFields.js";
 import type {Home, SetupStatus} from "./webTypes.js";
 import { AvatarIcon,BrandWordmark,TransactionRow,UnitOptions } from "./AppElements.js";
 import { Login,Setup } from "./AuthScreens.js";
@@ -598,7 +599,7 @@ export function App() {
         category: data.get("category"),
         baseUnit: data.get("baseUnit"),
         consumptionType:data.get("consumptionType") || "consumable",
-        openedShelfLifeDays:data.get("openedShelfLifeDays")===""?null:Number(data.get("openedShelfLifeDays")),
+        openedShelfLifeDays:data.get("openedShelfLifeDays")?Number(data.get("openedShelfLifeDays")):null,
         locationId: data.get("locationId") || undefined,
         reorderPoint: Number(data.get("reorderPoint") || 0),
         reorderQuantity: 0,
@@ -681,7 +682,7 @@ export function App() {
           barcode: data.get("barcode") || null,
           category: data.get("category"),
           consumptionType:data.get("consumptionType"),
-          openedShelfLifeDays:data.get("openedShelfLifeDays")===""?null:Number(data.get("openedShelfLifeDays")),
+          openedShelfLifeDays:data.get("openedShelfLifeDays")?Number(data.get("openedShelfLifeDays")):null,
           syncPurchaseCategory: data.get("syncPurchaseCategory") === "on",
           baseUnit: data.get("baseUnit"),
           reorderPoint: Number(data.get("reorderPoint") || 0),
@@ -1750,18 +1751,7 @@ export function App() {
                 ))}
               </select>
             </label>
-            <label>
-              {t("消耗类型")}
-              <select name="consumptionType" defaultValue={detailItem.consumptionType||"consumable"}>
-                <option value="consumable">{t("消耗品")}</option>
-                <option value="long_term_consumable">{t("长期消耗品")}</option>
-                <option value="non_consumable">{t("非消耗品")}</option>
-              </select>
-            </label>
-            <label>
-              {t("开封后保质期（天）")}
-              <input name="openedShelfLifeDays" type="number" min="1" step="1" defaultValue={detailItem.openedShelfLifeDays??""} placeholder={t("可选")}/>
-            </label>
+            <ConsumptionFields key={detailItem.id} consumptionType={detailItem.consumptionType} openedShelfLifeDays={detailItem.openedShelfLifeDays}/>
             <label className="batch-toggle">
               <input name="syncPurchaseCategory" type="checkbox" />
               <span aria-hidden="true" />

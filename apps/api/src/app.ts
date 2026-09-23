@@ -1,3 +1,4 @@
+import {normalizeConsumptionInput} from "./consumption.js";
 import {createAuth} from "./auth.js";
 import Fastify from "fastify";
 import { z } from "zod";
@@ -356,7 +357,9 @@ app.get<{ Params: { homeId: string; itemId: string } }>(
 );
 
 app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:homeId/items/:itemId", async request => {
-  const {syncPurchaseCategory=false,...changes}=updateItemSchema.parse(request.body),{homeId,itemId}=request.params;
+  const {homeId,itemId}=request.params;
+  const existing=db.prepare("SELECT consumption_type FROM items WHERE id=? AND home_id=? AND active=1").get(itemId,homeId);
+  const {syncPurchaseCategory=false,...changes}=updateItemSchema.parse(normalizeConsumptionInput(request.body,existing?.consumption_type));
   if(changes.barcode)changes.barcode=normalizeBarcode(changes.barcode);
   requireStockTarget(db,homeId,itemId,changes.locationId??undefined);
   const current=db.prepare("SELECT * FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as Record<string,any>;
@@ -667,10 +670,10 @@ app.post<{ Params: { homeId: string }; Body: unknown }>(
   async (request, reply) => {
     const body =
       request.body && typeof request.body === "object" ? request.body : {};
-    const parsed = createItemSchema.safeParse({
+    const parsed = createItemSchema.safeParse(normalizeConsumptionInput({
       ...body,
       homeId: request.params.homeId,
-    });
+    }));
     if (!parsed.success)
       return sendCodeError(reply,localeOf(request),400,"VALIDATION_ERROR","error.validation",parsed.error.flatten());
 

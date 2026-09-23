@@ -13,18 +13,18 @@ for(const consumptionType of ["consumable","non_consumable","long_term_consumabl
       db.prepare("INSERT INTO locations(id,home_id,name) VALUES (?,?,?)").run(location,home,"shelf");
       const purchase=saveShopping(db,home,{name:"purchase",unit:"个",category:"其他",locationId:location,consumptionType,openedShelfLifeDays:7});
       const edited=saveShopping(db,home,{quantity:2},purchase.id);
-      assert.equal(edited.consumptionType,consumptionType);assert.equal(edited.openedShelfLifeDays,7);
+      assert.equal(edited.consumptionType,consumptionType);assert.equal(edited.openedShelfLifeDays,consumptionType==="long_term_consumable"?7:null);
       const input={actualQuantity:2,idempotencyKey:"receive"};
       const result=receiveShopping(db,home,purchase.id,input);
       assert.deepEqual(receiveShopping(db,home,purchase.id,input),result);
       const item=db.prepare("SELECT consumption_type,opened_shelf_life_days FROM items WHERE id=?").get(result.itemId)!;
-      assert.equal(item.consumption_type,consumptionType);assert.equal(item.opened_shelf_life_days,7);
+      assert.equal(item.consumption_type,consumptionType);assert.equal(item.opened_shelf_life_days,consumptionType==="long_term_consumable"?7:null);
       if(consumptionType==="long_term_consumable"){
         const opened=recordStock(db,home,"issue",{itemId:result.itemId,locationId:location,quantity:1,idempotencyKey:"open"});
         assert.equal(opened.afterQuantity,2);assert.equal(listOpenedConsumables(db,home).length,1);
       }
       assert.throws(()=>saveShopping(db,home,{consumptionType:"invalid"}));
-      assert.throws(()=>saveShopping(db,home,{openedShelfLifeDays:0}));
+      assert.throws(()=>saveShopping(db,home,{consumptionType:"long_term_consumable",openedShelfLifeDays:0}));
     }finally{db.close();}
   });
 }
@@ -84,4 +84,23 @@ test("existing database upgrades shopping columns with compatible defaults and r
     db.close();db=openDatabase(path);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM shopping_list").get()!.n,1);
   }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test("purchase ignores mismatched shelf life, clears it on type change and preserves long-term partial edits",()=>{
+  const db=openDatabase(":memory:"),home=randomUUID(),location=randomUUID();
+  try{
+    db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(home,"home");
+    db.prepare("INSERT INTO locations(id,home_id,name) VALUES (?,?,?)").run(location,home,"shelf");
+    for(const consumptionType of ["consumable","non_consumable"]){
+      const row=saveShopping(db,home,{name:"item",unit:"个",category:"其他",locationId:location,consumptionType,openedShelfLifeDays:"invalid"});
+      assert.equal(row.openedShelfLifeDays,null);
+      assert.equal(saveShopping(db,home,{openedShelfLifeDays:-1},row.id).openedShelfLifeDays,null);
+    }
+    const long=saveShopping(db,home,{name:"long",unit:"个",category:"其他",locationId:location,consumptionType:"long_term_consumable",openedShelfLifeDays:12});
+    assert.equal(saveShopping(db,home,{quantity:2},long.id).openedShelfLifeDays,12);
+    assert.throws(()=>saveShopping(db,home,{openedShelfLifeDays:"bad"},long.id));
+    const short=saveShopping(db,home,{consumptionType:"consumable",openedShelfLifeDays:{forced:true}},long.id);
+    assert.equal(short.openedShelfLifeDays,null);
+    assert.equal(saveShopping(db,home,{consumptionType:"long_term_consumable"},long.id).openedShelfLifeDays,null);
+  }finally{db.close();}
 });
