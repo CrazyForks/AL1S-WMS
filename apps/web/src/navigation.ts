@@ -1,4 +1,3 @@
-
 export const pagePaths = {
   home: "/",
   count: "/count",
@@ -21,11 +20,15 @@ export function pageFromUrl(): Page {
 }
 
 export function itemDetailIdFromUrl() {
-  const match=window.location.pathname.match(/^\/items\/([0-9a-f-]{36})\/?$/i);
-  return match?.[1]??null;
+  const match = window.location.pathname.match(
+    /^\/items\/([0-9a-f-]{36})\/?$/i,
+  );
+  return match?.[1] ?? null;
 }
 
-export function itemDetailSourcePage():Page|null {
-  const source=window.history.state?.itemDetailSource;
-  return typeof source==="string"&&Object.keys(pagePaths).includes(source)?source as Page:null;
+export function itemDetailSourcePage(): Page | null {
+  const source = window.history.state?.itemDetailSource;
+  return typeof source === "string" && Object.keys(pagePaths).includes(source)
+    ? (source as Page)
+    : null;
 }

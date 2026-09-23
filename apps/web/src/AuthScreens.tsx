@@ -1,9 +1,9 @@
-import { useState,type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { BrandWordmark } from "./AppElements.js";
 import { apiFetch } from "./i18n/apiFetch.js";
 import i18n from "./i18n/index.js";
 import { IconPicker } from "./Icons.js";
-const t=i18n.t.bind(i18n);
+const t = i18n.t.bind(i18n);
 export function Setup({
   onComplete,
 }: {
@@ -18,7 +18,6 @@ export function Setup({
   const [locations, setLocations] = useState(["储物间", "厨房"]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [page, setPage] = useState(1);
   const canNext =
     step === 1
       ? username.trim().length >= 2 && password.length >= 8

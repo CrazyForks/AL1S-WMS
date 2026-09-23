@@ -7,7 +7,7 @@ import "./budgetCategories.css";
 
 type Allocation = {category:string;amount: number|string};
 
-export function BudgetCategoryPicker({categories,entries,value,onChange}:{categories:BudgetCategory[];entries:Allocation[];value:string;onChange:(value:string)=>void}) {
+export function BudgetCategoryPicker({categories,value,onChange}:{categories:BudgetCategory[];entries:Allocation[];value:string;onChange:(value:string)=>void}) {
   const {t}=useTranslation();
   const dropdown=useRef<HTMLDetailsElement>(null);
   const render=(node:BudgetNode,depth=0):React.ReactNode=>{
