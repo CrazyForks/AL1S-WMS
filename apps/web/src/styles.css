@@ -463,6 +463,11 @@ input[type="date"]::-webkit-calendar-picker-indicator,input[type="month"]::-webk
   .topbar{column-gap:8px}
   .brand{min-width:0}
 }
+@media(display-mode:standalone) and (max-width:540px){
+  @supports(-webkit-touch-callout:none){
+    .topbar{padding-top:42px}
+  }
+}
 
 .shell[data-page="profile"] .page-content{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
 .shell[data-page="profile"] .welcome,.shell[data-page="profile"] .page-content>.notice{grid-column:1/-1;margin-bottom:0}
