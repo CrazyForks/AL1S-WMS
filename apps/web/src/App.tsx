@@ -1240,7 +1240,7 @@ export function App() {
       <div className="tree-node" key={node.id}>
         <div
           className={`tree-node-head${treeDropTarget===node.id?" tree-drop-target":""}`}
-          style={{ paddingLeft: 16 + depth * 22 }}
+          style={{ "--tree-depth": depth } as CSSProperties}
           onDragEnter={event=>{if(draggedTreeItem&&draggedTreeItem.sourceNodeId!==node.id){event.preventDefault();setTreeDropTarget(node.id);}}}
           onDragOver={event=>{if(draggedTreeItem&&draggedTreeItem.sourceNodeId!==node.id){event.preventDefault();event.dataTransfer.dropEffect="move";}}}
           onDrop={event=>{event.preventDefault();void moveTreeItem(node);}}
