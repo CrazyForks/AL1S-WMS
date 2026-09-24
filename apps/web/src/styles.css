@@ -412,7 +412,7 @@ tbody tr:hover td{background:#f3f9fd}
 input:disabled,select:disabled{background:#edf3f7!important;color:#768a9c!important;border-color:#d6e2eb!important;cursor:not-allowed;opacity:1}
 .modal input,.modal select{min-width:0}
 input[type="date"],input[type="month"]{min-width:0;max-width:100%;box-sizing:border-box;text-align:left}
-.modal input[type="date"],.modal input[type="month"]{width:100%;max-width:100%;min-width:0;overflow:hidden}
+.modal input[type="date"],.modal input[type="month"]{display:inline-flex;width:100%;max-width:100%;min-width:0;-webkit-min-logical-width:0}
 input[type="date"]::-webkit-datetime-edit,input[type="month"]::-webkit-datetime-edit{padding:0}
 input[type="date"]::-webkit-calendar-picker-indicator,input[type="month"]::-webkit-calendar-picker-indicator{margin:0}
 .modal{max-height:calc(100dvh - 40px)}
