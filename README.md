@@ -6,7 +6,7 @@ AL1S WMS is a lightweight, self-hosted warehouse manager for the home.
 
 <a href="https://github.com/RicterZ/AL1S-WMS/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RicterZ/AL1S-WMS?display_name=tag" /></a>
 <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/RicterZ/AL1S-WMS" /></a>
-<a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=RicterZ&repository=AL1S-WMS&category=integration"><img alt="Open AL1S WMS in HACS" src="https://my.home-assistant.io/badges/hacs_repository.svg" /></a>
+<a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=RicterZ&repository=AL1S-WMS&category=integration"><img alt="Install with HACS" src="https://my.home-assistant.io/badges/hacs_repository.svg" /></a>
 
 [English](README.md) | [中文](README.zh-CN.md)
 
@@ -111,25 +111,15 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 
 ## Home Assistant
 
-AL1S WMS includes a read-only Home Assistant custom integration. It creates five sensors for each household: item types, low-stock items, expiring batches, expired batches, and pending shopping items. Each inventory item also gets a quantity sensor in its base unit, aggregated across locations. New items appear automatically; deleted items become unavailable. Sensors refresh about once a minute. The expiry window is 30 days; shopping includes manual plans and automatic replenishment suggestions. The integration does not change inventory or add a voice assistant.
+Bring AL1S WMS inventory counts into Home Assistant dashboards and automations. For example, get notified when fewer than four eggs remain or when a batch has expired.
 
-| Sensor | Value |
-| --- | --- |
-| Item types | Number of active inventory items |
-| Low-stock items | Items below their reorder threshold |
-| Expiring / expired batches | Batches with remaining stock expiring within 30 days / already expired |
-| Pending shopping items | Open manual purchases plus automatic replenishment suggestions |
-| Item quantity | Current total for one item across all locations, in its base unit |
+1. In AL1S WMS, create a token under **Settings → MCP access tokens**. A token scoped to the household you want to connect is recommended.
+2. Install **AL1S WMS** from HACS and restart Home Assistant. If it is not listed yet, add `https://github.com/RicterZ/AL1S-WMS` as a HACS **Custom repository** of type **Integration**.
+3. In Home Assistant, go to **Settings → Devices & services → Add integration**, search for **AL1S WMS**, enter its URL and token, then select a household. Home Assistant must be able to reach that URL; do not use the HA container's own `localhost`.
 
-For example, HA can notify you when egg quantity falls below four or when the expiring batch count becomes positive. Batch details, per-location stock, purchasing, and stock operations remain in AL1S WMS. Opening a long-term consumable does not lower stock until it is exhausted.
+The household gets a quantity sensor for each item, plus five summary sensors: **item types, low-stock items, expiring batches, expired batches, and pending shopping items**. Item quantities include all locations; the expiry window is 30 days. Data refreshes about once a minute. Each integration entry connects one household; add another entry for another household.
 
-First, create an API token under AL1S WMS **Settings → MCP access tokens**. A household-scoped token limits access to the selected household; an account-scoped token can also be used if you need to choose among several homes. Each Home Assistant integration entry binds to only one selected household. Home Assistant must be able to reach the AL1S WMS server. If HA runs in Docker, use an address reachable from its container rather than its own `localhost`.
-
-1. With HACS installed, [open AL1S WMS in HACS](https://my.home-assistant.io/redirect/hacs_repository/?owner=RicterZ&repository=AL1S-WMS&category=integration), download the integration from the main branch, then restart Home Assistant. Existing app releases may predate this integration. If this repository is not listed yet, add `https://github.com/RicterZ/AL1S-WMS` as a HACS custom repository of type Integration.
-2. [Add the AL1S WMS integration](https://my.home-assistant.io/redirect/config_flow_start/?domain=al1s_wms). Enter the reachable HTTP(S) server URL and token, then select the household to bind.
-3. Find the household under HA Devices & services and add its sensors to dashboards or automations. Repeat setup for another household.
-
-For manual installation, copy `custom_components/al1s_wms` from this repository into the same path in your HA configuration directory, restart HA, and continue at step 2. Sensors become unavailable during connection failures and recover on the next successful refresh.
+Without HACS, copy `custom_components/al1s_wms` into the same path in your HA configuration directory, restart HA, and continue at step 3.
 
 ## Deployment
 
