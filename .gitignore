@@ -1,4 +1,6 @@
-docs/
+docs/*
+!docs/home-assistant.md
+!docs/home-assistant.zh-CN.md
 node_modules/
 dist/
 .env
@@ -6,4 +8,4 @@ dist/
 *.db
 *.db-shm
 *.db-wal
-
+__pycache__/

@@ -22,6 +22,13 @@
         "data": {
           "home_id": "家庭"
         }
+      },
+      "follow": {
+        "title": "关注物资",
+        "description": "仅为选中的物资创建数量传感器。可以留空，只使用家庭汇总；之后可在集成配置中调整。",
+        "data": {
+          "followed_items": "关注物资"
+        }
       }
     },
     "error": {
@@ -52,7 +59,25 @@
       },
       "shopping": {
         "name": "待采购项"
+      },
+      "opened": {
+        "name": "使用中物资"
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "关注物资",
+        "description": "仅为选中的物资创建数量传感器。可以留空，只使用家庭汇总；之后可在集成配置中调整。",
+        "data": {
+          "followed_items": "关注物资"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "令牌无效或无权访问。",
+      "cannot_connect": "无法连接 AL1S WMS。"
     }
   }
 }

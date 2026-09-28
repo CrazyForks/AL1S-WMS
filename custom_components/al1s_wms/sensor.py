@@ -11,9 +11,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
-from .const import DOMAIN
+from .const import CONF_FOLLOWED_ITEMS, DOMAIN
+from .snapshot import item_attributes
 
 
 @dataclass(frozen=True)
@@ -26,28 +28,39 @@ class Summary:
 
 SUMMARIES = (
     Summary("items", "物资种类", "mdi:package-variant-closed", lambda data: len(data["items"])),
-    Summary("low_stock", "待补货物资", "mdi:cart-arrow-down", lambda data: data["overview"]["needsReplenishment"]["total"]),
-    Summary("expiring", "临期批次", "mdi:calendar-alert", lambda data: data["overview"]["expiring"]["total"]),
-    Summary("expired", "过期批次", "mdi:calendar-remove", lambda data: data["overview"]["expired"]["total"]),
-    Summary("shopping", "待采购项", "mdi:cart-outline", lambda data: data["overview"]["shopping"]["total"]),
+    Summary("low_stock", "待补货物资", "mdi:cart-arrow-down", lambda data: len(data["details"]["low_stock"])),
+    Summary("expiring", "临期批次", "mdi:calendar-alert", lambda data: len(data["details"]["expiring"])),
+    Summary("expired", "过期批次", "mdi:calendar-remove", lambda data: len(data["details"]["expired"])),
+    Summary("shopping", "待采购项", "mdi:cart-outline", lambda data: len(data["details"]["shopping"])),
+    Summary("opened", "使用中物资", "mdi:bottle-tonic-outline", lambda data: len({row["item_id"] for row in data["details"]["opened"]})),
 )
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Expose household summaries and one quantity sensor per item."""
+    """Expose summaries and quantity sensors only for explicitly followed items."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         AL1SSummarySensor(coordinator, entry, summary) for summary in SUMMARIES
     )
+    followed = set(entry.options.get(CONF_FOLLOWED_ITEMS, []))
+    registry = er.async_get(hass)
+    prefix = f"{entry.unique_id}_item_"
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.unique_id.startswith(prefix):
+            item_id = entity.unique_id[len(prefix):]
+            if item_id not in followed and entity.disabled_by is None:
+                registry.async_update_entity(entity.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
+            elif item_id in followed and entity.disabled_by == er.RegistryEntryDisabler.INTEGRATION:
+                registry.async_update_entity(entity.entity_id, disabled_by=None)
     known_items: set[str] = set()
 
     @callback
     def add_new_items() -> None:
         new_items = [
             item for item in coordinator.data["items"]
-            if item["id"] not in known_items
+            if item["id"] in followed and item["id"] not in known_items
         ]
         if new_items:
             known_items.update(item["id"] for item in new_items)
@@ -85,6 +98,16 @@ class AL1SSummarySensor(CoordinatorEntity, SensorEntity):
     def native_value(self) -> int:
         """Return the count from the last successful refresh."""
         return self.summary.value(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict | None:
+        """Expose full detail lists for dashboard templates and automations."""
+        if self.summary.key == "items":
+            return None
+        attributes = {"items": self.coordinator.data["details"][self.summary.key]}
+        if self.summary.key == "expiring":
+            attributes["expiry_window_days"] = self.coordinator.data["overview"]["expiryWindow"]["days"]
+        return attributes
 
 
 class AL1SItemSensor(CoordinatorEntity, SensorEntity):
@@ -131,3 +154,8 @@ class AL1SItemSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         return self.item["quantity"] if self.item else None
+
+    @property
+    def extra_state_attributes(self) -> dict | None:
+        """Keep location, replenishment and opening details on the same entity."""
+        return item_attributes(self.coordinator.data, self.item) if self.item else None

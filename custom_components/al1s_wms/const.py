@@ -4,3 +4,4 @@ DOMAIN = "al1s_wms"
 CONF_TOKEN = "token"
 CONF_HOME_ID = "home_id"
 SCAN_INTERVAL_SECONDS = 60
+CONF_FOLLOWED_ITEMS = "followed_items"

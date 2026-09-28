@@ -22,6 +22,13 @@
         "data": {
           "home_id": "Household"
         }
+      },
+      "follow": {
+        "title": "Follow items",
+        "description": "Only selected items get quantity sensors. Leave empty for household summaries only; change this later in the integration options.",
+        "data": {
+          "followed_items": "Followed items"
+        }
       }
     },
     "error": {
@@ -52,7 +59,25 @@
       },
       "shopping": {
         "name": "Pending shopping items"
+      },
+      "opened": {
+        "name": "Items in use"
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Follow items",
+        "description": "Only selected items get quantity sensors. Leave empty for household summaries only; change this later in the integration options.",
+        "data": {
+          "followed_items": "Followed items"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The token is invalid or has no access.",
+      "cannot_connect": "Could not connect to AL1S WMS."
     }
   }
 }
