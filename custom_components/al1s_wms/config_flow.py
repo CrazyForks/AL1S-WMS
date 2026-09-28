@@ -16,6 +16,9 @@ class AL1SConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Set up one household per entry."""
 
     VERSION = 1
+    _url: str
+    _token: str
+    _homes: list[dict]
 
     async def async_step_reauth(self, entry_data):
         """Replace an expired or revoked household token."""
@@ -35,8 +38,8 @@ class AL1SConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except AL1SAPIError:
                 errors["base"] = "cannot_connect"
             else:
-                if len(homes) != 1 or homes[0].get("id") != entry.data[CONF_HOME_ID]:
-                    errors["base"] = "home_token_required"
+                if not any(home["id"] == entry.data[CONF_HOME_ID] for home in homes):
+                    errors["base"] = "home_access_required"
                 else:
                     try:
                         await client.snapshot(entry.data[CONF_HOME_ID])
@@ -70,26 +73,45 @@ class AL1SConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 except AL1SAPIError:
                     errors["base"] = "cannot_connect"
                 else:
-                    if len(homes) != 1:
-                        errors["base"] = "home_token_required"
+                    if not homes:
+                        errors["base"] = "no_homes"
                     else:
-                        home = homes[0]
-                        try:
-                            await client.snapshot(home["id"])
-                        except AL1SAuthError:
-                            errors["base"] = "invalid_auth"
-                        except AL1SAPIError:
-                            errors["base"] = "cannot_connect"
-                        else:
-                            await self.async_set_unique_id(f"{url}|{home['id']}")
-                            self._abort_if_unique_id_configured()
-                            return self.async_create_entry(
-                                title=home["name"],
-                                data={CONF_URL: url, CONF_TOKEN: token, CONF_HOME_ID: home["id"]},
-                            )
+                        self._url = url
+                        self._token = token
+                        self._homes = homes
+                        return await self.async_step_home()
 
         schema = vol.Schema({
             vol.Required(CONF_URL): str,
             vol.Required(CONF_TOKEN): str,
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_home(self, user_input=None):
+        """Bind this config entry to exactly one chosen household."""
+        if not hasattr(self, "_homes"):
+            return await self.async_step_user()
+        errors = {}
+        if user_input is not None:
+            home_id = user_input[CONF_HOME_ID]
+            home = next((row for row in self._homes if row["id"] == home_id), None)
+            if home is None:
+                errors["base"] = "home_access_required"
+            else:
+                client = AL1SClient(async_get_clientsession(self.hass), self._url, self._token)
+                try:
+                    await client.snapshot(home_id)
+                except AL1SAuthError:
+                    errors["base"] = "invalid_auth"
+                except AL1SAPIError:
+                    errors["base"] = "cannot_connect"
+                else:
+                    await self.async_set_unique_id(f"{self._url}|{home_id}")
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(
+                        title=home["name"],
+                        data={CONF_URL: self._url, CONF_TOKEN: self._token, CONF_HOME_ID: home_id},
+                    )
+        choices = {home["id"]: home["name"] for home in self._homes}
+        schema = vol.Schema({vol.Required(CONF_HOME_ID): vol.In(choices)})
+        return self.async_show_form(step_id="home", data_schema=schema, errors=errors)

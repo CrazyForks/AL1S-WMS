@@ -3,17 +3,24 @@
     "step": {
       "user": {
         "title": "连接 AL1S WMS",
-        "description": "请先在 AL1S WMS 设置中创建绑定家庭的 API 令牌。Home Assistant 必须能够访问填写的地址。",
+        "description": "填写 AL1S WMS 地址及可访问目标家庭的 API 令牌。推荐使用家庭级令牌。",
         "data": {
           "url": "AL1S WMS 地址",
-          "token": "家庭 API 令牌"
+          "token": "API 令牌"
         }
       },
       "reauth_confirm": {
         "title": "更新家庭令牌",
         "description": "请输入可访问原家庭的新令牌。",
         "data": {
-          "token": "家庭 API 令牌"
+          "token": "API 令牌"
+        }
+      },
+      "home": {
+        "title": "选择家庭",
+        "description": "此集成只绑定一个家庭。其他家庭可另行添加。",
+        "data": {
+          "home_id": "家庭"
         }
       }
     },
@@ -21,7 +28,8 @@
       "invalid_url": "请输入 HTTP 或 HTTPS 地址。",
       "invalid_auth": "令牌无效或无权访问。",
       "cannot_connect": "无法连接 AL1S WMS。",
-      "home_token_required": "令牌必须仅能访问此家庭，请创建绑定家庭的令牌。"
+      "home_access_required": "令牌无权访问所选家庭。",
+      "no_homes": "令牌没有可访问的家庭。"
     },
     "abort": {
       "already_configured": "这个家庭已添加。",
