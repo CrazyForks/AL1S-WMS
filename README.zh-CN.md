@@ -6,7 +6,7 @@
 
 <a href="https://github.com/RicterZ/AL1S-WMS/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/RicterZ/AL1S-WMS?display_name=tag" /></a>
 <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/github/license/RicterZ/AL1S-WMS" /></a>
-<a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=RicterZ&repository=AL1S-WMS&category=integration"><img alt="通过 HACS 安装" src="https://my.home-assistant.io/badges/hacs_repository.svg" /></a>
+<a href="#home-assistant"><img alt="通过 HACS 安装" src="https://my.home-assistant.io/badges/hacs_repository.svg" /></a>
 
 [English](README.md) | [中文](README.zh-CN.md)
 
@@ -112,7 +112,7 @@
 将 AL1S WMS 的库存数量同步到 Home Assistant，用于仪表盘和自动化。例如，鸡蛋少于 4 个时提醒采购，或有过期批次时发送通知。
 
 1. 在 AL1S WMS 的**设置 → MCP 访问令牌**中创建令牌，推荐绑定要接入的家庭。
-2. 在 HACS 中安装 **AL1S WMS**，目前安装时选择 **main** 分支，然后重启 Home Assistant。若搜索不到，可在 HACS 右上角的**自定义存储库**中添加 `https://github.com/RicterZ/AL1S-WMS`，类型选**集成**。
+2. 在 HACS 的**自定义存储库**中添加 `https://github.com/RicterZ/AL1S-WMS`，类型选**集成**。从 **main** 分支安装 **AL1S WMS**，然后重启 Home Assistant。
 3. 在 Home Assistant 的**设置 → 设备与服务 → 添加集成**中搜索 **AL1S WMS**，填写 AL1S 地址和令牌，再选择一个家庭。Home Assistant 必须能访问这个地址；若 HA 在容器中运行，不要使用容器自身的 `localhost`。
 
 接入后，该家庭会出现每件物资的**当前总量**传感器，以及**物资种类、待补货物资、临期批次、过期批次、待采购项**五个汇总传感器。数量汇总所有地点，临期范围为未来 30 天。数据约每分钟更新一次。每个集成条目只对应一个家庭，可重复添加其他家庭。

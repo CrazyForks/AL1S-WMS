@@ -6,7 +6,7 @@ AL1S WMS is a lightweight, self-hosted warehouse manager for the home.
 
 <a href="https://github.com/RicterZ/AL1S-WMS/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RicterZ/AL1S-WMS?display_name=tag" /></a>
 <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/RicterZ/AL1S-WMS" /></a>
-<a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=RicterZ&repository=AL1S-WMS&category=integration"><img alt="Install with HACS" src="https://my.home-assistant.io/badges/hacs_repository.svg" /></a>
+<a href="#home-assistant"><img alt="Install with HACS" src="https://my.home-assistant.io/badges/hacs_repository.svg" /></a>
 
 [English](README.md) | [中文](README.zh-CN.md)
 
@@ -114,7 +114,7 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 Bring AL1S WMS inventory counts into Home Assistant dashboards and automations. For example, get notified when fewer than four eggs remain or when a batch has expired.
 
 1. In AL1S WMS, create a token under **Settings → MCP access tokens**. A token scoped to the household you want to connect is recommended.
-2. Install **AL1S WMS** from HACS, choose the **main** branch for now, and restart Home Assistant. If it is not listed yet, add `https://github.com/RicterZ/AL1S-WMS` as a HACS **Custom repository** of type **Integration**.
+2. In HACS, add `https://github.com/RicterZ/AL1S-WMS` as a **Custom repository** of type **Integration**. Install **AL1S WMS** from the **main** branch, then restart Home Assistant.
 3. In Home Assistant, go to **Settings → Devices & services → Add integration**, search for **AL1S WMS**, enter its URL and token, then select a household. Home Assistant must be able to reach that URL; do not use the HA container's own `localhost`.
 
 The household gets a quantity sensor for each item, plus five summary sensors: **item types, low-stock items, expiring batches, expired batches, and pending shopping items**. Item quantities include all locations; the expiry window is 30 days. Data refreshes about once a minute. Each integration entry connects one household; add another entry for another household.
