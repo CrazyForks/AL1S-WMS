@@ -108,6 +108,18 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 - [ ] Recurring shopping templates and replenishment rules for regularly purchased items.
 - [ ] Configurable expiry and stock reminders, exposed through MCP so an AI agent or external automation can deliver them.
 
+## Home Assistant
+
+AL1S WMS includes a read-only Home Assistant custom integration. It creates five sensors for each household: item types, low-stock items, expiring batches, expired batches, and pending shopping items. Each inventory item also gets a quantity sensor in its base unit, aggregated across locations. New items appear automatically; deleted items become unavailable. Sensors refresh about once a minute. The expiry window is 30 days; shopping includes manual plans and automatic replenishment suggestions. The integration does not change inventory or add a voice assistant.
+
+First, create a **household-scoped** token under AL1S WMS **Settings → MCP access tokens**. Home Assistant must be able to reach the AL1S WMS server. If HA runs in Docker, use an address reachable from its container rather than its own `localhost`.
+
+1. With HACS installed, [open AL1S WMS in HACS](https://my.home-assistant.io/redirect/hacs_repository/?owner=RicterZ&repository=AL1S-WMS&category=integration), download the integration from the main branch, then restart Home Assistant. Existing app releases may predate this integration. If this repository is not listed yet, add `https://github.com/RicterZ/AL1S-WMS` as a HACS custom repository of type Integration.
+2. [Add the AL1S WMS integration](https://my.home-assistant.io/redirect/config_flow_start/?domain=al1s_wms). Enter the reachable HTTP(S) server URL and the household token.
+3. Find the household under HA Devices & services and add its sensors to dashboards or automations. Repeat setup for another household.
+
+For manual installation, copy `custom_components/al1s_wms` from this repository into the same path in your HA configuration directory, restart HA, and continue at step 2. Setup requires exactly one accessible household; use a household-scoped token. Sensors become unavailable during connection failures and recover on the next successful refresh.
+
 ## Deployment
 
 ### Docker

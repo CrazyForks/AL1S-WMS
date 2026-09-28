@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect AL1S WMS",
+        "description": "Create a household-scoped API token in AL1S WMS Settings. The URL must be reachable from Home Assistant.",
+        "data": {
+          "url": "AL1S WMS URL",
+          "token": "Household API token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update household token",
+        "description": "Enter a new token for the same household.",
+        "data": {
+          "token": "Household API token"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Enter an HTTP or HTTPS URL.",
+      "invalid_auth": "The token is invalid or has no access.",
+      "cannot_connect": "Could not connect to AL1S WMS.",
+      "home_token_required": "The token must return exactly one household. Create a household-scoped token."
+    },
+    "abort": {
+      "already_configured": "This household is already configured.",
+      "reauth_successful": "Household token updated."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "items": {
+        "name": "Item types"
+      },
+      "low_stock": {
+        "name": "Low-stock items"
+      },
+      "expiring": {
+        "name": "Expiring batches"
+      },
+      "expired": {
+        "name": "Expired batches"
+      },
+      "shopping": {
+        "name": "Pending shopping items"
+      }
+    }
+  }
+}

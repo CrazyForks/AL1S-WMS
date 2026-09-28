@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "连接 AL1S WMS",
+        "description": "请先在 AL1S WMS 设置中创建绑定家庭的 API 令牌。Home Assistant 必须能够访问填写的地址。",
+        "data": {
+          "url": "AL1S WMS 地址",
+          "token": "家庭 API 令牌"
+        }
+      },
+      "reauth_confirm": {
+        "title": "更新家庭令牌",
+        "description": "请输入可访问原家庭的新令牌。",
+        "data": {
+          "token": "家庭 API 令牌"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "请输入 HTTP 或 HTTPS 地址。",
+      "invalid_auth": "令牌无效或无权访问。",
+      "cannot_connect": "无法连接 AL1S WMS。",
+      "home_token_required": "令牌必须仅能访问此家庭，请创建绑定家庭的令牌。"
+    },
+    "abort": {
+      "already_configured": "这个家庭已添加。",
+      "reauth_successful": "家庭令牌已更新。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "items": {
+        "name": "物资种类"
+      },
+      "low_stock": {
+        "name": "待补货物资"
+      },
+      "expiring": {
+        "name": "临期批次"
+      },
+      "expired": {
+        "name": "过期批次"
+      },
+      "shopping": {
+        "name": "待采购项"
+      }
+    }
+  }
+}

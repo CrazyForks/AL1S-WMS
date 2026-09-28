@@ -106,6 +106,18 @@
 - [ ] 面向高频采购物品的周期采购模板与补货规则。
 - [ ] 可配置的临期和库存提醒，通过 MCP 交给 AI Agent 或外部自动化发送。
 
+## Home Assistant
+
+AL1S WMS 提供只读 Home Assistant 自定义集成。每个家庭会生成物资种类、待补货物资、临期批次、过期批次和待采购项五个传感器，同时为每件物资生成一个按基础单位统计、汇总全部地点的数量传感器；新增物资自动出现，删除后对应传感器变为不可用。约每分钟刷新一次。临期窗口为 30 天，待采购项包含手动计划及自动补货建议。此集成不执行库存写入，也不提供语音助手。
+
+安装前，在 AL1S WMS 的“设置 → MCP 访问令牌”创建**绑定目标家庭**的令牌，并确保 Home Assistant 所在设备可以访问 AL1S WMS。若 HA 运行在容器中，填写 HA 容器能访问的地址，而不是 HA 容器自身的 `localhost`。
+
+1. 已安装 HACS 时，点 [在 HACS 中打开 AL1S WMS](https://my.home-assistant.io/redirect/hacs_repository/?owner=RicterZ&repository=AL1S-WMS&category=integration)，选择 main 分支下载自定义集成并重启 Home Assistant；已有应用发布版本可能尚未包含此集成。若 HACS 尚未收录此仓库，可在 HACS 的“自定义存储库”中添加 `https://github.com/RicterZ/AL1S-WMS`，类别选“集成”。
+2. 点 [添加 AL1S WMS 集成](https://my.home-assistant.io/redirect/config_flow_start/?domain=al1s_wms)，输入 AL1S WMS 的 HTTP(S) 地址及上一步创建的令牌。
+3. 在 HA 的设备与服务页面打开该家庭，即可把传感器加入仪表盘或自动化。每个家庭单独添加一次。
+
+不用 HACS 时，把仓库的 `custom_components/al1s_wms` 目录复制到 HA 配置目录下的 `custom_components/al1s_wms`，重启 HA 后从第 2 步继续。若提示令牌作用域不符，请重新创建绑定单个家庭的令牌；配置时要求令牌仅返回一个可访问家庭，建议始终绑定目标家庭。断线时传感器会变为不可用，连接恢复后自动刷新。
+
 ## 部署
 
 ### Docker
