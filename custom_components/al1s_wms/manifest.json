@@ -1,11 +1,13 @@
 {
   "domain": "al1s_wms",
   "name": "AL1S WMS",
-  "version": "0.0.1",
-  "documentation": "https://github.com/RicterZ/AL1S-WMS#home-assistant",
-  "issue_tracker": "https://github.com/RicterZ/AL1S-WMS/issues",
+  "codeowners": [
+    "@RicterZ"
+  ],
   "config_flow": true,
   "dependencies": [],
-  "codeowners": ["@RicterZ"],
-  "iot_class": "local_polling"
+  "documentation": "https://github.com/RicterZ/AL1S-WMS#home-assistant",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/RicterZ/AL1S-WMS/issues",
+  "version": "0.0.1"
 }
