@@ -2,15 +2,14 @@
   
 # AL1S WMS
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 面向家庭储物的轻量级、自托管仓库管理系统。
 
 <a href="https://github.com/RicterZ/AL1S-WMS/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/RicterZ/AL1S-WMS?display_name=tag" /></a>
 <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/github/license/RicterZ/AL1S-WMS" /></a>
+
 <a href="#home-assistant"><img alt="通过 HACS 安装" src="https://my.home-assistant.io/badges/hacs_repository.svg" /></a>
-
-[English](README.md) | [中文](README.zh-CN.md)
-
-开发者导航：[Agent 指南与功能导航（英文）](AGENTS.md)。
 
 <img width="1600" height="448" alt="AL1S-WMS-README-banner" src="https://github.com/user-attachments/assets/1aeb25ec-4633-4d3b-9655-8b1a7ce13350" />
 </div>
