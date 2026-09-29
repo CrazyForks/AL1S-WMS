@@ -149,7 +149,6 @@ docker run -d \
 | `DATABASE_URL` | `/data/al1s-wms.db`（镜像内） | SQLite 数据库路径。 |
 | `STATIC_ROOT` | `/app/public`（镜像内） | Web 静态资源路径。 |
 | `APIZERO_API_KEY` | 无 | 启用 ApiZero 的认证条码查询；未设置时使用匿名免费额度与公共数据源。 |
-| `BARCODE_USER_AGENT` | 内置值 | 覆盖访问公共条码数据源时的 User-Agent。 |
 
 ## MCP 与 AI Agent
 

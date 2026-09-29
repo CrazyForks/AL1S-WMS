@@ -3,6 +3,7 @@ import { barcodeSchema } from "@al1s-wms/contracts";
 import { InventoryError } from "./stock.js";
 
 type Fetcher = typeof fetch;
+const barcodeUserAgent = "AL1S-WMS/1.0 (https://github.com/RicterZ/AL1S-WMS)";
 type CatalogRow = {
   barcode:string;found:number;name:string|null;brand:string|null;category:string|null;
   baseUnit:string|null;imageUrl:string|null;provider:string|null;fetchedAt:string;
@@ -68,7 +69,7 @@ export async function lookupBarcode(db:DatabaseSync,homeId:string,raw:string,fet
     try {
       const apiKey=process.env.APIZERO_API_KEY?.trim();
       const response=await fetcher(`https://v1.apizero.cn/api/barcode-lookup?barcode=${barcode}`,{
-        headers:{"Accept":"application/json","User-Agent":process.env.BARCODE_USER_AGENT??"AL1S-WMS/1.0 (https://github.com/RicterZ/AL1S-WMS)",...(apiKey?{"Authorization":`Bearer ${apiKey}`}:{})},
+        headers:{"Accept":"application/json","User-Agent":barcodeUserAgent,...(apiKey?{"Authorization":`Bearer ${apiKey}`}:{})},
         signal:AbortSignal.timeout(4000),
       });
       if(response.ok) {
@@ -94,7 +95,7 @@ export async function lookupBarcode(db:DatabaseSync,homeId:string,raw:string,fet
     try {
       const fields="code,product_name,product_name_zh,brands,categories,categories_tags,image_front_url,quantity";
       const response=await fetcher(`https://${provider.domain}/api/v2/product/${barcode}.json?fields=${fields}`,{
-        headers:{"Accept":"application/json","User-Agent":process.env.BARCODE_USER_AGENT??"AL1S-WMS/1.0 (https://github.com/RicterZ/AL1S-WMS)"},
+        headers:{"Accept":"application/json","User-Agent":barcodeUserAgent},
         signal:AbortSignal.timeout(4000),
       });
       if(response.status===404){completed++;continue;}

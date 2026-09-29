@@ -26,7 +26,7 @@ test("barcode lookup returns household inventory before cache or network",async(
 test("online barcode metadata is normalized and cached locally",async()=>{
   const {db,homeId}=fixture(),barcode="3017620422003";
   let calls=0;
-  const fetcher:typeof fetch=async()=>{calls++;return new Response(JSON.stringify({status:1,product:{product_name:"Sparkling Water",brands:"Example",categories:"Beverages",quantity:"500 ml",image_front_url:"https://example.com/product.jpg"}}),{status:200});};
+  const fetcher:typeof fetch=async(_input,init)=>{calls++;assert.equal(new Headers(init?.headers).get("User-Agent"),"AL1S-WMS/1.0 (https://github.com/RicterZ/AL1S-WMS)");return new Response(JSON.stringify({status:1,product:{product_name:"Sparkling Water",brands:"Example",categories:"Beverages",quantity:"500 ml",image_front_url:"https://example.com/product.jpg"}}),{status:200});};
   const online=await lookupBarcode(db,homeId,barcode,fetcher);
   assert.equal(online.source,"online");
   assert.equal(online.product?.name,"Sparkling Water");
@@ -66,6 +66,7 @@ test("Chinese barcodes prefer ApiZero and optionally send its API key",async()=>
     calls++;
     assert.equal(String(input),`https://v1.apizero.cn/api/barcode-lookup?barcode=${barcode}`);
     assert.equal(new Headers(init?.headers).get("Authorization"),"Bearer sk_test_example");
+    assert.equal(new Headers(init?.headers).get("User-Agent"),"AL1S-WMS/1.0 (https://github.com/RicterZ/AL1S-WMS)");
     return new Response(JSON.stringify({code:0,data:{barcode,found:true,name:"示例国内商品",brand:"示例品牌",category:"日用品",spec:"100毫升"}}),{status:200});
   };
   try {

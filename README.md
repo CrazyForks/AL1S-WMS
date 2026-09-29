@@ -151,7 +151,6 @@ Back up `/data/al1s-wms.db` regularly. For an internet-facing deployment, place 
 | `DATABASE_URL` | `/data/al1s-wms.db` in the image | SQLite database path. |
 | `STATIC_ROOT` | `/app/public` in the image | Web static asset directory. |
 | `APIZERO_API_KEY` | unset | Enables authenticated ApiZero barcode lookup; without it, AL1S WMS uses an anonymous quota and public sources. |
-| `BARCODE_USER_AGENT` | built-in value | Overrides the User-Agent used for public barcode data sources. |
 
 ## MCP and AI Agents
 
