@@ -30,10 +30,16 @@ export function createMcpServer(api: ApiCall, boundHomeId: string | null = null)
     const value=context(args);
     return {url:`${homePath(value.homeId)}${suffix}`,body:value.body};
   };
-  const register = (tool: string, description: string, inputSchema: z.ZodRawShape, method: "GET" | "POST" | "PATCH" | "DELETE", route: (args: any) => { url: string; body?: Record<string, unknown> }) => {
+  const register = (tool: string, description: string, inputSchema: z.ZodRawShape, method: "GET" | "POST" | "PATCH" | "DELETE", route: (args: any) => { url: string; body?: Record<string, unknown> }, hints: { readOnlyHint?: boolean; openWorldHint?: boolean } = {}) => {
     server.registerTool(tool, {
       description, inputSchema,
-      annotations: { readOnlyHint: method === "GET", destructiveHint: method === "DELETE", openWorldHint: false },
+      annotations: {
+        readOnlyHint: method === "GET",
+        destructiveHint: method === "DELETE",
+        idempotentHint: method === "GET" || method === "PATCH" || method === "DELETE" || "idempotencyKey" in inputSchema,
+        openWorldHint: false,
+        ...hints,
+      },
     }, async args => {
       const { url, body } = route(args);
       const result = body && Object.keys(body).length ? await api(method, url, body) : await api(method, url);
@@ -43,7 +49,7 @@ export function createMcpServer(api: ApiCall, boundHomeId: string | null = null)
   const text = (value:unknown) => ({content:[{type:"text" as const,text:JSON.stringify(value)}]});
   server.registerTool("get_home_context", {
     description:"Start here. Returns the home or homes this token may manage and whether homeId is required by other tools.",
-    inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},
+    inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
   }, async()=>{
     const result=await api("GET","/api/v1/homes");
     const homes=Array.isArray(result.body)?result.body:[];
@@ -51,7 +57,7 @@ export function createMcpServer(api: ApiCall, boundHomeId: string | null = null)
   });
   server.registerTool("get_agent_guide", {
     description:"Read the canonical workflows for overview, batch receipt, shopping receipt, and physical stock reconciliation.",
-    inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},
+    inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
   }, async()=>text({
     rules:[
       "Call get_home_context first. Account-scoped tokens must pass homeId; home-scoped tokens never do.",
@@ -83,7 +89,7 @@ export function createMcpServer(api: ApiCall, boundHomeId: string | null = null)
   register("get_inventory_cost_analysis", "Analyze inventory cost over an inclusive YYYY-MM range (up to 36 months). Returns inbound purchase cost, normal consumption, expired and damaged waste, adjustments, waste rate, item/category/location waste rankings, receipt-month cohorts and current 30-day expiry risk. Cohorts and waste-ranking batch details use cumulative outcomes through asOf (default today); usedShare is consumed cost divided by original batch cost. Period waste uses event dates. Location rankings show whole affected-batch costs, which must not be summed across locations. Issue values use each actual batch's historical unit cost; unknown costs are reported separately.", scoped({asOf:z.string().date().optional(),start:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),end:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)}), "GET", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/inventory-cost-analysis?${query({...value.body,granularity:"month"})}`};});
   register("set_financial_budget", "Set or clear one month's total budget and category allocations. Confirm the exact amounts with the user immediately before calling: this replaces that month's allocations. Parent budgets include all descendants. Child budgets reserve part of their nearest ancestor budget; their combined amounts must fit within it. Only outermost category budgets count toward the monthly total. When adding a new child allocation, increase each ancestor total by that amount to preserve existing direct allocations; when setting a parent's total explicitly, retain its child amounts. A null total with category budgets derives the monthly total from those outermost budgets; null with no categories clears the month; later months inherit the latest budget until explicitly saved.", scoped({month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),total:price.nullable(),categoryBudgets:z.array(z.object({category:name.max(100),amount:price})).max(100)}), "PATCH", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/financial-budget`,body:value.body};});
   register("get_item_price_history", "Return batch-level total and unit purchase prices for one item, ordered newest first.", scoped({itemId}), "GET", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/items/${value.body.itemId}/price-history`};});
-  register("lookup_barcode", "Resolve a GTIN/EAN/UPC. Checks household inventory and local cache first, then ApiZero for Chinese barcodes and the Open Facts databases. Use returned fields to confirm create_item input.", scoped({barcode:barcodeSchema}), "GET", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/barcodes/${value.body.barcode}`};});
+  register("lookup_barcode", "Resolve a GTIN/EAN/UPC. Checks household inventory and local cache first, then ApiZero for Chinese barcodes and the Open Facts databases. Use returned fields to confirm create_item input.", scoped({barcode:barcodeSchema}), "GET", args=>{const value=context(args);return {url:`${homePath(value.homeId)}/barcodes/${value.body.barcode}`};}, {readOnlyHint:false,openWorldHint:true});
   register("search_items", "Search inventory for stocktake or maintenance. Returns a page object; location and category filters include descendants by default.", scoped({
     query: name.optional(), category: name.optional(), locationId: locationId.optional(),
     includeDescendantLocations: z.boolean().optional(), includeDescendantCategories: z.boolean().optional(),

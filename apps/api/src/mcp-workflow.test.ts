@@ -73,6 +73,16 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   const [clientTransport,serverTransport]=InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);await client.connect(clientTransport);
   const tools=await client.listTools();
+  for (const tool of tools.tools) {
+    for (const hint of ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"] as const) {
+      assert.equal(typeof tool.annotations?.[hint], "boolean", `${tool.name} must declare boolean ${hint}`);
+    }
+  }
+  assert.equal(tools.tools.find(tool=>tool.name==="get_home_context")!.annotations?.idempotentHint,true);
+  assert.equal(tools.tools.find(tool=>tool.name==="record_receipt")!.annotations?.idempotentHint,true);
+  assert.equal(tools.tools.find(tool=>tool.name==="create_item")!.annotations?.idempotentHint,false);
+  assert.equal(tools.tools.find(tool=>tool.name==="lookup_barcode")!.annotations?.readOnlyHint,false);
+  assert.equal(tools.tools.find(tool=>tool.name==="lookup_barcode")!.annotations?.openWorldHint,true);
   const receipt=tools.tools.find(tool=>tool.name==="record_receipt")!;
   assert.equal("homeId" in (receipt.inputSchema.properties??{}),false);
   assert.equal("reason" in (receipt.inputSchema.properties??{}),false);
@@ -141,6 +151,12 @@ test("home-scoped tokens isolate REST and simplify MCP tool inputs", async () =>
   const [accountClientTransport,accountServerTransport]=InMemoryTransport.createLinkedPair();
   await accountServer.connect(accountServerTransport);await accountClient.connect(accountClientTransport);
   const accountTools=await accountClient.listTools();
+  for (const tool of accountTools.tools) {
+    for (const hint of ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"] as const) {
+      assert.equal(typeof tool.annotations?.[hint], "boolean", `${tool.name} must declare boolean ${hint}`);
+    }
+  }
+  assert.ok(accountTools.tools.some(tool=>tool.name==="create_home"));
   assert.equal("homeId" in (accountTools.tools.find(tool=>tool.name==="record_receipt")!.inputSchema.properties??{}),true);
   await accountClient.close();await accountServer.close();await app.close();db.close();
 });
