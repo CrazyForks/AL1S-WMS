@@ -42,3 +42,19 @@ test("item descendants, home isolation and low-stock boundary agree with overvie
     assert.throws(()=>listItems(db,home,{unknown:true}));
   } finally {db.close();}
 });
+
+test("paused replenishment remains visible but leaves actionable low-stock results",()=>{
+  const db=openDatabase(":memory:");
+  try {
+    const home=randomUUID(),item=randomUUID();
+    db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(home,"Home");
+    db.prepare("INSERT INTO items(id,home_id,sku,name,category,base_unit,reorder_point) VALUES (?,?,?,?,?,?,?)").run(item,home,item,"Tea","Food","box",2);
+    assert.equal((listItems(db,home,{lowStockOnly:"true"}) as {id:string}[]).length,1);
+    db.prepare("UPDATE items SET replenishment_paused=1 WHERE id=?").run(item);
+    assert.equal((listItems(db,home,{}) as {replenishmentPaused:boolean}[])[0].replenishmentPaused,true);
+    assert.deepEqual(listItems(db,home,{lowStockOnly:"true"}),[]);
+    assert.equal(getHomeOverview(db,home,{}).needsReplenishment.total,0);
+    db.prepare("UPDATE items SET replenishment_paused=0 WHERE id=?").run(item);
+    assert.equal(getHomeOverview(db,home,{}).needsReplenishment.total,1);
+  } finally {db.close();}
+});

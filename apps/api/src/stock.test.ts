@@ -278,3 +278,30 @@ test("physical reconciliation records shortages by FEFO and gains as a new batch
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM stock_transactions WHERE item_id=?").get(itemId) as {n:number}).n,3);
   db.close();
 });
+
+test("pausing replenishment preserves stock and manual purchase plans",async()=>{
+  const {db,homeId,itemId,locationId}=fixture();
+  const userId=randomUUID(),sessionId=randomUUID(),otherHomeId=randomUUID();
+  db.prepare("INSERT INTO homes(id,name) VALUES (?,?)").run(otherHomeId,"Other");
+  db.prepare("UPDATE items SET reorder_point=2 WHERE id=?").run(itemId);
+  db.prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(userId,"pause-user","unused",new Date().toISOString());
+  db.prepare("INSERT INTO sessions(id,user_id,expires_at) VALUES (?,?,?)").run(sessionId,userId,"2099-01-01T00:00:00.000Z");
+  const app=await buildApp(db),headers={cookie:`session=${sessionId}`},base=`/api/v1/homes/${homeId}`;
+  try {
+    assert.equal((await app.inject({method:"GET",url:`${base}/shopping-list`,headers})).json().some((row:{itemId:string})=>row.itemId===itemId),true);
+    const manual=await app.inject({method:"POST",url:`${base}/shopping-list`,headers,payload:{itemId,quantity:1}});
+    assert.equal(manual.statusCode,201);
+    const paused=await app.inject({method:"PATCH",url:`${base}/items/${itemId}`,headers,payload:{replenishmentPaused:true}});
+    assert.equal(paused.statusCode,200);
+    assert.equal(paused.json().replenishmentPaused,true);
+    assert.equal((await app.inject({method:"GET",url:`${base}/shopping-list`,headers})).json().some((row:{id:string})=>row.id===manual.json().id),true);
+    assert.equal((await app.inject({method:"GET",url:`${base}/items`,headers})).json()[0].replenishmentPaused,true);
+    assert.equal((await app.inject({method:"GET",url:`${base}/overview`,headers})).json().needsReplenishment.total,0);
+    assert.equal((await app.inject({method:"PATCH",url:`/api/v1/homes/${otherHomeId}/items/${itemId}`,headers,payload:{replenishmentPaused:false}})).statusCode,404);
+    recordStock(db,homeId,"receipt",{itemId,locationId,quantity:1,idempotencyKey:"paused-receipt"});
+    assert.equal((await app.inject({method:"GET",url:`${base}/items/${itemId}`,headers})).json().replenishmentPaused,true);
+    const resumed=await app.inject({method:"PATCH",url:`${base}/items/${itemId}`,headers,payload:{replenishmentPaused:false}});
+    assert.equal(resumed.json().replenishmentPaused,false);
+    assert.equal((await app.inject({method:"GET",url:`${base}/overview`,headers})).json().needsReplenishment.total,1);
+  } finally {await app.close();db.close();}
+});

@@ -32,7 +32,7 @@ function descendants(db:DatabaseSync,homeId:string,table:"locations"|"item_categ
   }
   return result;
 }
-export function listItems(db:DatabaseSync,homeId:string,raw:unknown) {
+export function listItems(db:DatabaseSync,homeId:string,raw:unknown): any {
   const filters=itemFilters.parse(raw),where=["i.home_id=?","i.active=1"],params:SQLInputValue[]=[homeId];
   const balance=itemBalanceSql;
   if(filters.query){where.push("i.name LIKE ?");params.push(`%${filters.query}%`);}
@@ -46,14 +46,18 @@ export function listItems(db:DatabaseSync,homeId:string,raw:unknown) {
     const names=ids.length?(db.prepare(`SELECT name FROM item_categories WHERE home_id=? AND id IN (${ids.map(()=>"?").join(",")})`).all(homeId,...ids) as {name:string}[]).map(row=>row.name):[filters.category];
     where.push(`i.category IN (${names.map(()=>"?").join(",")})`);params.push(...names);
   }
-  if(filters.lowStockOnly)where.push(`ROUND(i.reorder_point-${balance},2)>0`);
+  if(filters.lowStockOnly)where.push(`i.replenishment_paused=0 AND ROUND(i.reorder_point-${balance},2)>0`);
   if(filters.expiryBefore){where.push("i.expiry_date<=?");params.push(filters.expiryBefore);}
   const latestUnitPrice=`(SELECT ROUND((b.purchase_total_minor/100.0)/NULLIF((SELECT SUM(origin.quantity) FROM stock_transactions origin WHERE origin.batch_id=b.id AND origin.type='receipt' AND origin.idempotency_key NOT LIKE 'event:%'),0),2) FROM cost_batches b WHERE b.home_id=i.home_id AND b.item_id=i.id AND b.purchase_total_minor IS NOT NULL ORDER BY b.purchased_date DESC,b.received_at DESC LIMIT 1)`;
   const latestReceivedAt="(SELECT MAX(received_at) FROM cost_batches b WHERE b.home_id=i.home_id AND b.item_id=i.id)";
-  const sql=`SELECT i.icon,i.id,i.home_id AS homeId,i.sku,i.barcode,i.name,i.category,i.base_unit AS baseUnit,i.consumption_type AS consumptionType,i.opened_shelf_life_days AS openedShelfLifeDays,i.reorder_point AS reorderPoint,i.reorder_quantity AS reorderQuantity,i.manufactured_date AS manufacturedDate,i.expiry_date AS expiryDate,i.default_location_id AS locationId,l.name AS locationName,i.active,${balance} AS quantity,${latestUnitPrice} AS lastUnitPrice,${latestReceivedAt} AS latestReceivedAt,(SELECT default_currency FROM homes WHERE id=i.home_id) AS currency FROM items i LEFT JOIN locations l ON l.id=i.default_location_id WHERE ${where.join(" AND ")}`;
-  return filters.paged
-    ? pageQuery(db,sql,params,filters.limit,filters.offset,"name,id")
-    : db.prepare(`SELECT * FROM (${sql}) ORDER BY name,id`).all(...params);
+  const sql=`SELECT i.icon,i.id,i.home_id AS homeId,i.sku,i.barcode,i.name,i.category,i.base_unit AS baseUnit,i.consumption_type AS consumptionType,i.opened_shelf_life_days AS openedShelfLifeDays,i.replenishment_paused AS replenishmentPaused,i.reorder_point AS reorderPoint,i.reorder_quantity AS reorderQuantity,i.manufactured_date AS manufacturedDate,i.expiry_date AS expiryDate,i.default_location_id AS locationId,l.name AS locationName,i.active,${balance} AS quantity,${latestUnitPrice} AS lastUnitPrice,${latestReceivedAt} AS latestReceivedAt,(SELECT default_currency FROM homes WHERE id=i.home_id) AS currency FROM items i LEFT JOIN locations l ON l.id=i.default_location_id WHERE ${where.join(" AND ")}`;
+  const normalize=(row:Record<string,unknown>)=>({...row,replenishmentPaused:Boolean(row.replenishmentPaused)});
+  if(filters.paged) {
+    const result=pageQuery(db,sql,params,filters.limit,filters.offset,"name,id");
+    return {...result,items:(result.items as Record<string,unknown>[]).map(normalize)};
+  }
+  return (db.prepare(`SELECT * FROM (${sql}) ORDER BY name,id`).all(...params) as Record<string,unknown>[]).map(normalize);
+
 }
 export function listBatches(db:DatabaseSync,homeId:string,raw:unknown) {
   const filters=batchFilters.parse(raw),where=["homeId=?"],params:SQLInputValue[]=[homeId];
@@ -73,7 +77,7 @@ export function getHomeOverview(db:DatabaseSync,homeId:string,raw:unknown,locale
   const today=new Date().toISOString().slice(0,10);
   const threshold=new Date(Date.now()+filters.expiryDays*86400000).toISOString().slice(0,10);
   const balance=itemBalanceSql;
-  const lowSql=`SELECT i.id AS itemId,i.name,i.base_unit AS unit,i.reorder_point AS reorderPoint,${balance} AS quantity,MAX(ROUND(i.reorder_point-${balance},2),0) AS suggestedQuantity,i.default_location_id AS locationId,l.name AS locationName FROM items i LEFT JOIN locations l ON l.id=i.default_location_id WHERE i.home_id=? AND i.active=1 AND ROUND(i.reorder_point-${balance},2)>0`;
+  const lowSql=`SELECT i.id AS itemId,i.name,i.base_unit AS unit,i.replenishment_paused AS replenishmentPaused,i.reorder_point AS reorderPoint,${balance} AS quantity,MAX(ROUND(i.reorder_point-${balance},2),0) AS suggestedQuantity,i.default_location_id AS locationId,l.name AS locationName FROM items i LEFT JOIN locations l ON l.id=i.default_location_id WHERE i.home_id=? AND i.active=1 AND i.replenishment_paused=0 AND ROUND(i.reorder_point-${balance},2)>0`;
   const needsCount=(db.prepare(`SELECT COUNT(*) AS n FROM (${lowSql})`).get(homeId) as {n:number}).n;
   const needsReplenishment=db.prepare(`SELECT * FROM (${lowSql}) ORDER BY suggestedQuantity DESC,name LIMIT ?`).all(homeId,filters.limit);
   const batchBase=`SELECT * FROM (${batchBalanceQuery}) WHERE homeId=? AND quantity>0 AND expiryDate IS NOT NULL`;

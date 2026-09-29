@@ -19,6 +19,7 @@ export type Item = {
   baseUnit: string;
   consumptionType: "non_consumable" | "consumable" | "long_term_consumable";
   openedShelfLifeDays?: number | null;
+  replenishmentPaused?: boolean;
   reorderPoint: number;
   reorderQuantity: number;
   active: boolean;

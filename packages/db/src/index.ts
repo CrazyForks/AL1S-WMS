@@ -35,6 +35,7 @@ export function openDatabase(
       consumption_type TEXT NOT NULL DEFAULT 'consumable',
       opened_shelf_life_days INTEGER,
       reorder_point REAL NOT NULL DEFAULT 0,
+      replenishment_paused INTEGER NOT NULL DEFAULT 0,
       reorder_quantity REAL NOT NULL DEFAULT 1,
       default_location_id TEXT,
       manufactured_date TEXT,
@@ -215,6 +216,7 @@ export function openDatabase(
   if (!itemColumns.some(column => column.name === "icon")) db.exec("ALTER TABLE items ADD COLUMN icon TEXT");
   if (!itemColumns.some(column => column.name === "barcode")) db.exec("ALTER TABLE items ADD COLUMN barcode TEXT");
   if (!itemColumns.some(column => column.name === "consumption_type")) db.exec("ALTER TABLE items ADD COLUMN consumption_type TEXT NOT NULL DEFAULT 'consumable'");
+  if (!itemColumns.some(column => column.name === "replenishment_paused")) db.exec("ALTER TABLE items ADD COLUMN replenishment_paused INTEGER NOT NULL DEFAULT 0");
   if (!itemColumns.some(column => column.name === "opened_shelf_life_days")) db.exec("ALTER TABLE items ADD COLUMN opened_shelf_life_days INTEGER");
   const eventDefinition = db.prepare("SELECT sql FROM sqlite_master WHERE name='item_events'").get() as { sql: string };
   if (!eventDefinition.sql.includes("'update'")) {

@@ -417,12 +417,24 @@ export function App() {
     }));
     return [{...item,treeQuantity:0}];
   }),[items,stock,locations]);
+  async function toggleReplenishment(item: Item) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const response=await apiJson(`/api/v1/homes/${getHomeId()}/items/${item.id}`,"PATCH",{replenishmentPaused:!item.replenishmentPaused});
+      if (!response.ok) throw new Error(t("补货设置保存失败"));
+      await load();
+      setBatchRevision(value=>value+1);
+    } catch (error) { setNotice(error instanceof Error ? error.message : t("补货设置保存失败")); }
+    finally { setBusy(false); }
+  }
   const replenishmentFor = (item: Item) =>
-    Math.max(roundQuantity(item.reorderPoint - balanceFor(item.id)), 0);
+    item.replenishmentPaused ? 0 : Math.max(roundQuantity(item.reorderPoint - balanceFor(item.id)), 0);
   const stockStatusFor = (item: Item) => {
     const quantity = balanceFor(item.id);
     const difference = roundQuantity(quantity - item.reorderPoint);
-    if (difference < 0)
+    if (quantity === 0 && item.replenishmentPaused) return { level: "empty", label: t("耗尽"), priority: 4 };
+    if (!item.replenishmentPaused && difference < 0)
       return {
         level: "low",
         label: t("不足"),
@@ -430,7 +442,7 @@ export function App() {
       };
     if (quantity === 0)
       return { level: "empty", label: t("耗尽"), priority: 2 };
-    if (difference === 0)
+    if (!item.replenishmentPaused && difference === 0)
       return { level: "warning", label: t("临界"), priority: 1 };
     return { level: "normal", label: t("正常"), priority: 3 };
   };
@@ -446,6 +458,7 @@ export function App() {
     return { level: "valid", label: t("有效") };
   };
   const displayStatusFor = (item: Item) => {
+    if (item.replenishmentPaused && balanceFor(item.id) === 0) return stockStatusFor(item);
     const expiry = expiryStatusFor(item);
     if (expiry.level === "expired") return { ...expiry, priority: -2 };
     if (expiry.level === "expiring") return { ...expiry, priority: -1 };
@@ -483,6 +496,7 @@ export function App() {
             return false;
           if (categoryScopeNames && !categoryScopeNames.has(item.category))
             return false;
+          if (stockStatusFilter === "paused" && !item.replenishmentPaused) return false;
           if (
             stockStatusFilter === "replenishment" &&
             replenishmentFor(item) <= 0
@@ -490,7 +504,7 @@ export function App() {
             return false;
           if (
             stockStatusFilter &&
-            stockStatusFilter !== "replenishment" &&
+            stockStatusFilter !== "replenishment" && stockStatusFilter !== "paused" &&
             stockStatusFor(item).level !== stockStatusFilter
           )
             return false;
@@ -498,9 +512,9 @@ export function App() {
             return false;
           return true;
         })
-        .sort((left,right)=>inventorySort==="recent"
+        .sort((left,right)=>Number(Boolean(left.replenishmentPaused) && balanceFor(left.id)===0)-Number(Boolean(right.replenishmentPaused) && balanceFor(right.id)===0) || (inventorySort==="recent"
           ? (right.latestReceivedAt??"").localeCompare(left.latestReceivedAt??"") || displayStatusFor(left).priority-displayStatusFor(right).priority || left.name.localeCompare(right.name,localeForDates())
-          : displayStatusFor(left).priority-displayStatusFor(right).priority || replenishmentFor(right)-replenishmentFor(left) || left.name.localeCompare(right.name,localeForDates())),
+          : displayStatusFor(left).priority-displayStatusFor(right).priority || replenishmentFor(right)-replenishmentFor(left) || left.name.localeCompare(right.name,localeForDates()))),
     [
       locationScopedItems,
       query,
@@ -1447,7 +1461,7 @@ export function App() {
         </div>
       </header>
       <main>
-        {itemDetailId&&<ItemDetail homeId={getHomeId()} item={items.find(item=>item.id===itemDetailId)??{id:itemDetailId,name:t("物资"),sku:"",category:t("未分类"),baseUnit:t("个"),reorderPoint:0,reorderQuantity:0}} currency={financialSummary?.currency??"CNY"} batchRevision={batchRevision} onBack={closeItemDetail} onEdit={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)setDetailItem(item);}} onIssue={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)openStockAction("issue",item);}} onEditBatch={batchId=>{const item=items.find(current=>current.id===itemDetailId);if(item){setInitialBatchId(batchId);setBatchItem(item);}}}/>}
+        {itemDetailId&&<ItemDetail homeId={getHomeId()} item={items.find(item=>item.id===itemDetailId)??{id:itemDetailId,name:t("物资"),sku:"",category:t("未分类"),baseUnit:t("个"),reorderPoint:0,reorderQuantity:0}} currency={financialSummary?.currency??"CNY"} onToggleReplenishment={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)void toggleReplenishment(item);}} busy={busy} batchRevision={batchRevision} onBack={closeItemDetail} onEdit={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)setDetailItem(item);}} onIssue={()=>{const item=items.find(current=>current.id===itemDetailId);if(item)openStockAction("issue",item);}} onEditBatch={batchId=>{const item=items.find(current=>current.id===itemDetailId);if(item){setInitialBatchId(batchId);setBatchItem(item);}}}/>}
         <div className="page-content" hidden={Boolean(itemDetailId)}>
         <section className="welcome">
           <div>
@@ -1612,7 +1626,7 @@ export function App() {
           <DashboardPage navigate={navigate} dashboardItems={dashboardItems} displayStatusFor={displayStatusFor} openItemDetail={openItemDetail} balanceFor={balanceFor} pagedTransactions={pagedTransactions} transactionTotal={transactionTotal} transactionPageSize={transactionPageSize} setTransactionPageSize={setTransactionPageSize} setTransactionPage={setTransactionPage} transactionPage={transactionPage} transactionPageCount={transactionPageCount} shoppingItems={shoppingItems} openedConsumables={openedConsumables} categorySummary={categorySummary} locationSummary={locationSummary} />
         )}
         {!countView && !logView && activePage === "count" && (
-          <InventoryPage openTransfer={item=>{setWorkflowItem(item);setWorkflowDialog("transfer");}} stockStatusFilter={stockStatusFilter} expiryFilter={expiryFilter} setStockStatusFilter={setStockStatusFilter} setExpiryFilter={setExpiryFilter} items={items} belowStockCount={belowStockCount} criticalStockCount={criticalStockCount} emptyStockCount={emptyStockCount} expiringItems={expiringItems} openedConsumables={openedConsumables} openItemDetail={openItemDetail} busy={busy} setExhaustTarget={setExhaustTarget} inventorySort={inventorySort} filtered={filtered} query={query} setQuery={setQuery} categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} categoryOptions={categoryOptions} locationFilter={locationFilter} setLocationFilter={setLocationFilter} locationOptions={locationOptions} setInventorySort={setInventorySort} pagedItems={pagedItems} displayStatusFor={displayStatusFor} replenishmentFor={replenishmentFor} balanceFor={balanceFor} financialSummary={financialSummary} openStockAction={openStockAction} setBatchItem={setBatchItem} setDetailItem={setDetailItem} confirmDelete={confirmDelete} setMobileAction={setMobileAction} pageSize={pageSize} setPageSize={setPageSize} setPage={setPage} pageStart={pageStart} pageEnd={pageEnd} page={page} pageCount={pageCount} />
+          <InventoryPage toggleReplenishment={toggleReplenishment} openTransfer={item=>{setWorkflowItem(item);setWorkflowDialog("transfer");}} stockStatusFilter={stockStatusFilter} expiryFilter={expiryFilter} setStockStatusFilter={setStockStatusFilter} setExpiryFilter={setExpiryFilter} items={items} belowStockCount={belowStockCount} criticalStockCount={criticalStockCount} emptyStockCount={emptyStockCount} expiringItems={expiringItems} openedConsumables={openedConsumables} openItemDetail={openItemDetail} busy={busy} setExhaustTarget={setExhaustTarget} inventorySort={inventorySort} filtered={filtered} query={query} setQuery={setQuery} categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} categoryOptions={categoryOptions} locationFilter={locationFilter} setLocationFilter={setLocationFilter} locationOptions={locationOptions} setInventorySort={setInventorySort} pagedItems={pagedItems} displayStatusFor={displayStatusFor} replenishmentFor={replenishmentFor} balanceFor={balanceFor} financialSummary={financialSummary} openStockAction={openStockAction} setBatchItem={setBatchItem} setDetailItem={setDetailItem} confirmDelete={confirmDelete} setMobileAction={setMobileAction} pageSize={pageSize} setPageSize={setPageSize} setPage={setPage} pageStart={pageStart} pageEnd={pageEnd} page={page} pageCount={pageCount} />
         )}
         {activePage === "count" && !logView && (
           <section className="panel recent-log">
@@ -1690,7 +1704,7 @@ export function App() {
         )}
         </div>
       </main>
-      {mobileAction&&<div className="modal-backdrop mobile-action-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setMobileAction(null)}><section className="mobile-action-sheet" role="dialog" aria-modal="true"><div className="modal-head"><div><h2>{mobileAction.item.name}</h2><p className="muted">{t("选择操作")}</p></div><button type="button" className="close" aria-label={t("关闭")} onClick={()=>setMobileAction(null)}><X size={18}/></button></div><div className="mobile-action-list">{mobileAction.kind==="shopping"?<><button type="button" onClick={()=>{setEditShoppingItem(mobileAction.item);setEditShoppingItemId(mobileAction.item.itemId||"");setMobileAction(null);}}>{mobileAction.item.source==="automatic"?t("安排"):t("编辑")}</button><button type="button" onClick={()=>{openShoppingReceipt(mobileAction.item);setMobileAction(null);}}>{t("入库")}</button>{mobileAction.item.source==="manual"&&<button type="button" className="danger-action" onClick={()=>{const item=mobileAction.item;setMobileAction(null);void apiFetch(`/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,{method:"DELETE"}).then(load);}}>{t("删除")}</button>}</>:<><button type="button" onClick={()=>{openStockAction("receipt",mobileAction.item);setMobileAction(null);}}>{t("入库")}</button><button type="button" onClick={()=>{openStockAction("issue",mobileAction.item);setMobileAction(null);}}>{t("领用")}</button><button type="button" onClick={()=>{setBatchItem(mobileAction.item);setMobileAction(null);}}>{t("批次")}</button><button type="button" onClick={()=>{setWorkflowItem(mobileAction.item);setWorkflowDialog("transfer");setMobileAction(null);}}>{t("移动")}</button><button type="button" onClick={()=>{setDetailItem(items.find(item=>item.id===mobileAction.item.id)??mobileAction.item);setMobileAction(null);}}>{t("编辑")}</button><button type="button" className="danger-action" onClick={()=>{confirmDelete("item",mobileAction.item);setMobileAction(null);}}>{t("删除")}</button></>}</div></section></div>}
+      {mobileAction&&<div className="modal-backdrop mobile-action-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setMobileAction(null)}><section className="mobile-action-sheet" role="dialog" aria-modal="true"><div className="modal-head"><div><h2>{mobileAction.item.name}</h2><p className="muted">{t("选择操作")}</p></div><button type="button" className="close" aria-label={t("关闭")} onClick={()=>setMobileAction(null)}><X size={18}/></button></div><div className="mobile-action-list">{mobileAction.kind==="shopping"?<><button type="button" onClick={()=>{setEditShoppingItem(mobileAction.item);setEditShoppingItemId(mobileAction.item.itemId||"");setMobileAction(null);}}>{mobileAction.item.source==="automatic"?t("安排"):t("编辑")}</button><button type="button" onClick={()=>{openShoppingReceipt(mobileAction.item);setMobileAction(null);}}>{t("入库")}</button>{mobileAction.item.source==="manual"&&<button type="button" className="danger-action" onClick={()=>{const item=mobileAction.item;setMobileAction(null);void apiFetch(`/api/v1/homes/${getHomeId()}/shopping-list/${item.id}`,{method:"DELETE"}).then(load);}}>{t("删除")}</button>}</>:<><button type="button" onClick={()=>{openStockAction("receipt",mobileAction.item);setMobileAction(null);}}>{t("入库")}</button><button type="button" onClick={()=>{openStockAction("issue",mobileAction.item);setMobileAction(null);}}>{t("领用")}</button><button type="button" onClick={()=>{setBatchItem(mobileAction.item);setMobileAction(null);}}>{t("批次")}</button><button type="button" onClick={()=>{setWorkflowItem(mobileAction.item);setWorkflowDialog("transfer");setMobileAction(null);}}>{t("移动")}</button><button type="button" onClick={()=>{setDetailItem(items.find(item=>item.id===mobileAction.item.id)??mobileAction.item);setMobileAction(null);}}>{t("编辑")}</button><button type="button" disabled={busy} onClick={()=>{void toggleReplenishment(mobileAction.item);setMobileAction(null);}}>{t(mobileAction.item.replenishmentPaused?"复购":"停购")}</button><button type="button" className="danger-action" onClick={()=>{confirmDelete("item",mobileAction.item);setMobileAction(null);}}>{t("删除")}</button></>}</div></section></div>}
       {deleteTarget && (
         <div
           className="modal-backdrop"

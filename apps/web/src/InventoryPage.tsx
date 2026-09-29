@@ -19,6 +19,7 @@ import type {
 } from "./webTypes.js";
 const t = i18n.t.bind(i18n);
 type InventoryPageProps = {
+  toggleReplenishment?: (item: Item) => void;
   openTransfer: (item: Item) => void;
   stockStatusFilter: string;
   expiryFilter: string;
@@ -78,6 +79,7 @@ type InventoryPageProps = {
   pageCount: number;
 };
 export function InventoryPage({
+  toggleReplenishment,
   openTransfer,
   stockStatusFilter,
   expiryFilter,
@@ -213,6 +215,7 @@ export function InventoryPage({
           </label>
         </div>
         <div className="count-filters">
+          <button type="button" className={stockStatusFilter==="paused"?"active":""} onClick={()=>{setStockStatusFilter(stockStatusFilter==="paused"?"":"paused");setExpiryFilter("");}}>{t("已停购")}</button>
           <SlidersHorizontal size={15} strokeWidth={1.8} />
           <label>
             {t("分类")}
@@ -329,7 +332,7 @@ export function InventoryPage({
                   const stockStatus = displayStatusFor(item);
                   const replenishment = replenishmentFor(item);
                   return (
-                    <tr key={`${item.id}:${item.locationId ?? "none"}`}>
+                    <tr className={item.replenishmentPaused && balanceFor(item.id)===0 ? "inventory-paused" : undefined} key={`${item.id}:${item.locationId ?? "none"}`}>
                       <td>
                         <div className="item-name">
                           <span className="item-icon">
@@ -365,7 +368,7 @@ export function InventoryPage({
                           replenishment > 0 ? "replenishment" : "muted-cell"
                         }
                       >
-                        {replenishment > 0
+                        {item.replenishmentPaused ? t("已停购") : replenishment > 0
                           ? `${replenishment} ${displayUnit(item.baseUnit)}`
                           : "—"}
                       </td>
@@ -373,6 +376,7 @@ export function InventoryPage({
                         <span className={`stock-status ${stockStatus.level}`}>
                           {stockStatus.label}
                         </span>
+                        {item.replenishmentPaused && <span className="stock-status paused">{t("已停购")}</span>}
                       </td>
                       <td><LocationLink page="count" locationId={item.locationId}>{item.locationName || t("未指定")}</LocationLink></td>
                       <td>
@@ -423,6 +427,7 @@ export function InventoryPage({
                             {t("领用")}
                           </button>
                           <InventoryMoreActions>
+                          <button type="button" disabled={busy} onClick={()=>toggleReplenishment?.(item)}>{t(item.replenishmentPaused?"复购":"停购")}</button>
                           <button onClick={() => setBatchItem(item)}>
                             {t("批次")}
                           </button>

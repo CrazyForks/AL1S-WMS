@@ -352,10 +352,10 @@ app.get<{ Params: { homeId: string; itemId: string } }>(
   async (request, reply) => {
     const item = db
       .prepare(
-        "SELECT items.icon, items.id, items.home_id AS homeId, items.sku, items.barcode, items.name, items.category, items.base_unit AS baseUnit, items.consumption_type AS consumptionType, items.opened_shelf_life_days AS openedShelfLifeDays, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1",
+        "SELECT items.icon, items.id, items.home_id AS homeId, items.sku, items.barcode, items.name, items.category, items.base_unit AS baseUnit, items.consumption_type AS consumptionType, items.opened_shelf_life_days AS openedShelfLifeDays, items.replenishment_paused AS replenishmentPaused, items.reorder_point AS reorderPoint, items.reorder_quantity AS reorderQuantity, items.manufactured_date AS manufacturedDate, items.expiry_date AS expiryDate, items.default_location_id AS locationId, locations.name AS locationName, items.active FROM items LEFT JOIN locations ON locations.id = items.default_location_id WHERE items.home_id = ? AND items.id = ? AND items.active = 1",
       )
       .get(request.params.homeId, request.params.itemId);
-    return item ?? sendCodeError(reply,localeOf(request),404,"ITEM_NOT_FOUND","error.itemNotFound");
+    return item ? {...item,replenishmentPaused:Boolean(item.replenishmentPaused)} : sendCodeError(reply,localeOf(request),404,"ITEM_NOT_FOUND","error.itemNotFound");
   },
 );
 
@@ -367,7 +367,7 @@ app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:h
   if(changes.barcode)changes.barcode=normalizeBarcode(changes.barcode);
   requireStockTarget(db,homeId,itemId,changes.locationId??undefined);
   const current=db.prepare("SELECT * FROM items WHERE id=? AND home_id=?").get(itemId,homeId) as Record<string,any>;
-  const columns:Record<string,string>={baseUnit:"base_unit",consumptionType:"consumption_type",openedShelfLifeDays:"opened_shelf_life_days",reorderPoint:"reorder_point",locationId:"default_location_id"};
+  const columns:Record<string,string>={baseUnit:"base_unit",consumptionType:"consumption_type",openedShelfLifeDays:"opened_shelf_life_days",reorderPoint:"reorder_point",replenishmentPaused:"replenishment_paused",locationId:"default_location_id"};
   if(changes.barcode&&db.prepare("SELECT 1 FROM items WHERE home_id=? AND barcode=? AND id!=? AND active=1").get(homeId,changes.barcode,itemId))
     throw new InventoryError(409,"BARCODE_EXISTS","error.barcodeExists");
   if(changes.baseUnit && changes.baseUnit!==current.base_unit && db.prepare("SELECT 1 FROM stock_transactions WHERE home_id=? AND item_id=? LIMIT 1").get(homeId,itemId))
@@ -375,8 +375,8 @@ app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:h
   if(changes.locationId===null && db.prepare("SELECT 1 FROM stock_transactions WHERE home_id=? AND item_id=? GROUP BY item_id HAVING SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END)>0").get(homeId,itemId))
     throw new InventoryError(409,"LOCATION_HAS_STOCK","error.locationHasStock");
   return atomic(db,()=>{
-    const fields=Object.entries(changes).filter(([key,value])=>current[columns[key]??key]!==value);
-    if(fields.length) db.prepare(`UPDATE items SET ${fields.map(([key])=>`${columns[key]??key}=?`).join(",")} WHERE id=? AND home_id=?`).run(...fields.map(([,value])=>value??null),itemId,homeId);
+    const fields=Object.entries(changes).filter(([key,value])=>current[columns[key]??key] !== (typeof value === "boolean" ? Number(value) : value));
+    if(fields.length) db.prepare(`UPDATE items SET ${fields.map(([key])=>`${columns[key]??key}=?`).join(",")} WHERE id=? AND home_id=?`).run(...fields.map(([,value])=>typeof value === "boolean" ? Number(value) : value??null),itemId,homeId);
     if(changes.locationId && changes.locationId!==current.default_location_id) {
       const balances=db.prepare("SELECT location_id AS locationId,SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END) AS quantity FROM stock_transactions WHERE home_id=? AND item_id=? GROUP BY location_id HAVING SUM(CASE WHEN type='receipt' THEN quantity ELSE -quantity END)>0").all(homeId,itemId) as {locationId:string;quantity:number}[];
       let moved=false;
@@ -391,14 +391,16 @@ app.patch<{Params:{homeId:string;itemId:string};Body:unknown}>("/api/v1/homes/:h
     }
     const other=fields.filter(([key])=>!["category","locationId"].includes(key));
     if(other.length) {
-      const labels:Record<string,string>={name:"名称",icon:"图标",barcode:"条码",baseUnit:"单位",consumptionType:"消耗类型",openedShelfLifeDays:"开封后保质期（天）",reorderPoint:"最低库存"};
+      const labels:Record<string,string>={name:"名称",icon:"图标",barcode:"条码",baseUnit:"单位",consumptionType:"消耗类型",openedShelfLifeDays:"开封后保质期（天）",reorderPoint:"最低库存",replenishmentPaused:"补货管理"};
       const consumptionLabels:Record<string,string>={non_consumable:"非消耗品",consumable:"消耗品",long_term_consumable:"长期消耗品"};
       recordItemEvent(db,homeId,itemId,"update",other.map(([key,value])=>{
         const before=current[columns[key]??key]??"自动",after=value??"自动";
+        if(key==="replenishmentPaused") return `补货管理：${before?"已停购":"正常补货"} → ${after?"已停购":"正常补货"}`;
         return `${labels[key]??key}：${key==="consumptionType"?(consumptionLabels[String(before)]??before):before} → ${key==="consumptionType"?(consumptionLabels[String(after)]??after):after}`;
       }).join("；"));
     }
-    return db.prepare("SELECT id,icon,barcode,name,category,base_unit AS baseUnit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,reorder_point AS reorderPoint,default_location_id AS locationId FROM items WHERE id=? AND home_id=?").get(itemId,homeId);
+    const updated=db.prepare("SELECT id,icon,barcode,name,category,base_unit AS baseUnit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,replenishment_paused AS replenishmentPaused,reorder_point AS reorderPoint,default_location_id AS locationId FROM items WHERE id=? AND home_id=?").get(itemId,homeId)!;
+    return {...updated,replenishmentPaused:Boolean(updated.replenishmentPaused)};
   });
 });
 
@@ -760,7 +762,7 @@ app.get<{ Params: { homeId: string } }>(
       .all(request.params.homeId);
     const automatic = db
       .prepare(
-        `SELECT 'auto:' || items.id AS id, items.id AS itemId, items.name, MAX(ROUND(items.reorder_point - ${itemBalanceSqlFor("items")},2), 0) AS quantity, items.base_unit AS unit, items.consumption_type AS consumptionType, items.opened_shelf_life_days AS openedShelfLifeDays, items.category, items.default_location_id AS locationId,NULL AS channelId,NULL AS channelName,NULL AS plannedDate,NULL AS estimatedTotal,'automatic' AS source,0 AS completed,NULL AS createdAt FROM items WHERE items.home_id=? AND items.active=1 AND ROUND(items.reorder_point - ${itemBalanceSqlFor("items")},2)>0 AND NOT EXISTS (SELECT 1 FROM shopping_list s WHERE s.home_id=items.home_id AND s.item_id=items.id AND s.completed=0) GROUP BY items.id ORDER BY items.name`,
+        `SELECT 'auto:' || items.id AS id, items.id AS itemId, items.name, MAX(ROUND(items.reorder_point - ${itemBalanceSqlFor("items")},2), 0) AS quantity, items.base_unit AS unit, items.consumption_type AS consumptionType, items.opened_shelf_life_days AS openedShelfLifeDays, items.category, items.default_location_id AS locationId,NULL AS channelId,NULL AS channelName,NULL AS plannedDate,NULL AS estimatedTotal,'automatic' AS source,0 AS completed,NULL AS createdAt FROM items WHERE items.home_id=? AND items.active=1 AND items.replenishment_paused=0 AND ROUND(items.reorder_point - ${itemBalanceSqlFor("items")},2)>0 AND NOT EXISTS (SELECT 1 FROM shopping_list s WHERE s.home_id=items.home_id AND s.item_id=items.id AND s.completed=0) GROUP BY items.id ORDER BY items.name`,
       )
       .all(request.params.homeId);
     return [...manual, ...automatic];

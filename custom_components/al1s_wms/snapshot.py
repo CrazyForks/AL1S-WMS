@@ -28,14 +28,14 @@ def build_details(overview: dict, items: list, batches: list, opened: list, shop
     empty = []
     for item in items:
         shortage = round(item["reorderPoint"] - item["quantity"], 2)
-        if shortage > 0:
+        if shortage > 0 and not item.get("replenishmentPaused"):
             row = detail(item)
             # An item's default location is not necessarily where its stock is.
             row.pop("location_id")
             row.pop("location")
             row.update(reorder_point=item["reorderPoint"], suggested_quantity=shortage)
             low_stock.append(row)
-        elif item["quantity"] > 0 and round(item["quantity"] - item["reorderPoint"], 2) == 0:
+        elif not item.get("replenishmentPaused") and item["quantity"] > 0 and round(item["quantity"] - item["reorderPoint"], 2) == 0:
             row = detail(item)
             row.pop("location_id")
             row.pop("location")

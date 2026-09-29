@@ -14,7 +14,7 @@ export function saveShopping(db:DatabaseSync,homeId:string,raw:unknown,id?:strin
   const input=shoppingSchema.parse(raw);
   const automaticId=id?.startsWith("auto:")?id.slice(5):null;
   const current=automaticId
-    ? db.prepare(`SELECT ? AS id,id AS itemId,name,MAX(ROUND(reorder_point-${itemBalanceSqlFor("items")},2),0) AS quantity,base_unit AS unit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,category,default_location_id AS locationId,NULL AS channelId,NULL AS plannedDate,NULL AS estimatedTotal,0 AS completed FROM items WHERE id=? AND home_id=? AND active=1`).get(id!,automaticId,homeId) as Purchase|undefined
+    ? db.prepare(`SELECT ? AS id,id AS itemId,name,MAX(ROUND(reorder_point-${itemBalanceSqlFor("items")},2),0) AS quantity,base_unit AS unit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,category,default_location_id AS locationId,NULL AS channelId,NULL AS plannedDate,NULL AS estimatedTotal,0 AS completed FROM items WHERE id=? AND home_id=? AND active=1 AND replenishment_paused=0`).get(id!,automaticId,homeId) as Purchase|undefined
     : id?db.prepare("SELECT id,item_id AS itemId,name,quantity,unit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,category,location_id AS locationId,channel_id AS channelId,planned_date AS plannedDate,estimated_total_minor/100.0 AS estimatedTotal,source,completed FROM shopping_list WHERE id=? AND home_id=?").get(id,homeId) as Purchase|undefined:undefined;
   if(id&&!current)throw new InventoryError(404,"SHOPPING_ITEM_NOT_FOUND","error.shoppingItemNotFound");
   if(automaticId&&current!.quantity<=0)throw new InventoryError(409,"SHOPPING_SUGGESTION_RESOLVED","error.shoppingSuggestionResolved");
@@ -46,7 +46,7 @@ export function receiveShopping(db:DatabaseSync,homeId:string,shoppingId:string,
   const input=receiveSchema.parse(raw);
   return withStockOperation(db,homeId,input.idempotencyKey,{type:"purchase",shoppingId,...input},()=>{
     const automatic=shoppingId.startsWith("auto:");
-    const row=automatic?db.prepare(`SELECT id AS itemId,name,base_unit AS unit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,category,default_location_id AS locationId,MAX(ROUND(reorder_point-${itemBalanceSqlFor("items")},2),0) AS quantity,0 AS completed FROM items WHERE home_id=? AND id=? AND active=1`).get(homeId,shoppingId.slice(5)) as Purchase|undefined
+    const row=automatic?db.prepare(`SELECT id AS itemId,name,base_unit AS unit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,category,default_location_id AS locationId,MAX(ROUND(reorder_point-${itemBalanceSqlFor("items")},2),0) AS quantity,0 AS completed FROM items WHERE home_id=? AND id=? AND active=1 AND replenishment_paused=0`).get(homeId,shoppingId.slice(5)) as Purchase|undefined
       :db.prepare("SELECT id,item_id AS itemId,name,quantity,unit,consumption_type AS consumptionType,opened_shelf_life_days AS openedShelfLifeDays,category,location_id AS locationId,channel_id AS channelId,planned_date AS plannedDate,estimated_total_minor/100.0 AS estimatedTotal,completed FROM shopping_list WHERE home_id=? AND id=?").get(homeId,shoppingId) as Purchase|undefined;
     if(!row)throw new InventoryError(404,"SHOPPING_ITEM_NOT_FOUND","error.shoppingItemNotFound");
     if(row.completed)throw new InventoryError(409,"SHOPPING_COMPLETED","error.shoppingAlreadyReceived");

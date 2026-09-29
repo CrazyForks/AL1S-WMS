@@ -42,6 +42,7 @@ export const updateItemSchema = z.object({
   baseUnit: z.string().min(1).optional(),
   consumptionType: consumptionTypeSchema.optional(),
   openedShelfLifeDays: z.number().int().positive().nullable().optional(),
+  replenishmentPaused: z.boolean().optional(),
   reorderPoint: z.number().nonnegative().optional(),
   locationId: z.string().uuid().nullable().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0);
