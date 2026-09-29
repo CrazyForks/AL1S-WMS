@@ -1,105 +1,36 @@
-# Home Assistant dashboard
+# Home Assistant inventory card
 
-Each household has six summary sensors: **item types, low-stock items, expiring batches, expired batches, pending shopping items, and items in use**. Individual quantity sensors are created only for items you choose to follow.
+The integration bundles an **AL1S WMS inventory card** and loads it automatically. No separate frontend resource, Markdown templates, or item selection is required.
 
-Under **Settings → Devices & services → AL1S WMS → Configure**, search and select followed items. Each selection adds one quantity sensor. New inventory items are not followed automatically. Unfollowing disables the entity; following again restores its original entity ID. Entities you disabled yourself must still be enabled manually.
+## Add the card
 
-After upgrading from the previous integration, automatically created item entities are disabled. Follow those items again to restore entities referenced by your automations.
+1. Update AL1S WMS through HACS to **v0.0.4 or newer**, restart Home Assistant, and refresh your browser.
+2. In your dashboard, select **Edit → Add card** and search for **AL1S WMS**.
+3. Select a household in the visual editor and save. You can change the title or show only inventory attention or opened items.
 
-## Native cards
+The card reads two household detail entities and updates with their minute-by-minute refresh. It makes no additional AL1S requests and creates no per-item entities. If the card is missing, configure the integration's household and reload the HA webpage.
 
-No extra card installation is required. Add native **Entities** or **Tile** cards for household summaries and followed items. A **History graph** can show quantity changes.
+## What it shows
 
-Add native **Markdown** cards for detail lists. Replace the example entity IDs below with the actual IDs from **Developer tools → States**. HA assigns entity IDs; they may differ from these examples.
+**Inventory attention**: a table of out-of-stock, low-stock, at-threshold, expiring and expired items, with names, quantities, and replenishment or expiry details. Filter by status.
 
-### Use soon
+**In use**: a table of individual opening records with item name, quantity, actual location, opening date and effective expiry. Opening dates appear below the item name to save horizontal space.
 
-```yaml
-type: markdown
-title: Use soon
-content: |-
-  {% set entity = 'sensor.home_expiring_batches' %}
-  {% if states(entity) in ['unknown', 'unavailable'] %}
-  Inventory data is unavailable.
-  {% else %}
-  {% for item in state_attr(entity, 'items') or [] %}
-  - [{{ item.name }}]({{ item.url }}) · {{ item.quantity }} {{ item.unit }} · {{ item.location or 'No location' }} · {{ item.days_remaining }} days left
-  {% else %}
-  Nothing expires in the next 30 days.
-  {% endfor %}
-  {% endif %}
-```
+The card follows HA's light or dark theme and language (English or Chinese). On narrow screens, tables scroll within the card. Item links open AL1S details; your browser must reach AL1S and be signed in to the household.
 
-### In use
+## Entities and data
 
-```yaml
-type: markdown
-title: In use
-content: |-
-  {% set entity = 'sensor.home_items_in_use' %}
-  {% if states(entity) in ['unknown', 'unavailable'] %}
-  Inventory data is unavailable.
-  {% else %}
-  {% for item in state_attr(entity, 'items') or [] %}
-  - [{{ item.name }}]({{ item.url }}) · {{ item.quantity }} {{ item.unit }} · {{ item.location or 'No location' }} · Opened {{ item.opened_at[:10] }}{% if item.days_remaining is not none %} · {% if item.days_remaining < 0 %}Expired {{ -item.days_remaining }} days ago{% else %}{{ item.days_remaining }} days left{% endif %}{% endif %}
-  {% else %}
-  No items in use.
-  {% endfor %}
-  {% endif %}
-```
+| Entity | State | Details |
+| --- | --- | --- |
+| Inventory attention | `needs_attention` / `clear` | `items` contains all issue records, including status, name, quantity and batch details |
+| Opened items | `in_use` / `none` | `items` contains all opening records, including name, quantity, location and dates |
 
-### Replenishment
+The previous six numeric summary sensors remain available. Older per-item entities are disabled, retaining their IDs and history; automations referencing them should migrate to detail attributes. On connection failure, entities become unavailable and the card hides stale records.
 
-```yaml
-type: markdown
-title: Replenishment
-content: |-
-  {% set entity = 'sensor.home_low_stock_items' %}
-  {% if states(entity) in ['unknown', 'unavailable'] %}
-  Inventory data is unavailable.
-  {% else %}
-  {% for item in state_attr(entity, 'items') or [] %}
-  - [{{ item.name }}]({{ item.url }}) · {{ item.quantity }} {{ item.unit }} left · Buy {{ item.suggested_quantity }} {{ item.unit }}
-  {% else %}
-  Nothing needs replenishment.
-  {% endfor %}
-  {% endif %}
-```
+Out of stock means zero inventory. Low stock means positive inventory below the reorder point. At threshold means positive inventory equal to it. Zero stock with a zero reorder point is listed as out of stock, but has no suggested replenishment quantity. Expiry rows represent remaining batch/location records in the next 30 days. An item can have both a replenishment and an expiry issue; a batch at multiple locations also produces multiple records.
 
-Combine these in a native **Vertical stack** card with summary tiles above. Item links open AL1S details; your browser must also reach the configured AL1S URL and be signed in to the household.
+Opened quantity remains part of total stock until exhaustion is recorded. A bottle count is not the percentage remaining inside it. Effective opened expiry is the earlier of original expiry and opened shelf-life expiry. Unknown dates display as “Not set”.
 
-## State and attributes
+Attention rows contain `status`, `item_id`, `name`, `quantity`, `unit`, and `url`. Replenishment rows add `reorder_point` and `suggested_quantity`; expiry rows add `batch_id`, `expiry_date`, `days_remaining`, `location_id`, and `location`. Opening rows include `opened_id`, `opened_at`, expiry, item and location details. These attributes are also available to HA automations.
 
-Summary states are counts. Detail lists are in their `items` attribute and refresh about once a minute. Expiring and expired counts represent remaining batch/location records: one batch at two locations produces two records. The 30-day expiry window includes today, matching AL1S.
-
-| Summary | Additional detail fields |
-| --- | --- |
-| Low stock | `reorder_point`, `suggested_quantity` |
-| Expiring / expired | `batch_id`, `expiry_date`, `days_remaining` |
-| In use | `opened_id`, `batch_id`, `opened_at`, `expiry_date`, `days_remaining` |
-| Shopping | `shopping_id`, `source`, `planned_date` |
-
-Common detail fields are `item_id`, `name`, `quantity`, `unit`, and `url`. Batch and opening records also include `location_id` and `location`. Shopping `source` is `manual` or `automatic`. Unknown dates and locations are `null`.
-
-The in-use summary counts **distinct item types**, while its list contains individual opening records. Two opened bottles of the same shampoo can have two records but count as one item type. Effective opened expiry is the earlier of the original expiry date and the opened shelf-life date.
-
-Followed item states are total quantities across locations, using the AL1S unit. Attributes include:
-
-| Attribute | Meaning |
-| --- | --- |
-| `locations` | Actual locations with stock, each with `location_id`, `name`, `quantity` |
-| `needs_replenishment` | Boolean indicating quantity below the reorder point |
-| `reorder_point` / `suggested_quantity` | Reorder point / quantity needed to reach it |
-| `opened_quantity` / `unopened_quantity` | Opened / unopened quantities in the item's unit |
-| `next_expiry_date` | Earliest original expiry among batches still in stock |
-| `next_opened_expiry_date` | Earliest effective expiry among opened records |
-| `opened` | Opening records for this item |
-| `url` | AL1S item detail URL |
-
-Opened stock remains part of total stock until exhaustion is recorded. Opened quantity means inventory units such as bottles, **not the percentage left inside a bottle**. Connection failures make entities unavailable; example cards hide stale lists in that case.
-
-## Automations
-
-Use a followed quantity sensor's `needs_replenishment` attribute as a trigger, and include `suggested_quantity` in a notification. A scheduled automation can read the in-use list's `days_remaining` to send a combined reminder without creating an entity for every bottle.
-
-The integration is read-only: it does not complete shopping tasks, receive purchases, or deduct stock.
+The YAML type is `custom:al1s-inventory-card`; normally the visual editor is sufficient. The integration is read-only and does not alter stock.

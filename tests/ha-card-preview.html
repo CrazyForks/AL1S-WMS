@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AL1S WMS card preview</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --primary-text-color: #202124;
+        --secondary-text-color: #687078;
+        --divider-color: #dadde1;
+        --card-background-color: #fff;
+        --secondary-background-color: #f1f3f4;
+        --primary-color: #1976d2;
+        --error-color: #c62828;
+        --warning-color: #8a5c00;
+        --ha-card-border-radius: 10px;
+        font: 15px system-ui, sans-serif;
+        background: #f5f6f7;
+      }
+      body { max-width: 1080px; margin: 24px auto; padding: 0 16px; }
+    </style>
+    <script src="../custom_components/al1s_wms/frontend/al1s-inventory-card.js"></script>
+  </head>
+  <body>
+    <al1s-inventory-card></al1s-inventory-card>
+    <script>
+      const item = (id, name, status, quantity, unit, fields = {}) => ({
+        item_id: id,
+        name,
+        status,
+        quantity,
+        unit,
+        url: `http://localhost:8080/items/${id}`,
+        ...fields,
+      });
+      const attention = [
+        item("egg", "鸡蛋", "out_of_stock", 0, "个", { reorder_point: 6, suggested_quantity: 6 }),
+        item("milk", "纯牛奶", "low_stock", 1, "盒", { reorder_point: 4, suggested_quantity: 3 }),
+        item("rice", "大米", "critical", 2, "kg", { reorder_point: 2, suggested_quantity: 0 }),
+        item("yogurt", "酸奶", "expiring", 3, "杯", { expiry_date: "2026-10-01", days_remaining: 2, location: "冰箱" }),
+        item("juice", "果汁", "expired", 1, "瓶", { expiry_date: "2026-09-27", days_remaining: -2, location: "储物柜" }),
+      ];
+      const opened = [
+        { ...item("shampoo", "洗发水", "", 1, "瓶"), opened_id: "open-1", opened_at: "2026-09-16T08:00:00Z", expiry_date: "2026-12-16", location: "浴室" },
+        { ...item("detergent", "洗衣液", "", 2, "瓶"), opened_id: "open-2", opened_at: "2026-09-20T08:00:00Z", expiry_date: null, location: "阳台" },
+      ];
+      const entity = (id, type, rows, state) => ({
+        entity_id: id,
+        state,
+        attributes: {
+          integration: "al1s_wms",
+          detail_type: type,
+          household: "url|home-id",
+          household_name: "我们的家",
+          items: rows,
+        },
+      });
+      const card = document.querySelector("al1s-inventory-card");
+      card.setConfig({ type: "custom:al1s-inventory-card", household: "url|home-id" });
+      card.hass = {
+        language: "zh-CN",
+        locale: { language: "zh-CN" },
+        themes: { darkMode: false },
+        states: {
+          "sensor.home_inventory_attention": entity("sensor.home_inventory_attention", "attention", attention, "needs_attention"),
+          "sensor.home_opened_items": entity("sensor.home_opened_items", "opened_details", opened, "in_use"),
+        },
+      };
+    </script>
+  </body>
+</html>

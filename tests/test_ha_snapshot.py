@@ -23,11 +23,8 @@ class SnapshotTest(unittest.TestCase):
         details = snapshot.build_details(overview, [item], [batch], [opened], [], "https://inventory.test")
         self.assertEqual(details["low_stock"][0]["suggested_quantity"], 1)
         self.assertEqual(details["opened"][0]["expiry_date"], "2026-10-03")
-        data = {"details": details, "batches": [batch], "url": "https://inventory.test"}
-        attributes = snapshot.item_attributes(data, item)
-        self.assertEqual((attributes["opened_quantity"], attributes["unopened_quantity"]), (1, 1))
-        self.assertEqual(attributes["locations"][0]["quantity"], 2)
-        self.assertEqual(attributes["next_opened_expiry_date"], "2026-10-03")
+        self.assertEqual(details["opened"][0]["quantity"], 1)
+        self.assertEqual(details["opened"][0]["expiry_date"], "2026-10-03")
 
     def test_original_batch_expiry_and_opened_expiry_are_separate(self):
         overview = {"generatedAt": "2026-09-29T08:00:00Z", "expiryWindow": {"days": 30}}
@@ -40,7 +37,24 @@ class SnapshotTest(unittest.TestCase):
         details = snapshot.build_details(overview, [item], [batch], [opened], [], "https://inventory.test")
         self.assertEqual(details["expiring"], [])
         self.assertEqual(details["opened"][0]["days_remaining"], 1)
-        self.assertEqual(snapshot.item_attributes({"details": details, "batches": [batch], "url": "https://inventory.test"}, item)["next_expiry_date"], "2027-09-01")
+        self.assertEqual(batch["expiryDate"], "2027-09-01")
+
+
+class AttentionTest(unittest.TestCase):
+    def test_all_stock_states_and_expiry_rows_are_available_without_item_selection(self):
+        items = [
+            {"id": "zero", "name": "Zero", "baseUnit": "box", "quantity": 0, "reorderPoint": 0},
+            {"id": "low", "name": "Low", "baseUnit": "box", "quantity": 1, "reorderPoint": 3},
+            {"id": "critical", "name": "Critical", "baseUnit": "box", "quantity": 2, "reorderPoint": 2},
+        ]
+        batches = [{"itemId": "low", "itemName": "Low", "baseUnit": "box", "quantity": 1,
+                    "batchId": "b1", "expiryDate": "2026-09-30", "locationId": "pantry", "locationName": "Pantry"}]
+        overview = {"generatedAt": "2026-09-29T08:00:00Z", "expiryWindow": {"days": 30}}
+        details = snapshot.build_details(overview, items, batches, [], [], "https://inventory.test")
+        rows = snapshot.attention_rows(details)
+        self.assertEqual([row["status"] for row in rows], ["out_of_stock", "low_stock", "critical", "expiring"])
+        self.assertEqual(rows[0]["suggested_quantity"], 0)
+        self.assertEqual(rows[-1]["days_remaining"], 1)
 
 
 if __name__ == "__main__":

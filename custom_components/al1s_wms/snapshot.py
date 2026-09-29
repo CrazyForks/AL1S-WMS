@@ -24,6 +24,8 @@ def build_details(overview: dict, items: list, batches: list, opened: list, shop
         }
 
     low_stock = []
+    critical = []
+    empty = []
     for item in items:
         shortage = round(item["reorderPoint"] - item["quantity"], 2)
         if shortage > 0:
@@ -33,6 +35,18 @@ def build_details(overview: dict, items: list, batches: list, opened: list, shop
             row.pop("location")
             row.update(reorder_point=item["reorderPoint"], suggested_quantity=shortage)
             low_stock.append(row)
+        elif item["quantity"] > 0 and round(item["quantity"] - item["reorderPoint"], 2) == 0:
+            row = detail(item)
+            row.pop("location_id")
+            row.pop("location")
+            row.update(reorder_point=item["reorderPoint"], suggested_quantity=0)
+            critical.append(row)
+        if item["quantity"] == 0:
+            row = detail(item)
+            row.pop("location_id")
+            row.pop("location")
+            row.update(reorder_point=item["reorderPoint"], suggested_quantity=max(shortage, 0))
+            empty.append(row)
 
     expiring, expired = [], []
     for batch in batches:
@@ -65,6 +79,8 @@ def build_details(overview: dict, items: list, batches: list, opened: list, shop
 
     return {
         "low_stock": low_stock,
+        "critical": critical,
+        "empty": empty,
         "expiring": sorted(expiring, key=lambda row: row["expiry_date"]),
         "expired": sorted(expired, key=lambda row: row["expiry_date"]),
         "opened": opened_details,
@@ -72,28 +88,17 @@ def build_details(overview: dict, items: list, batches: list, opened: list, shop
     }
 
 
-def item_attributes(data: dict, item: dict) -> dict:
-    """Describe actual stock locations and opening status for a followed item."""
-    item_id = item["id"]
-    opened = [row for row in data["details"]["opened"] if row["item_id"] == item_id]
-    batches = [row for row in data["batches"] if row["itemId"] == item_id and row["quantity"] > 0]
-    locations = {}
-    for batch in batches:
-        location_id = batch.get("locationId")
-        location = locations.setdefault(location_id, {"location_id": location_id, "name": batch.get("locationName"), "quantity": 0})
-        location["quantity"] = round(location["quantity"] + batch["quantity"], 2)
-    expiry_dates = [row["expiryDate"] for row in batches if row.get("expiryDate")]
-    opened_expiry_dates = [row["expiry_date"] for row in opened if row.get("expiry_date")]
-    return {
-        "item_id": item_id,
-        "reorder_point": item["reorderPoint"],
-        "needs_replenishment": round(item["reorderPoint"] - item["quantity"], 2) > 0,
-        "suggested_quantity": max(round(item["reorderPoint"] - item["quantity"], 2), 0),
-        "locations": list(locations.values()),
-        "opened_quantity": round(sum(row["quantity"] for row in opened), 2),
-        "unopened_quantity": max(round(item["quantity"] - sum(row["quantity"] for row in opened), 2), 0),
-        "next_expiry_date": min(expiry_dates) if expiry_dates else None,
-        "next_opened_expiry_date": min(opened_expiry_dates) if opened_expiry_dates else None,
-        "opened": opened,
-        "url": f"{data['url']}/items/{item_id}",
-    }
+def attention_rows(details: dict) -> list[dict]:
+    """One row per issue; a physical item can have multiple independent issues."""
+    rows = []
+    for row in details["empty"]:
+        rows.append({**row, "status": "out_of_stock"})
+    for row in details["low_stock"]:
+        if row["quantity"] > 0:
+            rows.append({**row, "status": "low_stock"})
+    for row in details["critical"]:
+        rows.append({**row, "status": "critical"})
+    for status in ("expired", "expiring"):
+        for row in details[status]:
+            rows.append({**row, "status": status})
+    return rows

@@ -5,17 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
-from .const import CONF_FOLLOWED_ITEMS, DOMAIN
-from .snapshot import item_attributes
+from .const import DOMAIN
+from .snapshot import attention_rows
 
 
 @dataclass(frozen=True)
@@ -39,37 +39,17 @@ SUMMARIES = (
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Expose summaries and quantity sensors only for explicitly followed items."""
+    """Expose household detail entities without individual item setup."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         AL1SSummarySensor(coordinator, entry, summary) for summary in SUMMARIES
     )
-    followed = set(entry.options.get(CONF_FOLLOWED_ITEMS, []))
+    async_add_entities((AL1SDetailSensor(coordinator, entry, key) for key in ("attention", "opened_details")))
     registry = er.async_get(hass)
     prefix = f"{entry.unique_id}_item_"
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if entity.unique_id.startswith(prefix):
-            item_id = entity.unique_id[len(prefix):]
-            if item_id not in followed and entity.disabled_by is None:
-                registry.async_update_entity(entity.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
-            elif item_id in followed and entity.disabled_by == er.RegistryEntryDisabler.INTEGRATION:
-                registry.async_update_entity(entity.entity_id, disabled_by=None)
-    known_items: set[str] = set()
-
-    @callback
-    def add_new_items() -> None:
-        new_items = [
-            item for item in coordinator.data["items"]
-            if item["id"] in followed and item["id"] not in known_items
-        ]
-        if new_items:
-            known_items.update(item["id"] for item in new_items)
-            async_add_entities(
-                AL1SItemSensor(coordinator, entry, item["id"]) for item in new_items
-            )
-
-    add_new_items()
-    entry.async_on_unload(coordinator.async_add_listener(add_new_items))
+        if entity.unique_id.startswith(prefix) and entity.disabled_by is None:
+            registry.async_update_entity(entity.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
 
 
 class AL1SSummarySensor(CoordinatorEntity, SensorEntity):
@@ -110,19 +90,21 @@ class AL1SSummarySensor(CoordinatorEntity, SensorEntity):
         return attributes
 
 
-class AL1SItemSensor(CoordinatorEntity, SensorEntity):
-    """Current quantity for one item, aggregated across locations."""
+class AL1SDetailSensor(CoordinatorEntity, SensorEntity):
+    """A small textual state with all rows in structured attributes."""
 
     _attr_has_entity_name = True
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_icon = "mdi:package-variant"
 
-    def __init__(
-        self, coordinator: DataUpdateCoordinator, entry: ConfigEntry, item_id: str
-    ) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator, entry: ConfigEntry, key: str) -> None:
         super().__init__(coordinator)
-        self.item_id = item_id
-        self._attr_unique_id = f"{entry.unique_id}_item_{item_id}"
+        self.key = key
+        self.household = entry.entry_id
+        self.household_name = entry.title
+        self._attr_device_class = SensorDeviceClass.ENUM
+        self._attr_options = ["needs_attention", "clear"] if key == "attention" else ["in_use", "none"]
+        self._attr_unique_id = f"{entry.unique_id}_{key}"
+        self._attr_translation_key = key
+        self._attr_icon = "mdi:alert-circle-outline" if key == "attention" else "mdi:bottle-tonic-outline"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, str(entry.unique_id))},
             name=entry.title,
@@ -132,30 +114,30 @@ class AL1SItemSensor(CoordinatorEntity, SensorEntity):
         )
 
     @property
-    def item(self) -> dict | None:
-        """Look up the latest item data after each coordinator refresh."""
-        return next(
-            (item for item in self.coordinator.data["items"] if item["id"] == self.item_id),
-            None,
-        )
+    def rows(self) -> list[dict]:
+        details = self.coordinator.data["details"]
+        return attention_rows(details) if self.key == "attention" else details["opened"]
 
     @property
-    def available(self) -> bool:
-        return super().available and self.item is not None
+    def native_value(self) -> str:
+        if self.key == "attention":
+            return "needs_attention" if self.rows else "clear"
+        return "in_use" if self.rows else "none"
 
     @property
-    def name(self) -> str | None:
-        return self.item["name"] if self.item else None
-
-    @property
-    def native_unit_of_measurement(self) -> str | None:
-        return self.item.get("baseUnit") if self.item else None
-
-    @property
-    def native_value(self) -> float | None:
-        return self.item["quantity"] if self.item else None
-
-    @property
-    def extra_state_attributes(self) -> dict | None:
-        """Keep location, replenishment and opening details on the same entity."""
-        return item_attributes(self.coordinator.data, self.item) if self.item else None
+    def extra_state_attributes(self) -> dict:
+        details = self.coordinator.data["details"]
+        shared = {"integration": DOMAIN, "detail_type": self.key, "household": self.household, "household_name": self.household_name}
+        if self.key == "opened_details":
+            return {**shared, "items": self.rows, "count": len(self.rows)}
+        return {
+            **shared,
+            "items": self.rows,
+            "count": len(self.rows),
+            "out_of_stock_count": sum(row["status"] == "out_of_stock" for row in self.rows),
+            "low_stock_count": sum(row["status"] == "low_stock" for row in self.rows),
+            "critical_count": len(details["critical"]),
+            "expiring_count": len(details["expiring"]),
+            "expired_count": len(details["expired"]),
+            "expiry_window_days": self.coordinator.data["overview"]["expiryWindow"]["days"],
+        }
