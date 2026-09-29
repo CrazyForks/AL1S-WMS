@@ -368,15 +368,14 @@ export function InventoryPage({
                           replenishment > 0 ? "replenishment" : "muted-cell"
                         }
                       >
-                        {item.replenishmentPaused ? t("已停购") : replenishment > 0
+                        {item.replenishmentPaused ? "—" : replenishment > 0
                           ? `${replenishment} ${displayUnit(item.baseUnit)}`
                           : "—"}
                       </td>
                       <td>
-                        <span className={`stock-status ${stockStatus.level}`}>
+                        <span className={`stock-status ${item.replenishmentPaused && stockStatus.level === "empty" ? "paused" : stockStatus.level}`}>
                           {stockStatus.label}
                         </span>
-                        {item.replenishmentPaused && <span className="stock-status paused">{t("已停购")}</span>}
                       </td>
                       <td><LocationLink page="count" locationId={item.locationId}>{item.locationName || t("未指定")}</LocationLink></td>
                       <td>

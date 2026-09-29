@@ -730,5 +730,5 @@ input,select,textarea{outline:none!important;box-shadow:none!important}
 .location-link{color:inherit;text-decoration:underline;text-decoration-style:dashed;text-decoration-color:#8ea5b7;text-underline-offset:3px;cursor:pointer}
 .location-link:hover,.location-link:focus-visible{color:var(--aris-blue-dark);text-decoration-color:currentColor}
 
-.stock-status.paused{--status-ink:#697b8a;--status-fill:#eef1f3;margin-left:5px}
+.stock-status.paused{--status-ink:#697b8a;--status-fill:#eef1f3}
 .inventory-paused{background:#f8fafb}

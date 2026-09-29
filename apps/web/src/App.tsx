@@ -433,7 +433,7 @@ export function App() {
   const stockStatusFor = (item: Item) => {
     const quantity = balanceFor(item.id);
     const difference = roundQuantity(quantity - item.reorderPoint);
-    if (quantity === 0 && item.replenishmentPaused) return { level: "empty", label: t("耗尽"), priority: 4 };
+    if (item.replenishmentPaused) return { level: quantity === 0 ? "empty" : "paused", label: t("停购"), priority: quantity === 0 ? 4 : 3 };
     if (!item.replenishmentPaused && difference < 0)
       return {
         level: "low",
@@ -460,8 +460,8 @@ export function App() {
   const displayStatusFor = (item: Item) => {
     if (item.replenishmentPaused && balanceFor(item.id) === 0) return stockStatusFor(item);
     const expiry = expiryStatusFor(item);
-    if (expiry.level === "expired") return { ...expiry, priority: -2 };
-    if (expiry.level === "expiring") return { ...expiry, priority: -1 };
+    if (expiry.level === "expired") return { ...expiry, label: item.replenishmentPaused ? `${expiry.label} · ${t("停购")}` : expiry.label, priority: -2 };
+    if (expiry.level === "expiring") return { ...expiry, label: item.replenishmentPaused ? `${expiry.label} · ${t("停购")}` : expiry.label, priority: -1 };
     return stockStatusFor(item);
   };
   const locationScopeIds = useMemo(() => {
