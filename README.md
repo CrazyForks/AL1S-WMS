@@ -113,7 +113,7 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 Bring AL1S WMS inventory counts into Home Assistant dashboards and automations. For example, get notified when fewer than four eggs remain or when a batch has expired.
 
 1. In AL1S WMS, create a token under **Settings → MCP access tokens**. A token scoped to the household you want to connect is recommended.
-2. In HACS, add `https://github.com/RicterZ/AL1S-WMS` as a **Custom repository** of type **Integration**. Install **AL1S WMS** from the **main** branch, then restart Home Assistant.
+2. In HACS, add `https://github.com/RicterZ/AL1S-WMS` as a **Custom repository** of type **Integration**. Install **AL1S WMS v0.0.3** (or newer), then restart Home Assistant.
 3. In Home Assistant, go to **Settings → Devices & services → Add integration**, search for **AL1S WMS**, enter its URL and token, then select a household and any items you want to follow (optional). Home Assistant must be able to reach that URL; do not use the HA container's own `localhost`.
 
 The household gets six summary sensors: **item types, low-stock items, expiring batches, expired batches, pending shopping items, and items in use**. Only followed items get individual quantity sensors; change your selection in the integration options. Summary attributes include replenishment, expiry, shopping, and opening details. Data refreshes about once a minute. Each entry connects one household.
