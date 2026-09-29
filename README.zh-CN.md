@@ -116,6 +116,8 @@
 
 无需选择关注物资，默认提供**异常库存**与**已开封物资**两个明细实体，包含物资名称、数量、状态、地点和日期，自带库存 Card 展示表格。同时保留六个数量汇总传感器，数据约每分钟更新一次，每个集成条目绑定一个家庭。
 
+默认的 Lovelace 存储模式会自动注册卡片；若使用 YAML 仪表盘，需要手动添加卡片资源，见 [Home Assistant 使用说明](docs/home-assistant.zh-CN.md)。
+
 在仪表盘“添加卡片”中选择 **AL1S WMS** 即可：[库存 Card 使用说明](docs/home-assistant.zh-CN.md)。
 
 不用 HACS 时，将仓库中的 `custom_components/al1s_wms` 复制到 HA 配置目录的同一路径，重启 HA，再从第 3 步继续。

@@ -4,9 +4,17 @@ The integration bundles an **AL1S WMS inventory card** and loads it automaticall
 
 ## Add the card
 
-1. Update AL1S WMS through HACS to **v0.0.4 or newer**, restart Home Assistant, and refresh your browser.
-2. In your dashboard, select **Edit → Add card** and search for **AL1S WMS**.
+1. Update AL1S WMS through HACS to **v0.0.4 or newer**, then restart Home Assistant.
+2. In storage-mode dashboards, the integration adds its card module to Lovelace resources. Refresh the browser, then select **Edit → Add card** and search for **AL1S WMS**.
 3. Select a household in the visual editor and save. You can change the title or show only inventory attention or opened items.
+
+For YAML-mode dashboards, add this module resource to `ui-lovelace.yaml`:
+
+```yaml
+resources:
+  - url: /al1s_wms/al1s-inventory-card.js
+    type: module
+```
 
 The card reads two household detail entities and updates with their minute-by-minute refresh. It makes no additional AL1S requests and creates no per-item entities. If the card is missing, configure the integration's household and reload the HA webpage.
 

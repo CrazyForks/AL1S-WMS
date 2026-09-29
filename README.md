@@ -118,6 +118,8 @@ Bring AL1S WMS inventory counts into Home Assistant dashboards and automations. 
 
 No item selection is needed. Two detail entities, **inventory attention** and **opened items**, include names, quantities, statuses, locations, and dates for the bundled inventory card. Six numeric summary sensors are also available. Data refreshes about once a minute. Each entry connects one household.
 
+In the default storage-mode Lovelace dashboards, the integration registers its card automatically. YAML-mode dashboards need the card module added manually; see the [Home Assistant guide](docs/home-assistant.md).
+
 Select **AL1S WMS** under dashboard “Add card”: [inventory card guide](docs/home-assistant.md).
 
 Without HACS, copy `custom_components/al1s_wms` into the same path in your HA configuration directory, restart HA, and continue at step 3.
