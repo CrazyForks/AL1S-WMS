@@ -27,7 +27,6 @@ ENV NODE_ENV=production
 ENV PORT=8080
 ENV BIND_ADDRESS=0.0.0.0
 ENV DATABASE_URL=/data/al1s-wms.db
-ENV STATIC_ROOT=/app/public
 
 WORKDIR /app
 COPY --from=build /app/runtime ./

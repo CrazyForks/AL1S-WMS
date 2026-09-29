@@ -822,7 +822,7 @@ app.all("/mcp", async (request, reply) => handleMcpRequest(request, reply, async
   return { status: response.statusCode, body: response.json() };
 }, tokenUser(request)?.homeId??null));
 
-const staticRoot = resolve(process.env.STATIC_ROOT ?? "./public");
+const staticRoot = resolve("./public");
 if (existsSync(staticRoot)) {
   await app.register(fastifyStatic, { root: staticRoot });
   app.setNotFoundHandler((request, reply) => {
