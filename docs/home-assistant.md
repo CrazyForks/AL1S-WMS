@@ -1,14 +1,31 @@
-# Home Assistant inventory card
+# AL1S WMS in Home Assistant
 
-The integration bundles an **AL1S WMS inventory card** and loads it automatically. No separate frontend resource, Markdown templates, or item selection is required.
+Connect a household inventory to Home Assistant to view stock issues and opened items on a dashboard, or use inventory status in automations.
 
-## Add the card
+## Install and connect
 
-1. Update AL1S WMS through HACS to **v0.0.4 or newer**, then restart Home Assistant.
-2. In storage-mode dashboards, the integration adds its card module to Lovelace resources. Refresh the browser, then select **Edit → Add card** and search for **AL1S WMS**.
-3. Select a household in the visual editor and save. You can change the title or show only inventory attention or opened items.
+1. In AL1S WMS, open **Settings → MCP access tokens** and create a token for the household you want to connect. Copy the token and the AL1S address, for example `http://192.168.1.20:8080`.
+2. In Home Assistant, open **HACS → Integrations → ⋮ → Custom repositories**. Add `https://github.com/RicterZ/AL1S-WMS` and choose **Integration**. Download AL1S WMS and restart Home Assistant.
+3. Go to **Settings → Devices & services → Add integration**, search for **AL1S WMS**, then enter the AL1S address and token. Select the household to connect.
 
-For YAML-mode dashboards, add this module resource to `ui-lovelace.yaml`:
+Home Assistant must be able to reach the AL1S address. If Home Assistant runs in a container, use the address of the AL1S host or a shared service name, not `localhost`.
+
+## Add the dashboard card
+
+1. Open a dashboard and choose **Edit dashboard → Add card**.
+2. Search for **AL1S WMS**.
+3. Add **Inventory attention** or **In use** as needed. You can place the two cards separately on the dashboard.
+4. Choose the household to display in the card configuration.
+
+**Inventory attention** lists out-of-stock, low-stock, at-threshold, expiring, and expired items. Expiring means the batch expires within 30 days.
+
+**In use** lists opened records with their quantity, location, opening date, and expiry date. The quantity is the amount recorded as opened, not an estimate of how much remains inside the package.
+
+Select an item name to open its details in AL1S WMS. The browser displaying Home Assistant must also be able to reach AL1S.
+
+## YAML dashboards
+
+For a YAML-mode dashboard, add the card module under `resources`:
 
 ```yaml
 resources:
@@ -16,29 +33,16 @@ resources:
     type: module
 ```
 
-The card reads two household detail entities and updates with their minute-by-minute refresh. It makes no additional AL1S requests and creates no per-item entities. If the card is missing, configure the integration's household and reload the HA webpage.
+Then add the cards you need to a view. Inventory attention:
 
-## What it shows
+```yaml
+type: custom:al1s-inventory-attention-card
+```
 
-**Inventory attention**: a table of out-of-stock, low-stock, at-threshold, expiring and expired items, with names, quantities, and replenishment or expiry details. Filter by status.
+In use:
 
-**In use**: a table of individual opening records with item name, quantity, actual location, opening date and effective expiry. Opening dates appear below the item name to save horizontal space.
+```yaml
+type: custom:al1s-opened-items-card
+```
 
-The card follows HA's light or dark theme and language (English or Chinese). On narrow screens, tables scroll within the card. Item links open AL1S details; your browser must reach AL1S and be signed in to the household.
-
-## Entities and data
-
-| Entity | State | Details |
-| --- | --- | --- |
-| Inventory attention | `needs_attention` / `clear` | `items` contains all issue records, including status, name, quantity and batch details |
-| Opened items | `in_use` / `none` | `items` contains all opening records, including name, quantity, location and dates |
-
-The previous six numeric summary sensors remain available. Older per-item entities are disabled, retaining their IDs and history; automations referencing them should migrate to detail attributes. On connection failure, entities become unavailable and the card hides stale records.
-
-Out of stock means zero inventory. Low stock means positive inventory below the reorder point. At threshold means positive inventory equal to it. Zero stock with a zero reorder point is listed as out of stock, but has no suggested replenishment quantity. Expiry rows represent remaining batch/location records in the next 30 days. An item can have both a replenishment and an expiry issue; a batch at multiple locations also produces multiple records.
-
-Opened quantity remains part of total stock until exhaustion is recorded. A bottle count is not the percentage remaining inside it. Effective opened expiry is the earlier of original expiry and opened shelf-life expiry. Unknown dates display as “Not set”.
-
-Attention rows contain `status`, `item_id`, `name`, `quantity`, `unit`, and `url`. Replenishment rows add `reorder_point` and `suggested_quantity`; expiry rows add `batch_id`, `expiry_date`, `days_remaining`, `location_id`, and `location`. Opening rows include `opened_id`, `opened_at`, expiry, item and location details. These attributes are also available to HA automations.
-
-The YAML type is `custom:al1s-inventory-card`; normally the visual editor is sufficient. The integration is read-only and does not alter stock.
+The card is read-only. Make stock changes in AL1S WMS.

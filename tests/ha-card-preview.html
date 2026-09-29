@@ -24,7 +24,8 @@
     <script src="../custom_components/al1s_wms/frontend/al1s-inventory-card.js"></script>
   </head>
   <body>
-    <al1s-inventory-card></al1s-inventory-card>
+    <al1s-inventory-attention-card></al1s-inventory-attention-card>
+    <al1s-opened-items-card></al1s-opened-items-card>
     <script>
       const item = (id, name, status, quantity, unit, fields = {}) => ({
         item_id: id,
@@ -57,9 +58,7 @@
           items: rows,
         },
       });
-      const card = document.querySelector("al1s-inventory-card");
-      card.setConfig({ type: "custom:al1s-inventory-card", household: "url|home-id" });
-      card.hass = {
+      const hass = {
         language: "zh-CN",
         locale: { language: "zh-CN" },
         themes: { darkMode: false },
@@ -68,6 +67,12 @@
           "sensor.home_opened_items": entity("sensor.home_opened_items", "opened_details", opened, "in_use"),
         },
       };
+      const attentionCard = document.querySelector("al1s-inventory-attention-card");
+      attentionCard.setConfig({ type: "custom:al1s-inventory-attention-card", household: "url|home-id" });
+      attentionCard.hass = hass;
+      const openedCard = document.querySelector("al1s-opened-items-card");
+      openedCard.setConfig({ type: "custom:al1s-opened-items-card", household: "url|home-id" });
+      openedCard.hass = hass;
     </script>
   </body>
 </html>

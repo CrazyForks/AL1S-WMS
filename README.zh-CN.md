@@ -108,19 +108,9 @@
 
 ## Home Assistant
 
-将 AL1S WMS 的库存数量同步到 Home Assistant，用于仪表盘和自动化。例如，鸡蛋少于 4 个时提醒采购，或有过期批次时发送通知。
+接入家庭库存后，可在 HA 仪表盘分别查看库存提醒和使用中物资，也可在自动化中使用库存状态。通过 HACS 安装 AL1S WMS 自定义集成，再从**设置 → 设备与服务**添加集成并填写 AL1S 地址和访问令牌。最后在仪表盘的**添加卡片**中按需添加 **库存提醒** 和 **使用中**。
 
-1. 在 AL1S WMS 的**设置 → MCP 访问令牌**中创建令牌，推荐绑定要接入的家庭。
-2. 在 HACS 的**自定义存储库**中添加 `https://github.com/RicterZ/AL1S-WMS`，类型选**集成**。安装 **AL1S WMS v0.0.4**（或更新版本），然后重启 Home Assistant。
-3. 在 Home Assistant 的**设置 → 设备与服务 → 添加集成**中搜索 **AL1S WMS**，填写 AL1S 地址和令牌，再选择一个家庭。Home Assistant 必须能访问这个地址；若 HA 在容器中运行，不要使用容器自身的 `localhost`。
-
-无需选择关注物资，默认提供**异常库存**与**已开封物资**两个明细实体，包含物资名称、数量、状态、地点和日期，自带库存 Card 展示表格。同时保留六个数量汇总传感器，数据约每分钟更新一次，每个集成条目绑定一个家庭。
-
-默认的 Lovelace 存储模式会自动注册卡片；若使用 YAML 仪表盘，需要手动添加卡片资源，见 [Home Assistant 使用说明](docs/home-assistant.zh-CN.md)。
-
-在仪表盘“添加卡片”中选择 **AL1S WMS** 即可：[库存 Card 使用说明](docs/home-assistant.zh-CN.md)。
-
-不用 HACS 时，将仓库中的 `custom_components/al1s_wms` 复制到 HA 配置目录的同一路径，重启 HA，再从第 3 步继续。
+安装步骤、卡片内容和 YAML 仪表盘配置见 [Home Assistant 使用说明](docs/home-assistant.zh-CN.md)。
 
 ## 部署
 

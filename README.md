@@ -110,19 +110,9 @@ Stocktaking, purchasing, and finance share one data trail. Receiving a purchase 
 
 ## Home Assistant
 
-Bring AL1S WMS inventory counts into Home Assistant dashboards and automations. For example, get notified when fewer than four eggs remain or when a batch has expired.
+Connect a household to view stock alerts and opened items on separate HA dashboard cards, or use inventory status in automations. Install AL1S WMS from HACS as a custom integration, then add it from **Settings → Devices & services** using an AL1S address and access token. Add **Inventory attention** and **In use** separately from your dashboard's **Add card** menu.
 
-1. In AL1S WMS, create a token under **Settings → MCP access tokens**. A token scoped to the household you want to connect is recommended.
-2. In HACS, add `https://github.com/RicterZ/AL1S-WMS` as a **Custom repository** of type **Integration**. Install **AL1S WMS v0.0.4** (or newer), then restart Home Assistant.
-3. In Home Assistant, go to **Settings → Devices & services → Add integration**, search for **AL1S WMS**, enter its URL and token, then select a household. Home Assistant must be able to reach that URL; do not use the HA container's own `localhost`.
-
-No item selection is needed. Two detail entities, **inventory attention** and **opened items**, include names, quantities, statuses, locations, and dates for the bundled inventory card. Six numeric summary sensors are also available. Data refreshes about once a minute. Each entry connects one household.
-
-In the default storage-mode Lovelace dashboards, the integration registers its card automatically. YAML-mode dashboards need the card module added manually; see the [Home Assistant guide](docs/home-assistant.md).
-
-Select **AL1S WMS** under dashboard “Add card”: [inventory card guide](docs/home-assistant.md).
-
-Without HACS, copy `custom_components/al1s_wms` into the same path in your HA configuration directory, restart HA, and continue at step 3.
+See the [Home Assistant guide](docs/home-assistant.md) for setup steps, card details, and YAML dashboard instructions.
 
 ## Deployment
 
